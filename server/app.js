@@ -5,6 +5,8 @@ const morgan = require('morgan');
 
 const config = require('./config/env');
 
+const authRoutes = require('./routes/authRoutes');
+
 const app = express();
 
 // Security headers
@@ -27,6 +29,8 @@ app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 
 // Request logging — dev-friendly format locally, combined in production
 app.use(morgan(config.isProduction ? 'combined' : 'dev'));
+
+app.use('/api/auth', authRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
