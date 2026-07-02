@@ -1,6 +1,38 @@
 const User = require('../models/User');
 const generateToken = require('../utils/generateToken');
 
+async function login({ email, password }) {
+  const user = await User.findOne({ email });
+
+  if (!user) {
+    const err = new Error('Invalid email or password');
+    err.statusCode = 401;
+    throw err;
+  }
+
+  const isMatch = await user.comparePassword(password);
+
+  if (!isMatch) {
+    const err = new Error('Invalid email or password');
+    err.statusCode = 401;
+    throw err;
+  }
+
+  const token = generateToken(user._id);
+
+  return {
+    user: {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      createdAt: user.createdAt,
+    },
+    token,
+  };
+}
+
+
+
 /**
  * Registers a new user. Pure business logic — no req/res. Throws a
  * plain Error with a .statusCode the controller knows how to map;
@@ -35,4 +67,4 @@ async function register({ name, email, password }) {
   };
 }
 
-module.exports = { register };
+module.exports = { register, login };
