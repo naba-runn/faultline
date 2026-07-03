@@ -1,5 +1,7 @@
 # Faultline — Project Context
 
+> Permanent project workflow is defined in `PROJECT_RULES.md`.
+> Current implementation state is defined in `HANDOFF.md`.
 > Read this file first. It is the single source of truth for "where are we
 > right now." If you are a new Claude session picking this project up,
 > read this, then TASKS.md, then ARCHITECTURE.md.

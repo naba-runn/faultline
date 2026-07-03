@@ -216,3 +216,17 @@ From now on:
 - Maintain DECISIONS.md and INTERVIEW_NOTES.md for every non-trivial
   choice and completed feature respectively.
 ```
+
+## Standing Project Rules
+
+These rules apply to every future Claude session unless explicitly overridden.
+
+- One subtask at a time.
+- Stop after each subtask.
+- Manual testing required.
+- Update only affected documentation.
+- Never redesign architecture.
+- Never recreate completed work.
+- Wait for user confirmation.
+- Maintain DECISIONS.md and INTERVIEW_NOTES.md.
+- Use HANDOFF.md as the current project state.
