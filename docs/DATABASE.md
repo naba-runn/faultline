@@ -1,8 +1,8 @@
 # Faultline — Database Design
 
-**Status: `User` (Task 2), `Project` (Task 5.1), and `ErrorGroup`
-(Task 9.1) models implemented. `ErrorEvent` remains planned —
-implemented next, Task 9.2.**
+**Status: `User` (Task 2), `Project` (Task 5.1), `ErrorGroup`
+(Task 9.1), and `ErrorEvent` (Task 9.2) models implemented. Only the
+atomic-upsert wiring connecting them remains — Task 9.3.**
 
 ## Implemented Collections
 
@@ -197,6 +197,52 @@ Compound unique index on `{ projectId, fingerprint }` is declared but
 not yet exercised against live Atlas — that happens in Task 9.3 once
 the upsert logic exists to actually trigger a duplicate-key scenario.
 
+### ErrorEvent (`server/models/ErrorEvent.js`)
+```javascript
+const errorEventSchema = new mongoose.Schema({
+  errorGroupId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'ErrorGroup',
+    required: [true, 'errorGroupId is required'],
+    index: true,
+  },
+  rawStack: {
+    type: String,
+    required: [true, 'rawStack is required'],
+  },
+  env: {
+    type: String,
+    default: null,
+    trim: true,
+    maxlength: 50,
+  },
+  metadata: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {},
+    // No validation beyond "is an object" — raw client metadata
+    // shouldn't be pre-validated to the point where it can't be stored.
+    // Future enrichment pipelines can normalize or filter if/when
+    // a concrete schema emerges for "useful metadata".
+  },
+  receivedAt: {
+    type: Date,
+    required: true,
+    default: Date.now,
+  },
+});
+
+// Index for timeline queries: recent events first.
+// Included with ErrorGroup's compound index in the same find/sort-once
+// pattern that powers the Dashboard's Error Detail View.
+errorEventSchema.index({ errorGroupId: 1, receivedAt: -1 });
+
+module.exports = mongoose.model('ErrorEvent', errorEventSchema);
+
+```
+Verified manually (`validateSync()`): valid doc clean, missing
+`errorGroupId` rejected, missing `rawStack` rejected, defaults
+(`env: null`, `metadata: {}`, real `receivedAt`) all correct.
+
 ## Planned Collections (not yet implemented)
 
 **Note (Task 7):** `POST /api/events` exists as a skeleton — it
@@ -208,9 +254,8 @@ because the endpoint exists; persistence starts at Task 9.
 
 
 
-ErrorEvent {
-  _id, errorGroupId (ref ErrorGroup), rawStack, env, metadata, receivedAt
-}
+`ErrorGroup` (9.1) and `ErrorEvent` (9.2) both landed with real schema
+ code. Only Task 9.3's upsert wiring remains before Task 9 closes.
 ```
 
 ## Key Design Decisions (locked in, implement as-is)

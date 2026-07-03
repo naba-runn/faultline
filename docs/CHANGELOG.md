@@ -5,6 +5,14 @@ Entries are added per task, not per commit-within-a-task.
 
 ## [Unreleased]
 
+### Added — Task 9.2: ErrorEvent model
+- `server/models/ErrorEvent.js` — schema per `DATABASE.md`'s locked-in
+  shape: `errorGroupId` (ref `ErrorGroup`), `rawStack`, `env`,
+  `metadata` (free-form, unvalidated per `API.md`), `receivedAt`. No
+  unique index — many events legitimately belong to one group.
+- - Manually verified: valid doc validates clean, required-field
+  rejection on both `errorGroupId` and `rawStack`, all defaults correct
+
 ### Added — Task 9.1: ErrorGroup model
 - `server/models/ErrorGroup.js` — schema per `DATABASE.md`'s locked-in
   design: `projectId`, `fingerprint`, `message`, `stackSample`,

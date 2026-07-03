@@ -284,3 +284,28 @@ never queried or referenced independently — giving them their own
 A: The unique compound index on `{ projectId, fingerprint }` declared
 here. This subtask only declares it; Task 9.3's atomic upsert is what
 relies on it to make concurrent-duplicate handling actually safe.
+
+## Feature: ErrorEvent model — Task 9.2
+
+**Q: Why store rawStack here when ErrorGroup already has stackSample?**
+A: They answer different questions. `stackSample` is one representative
+sample for the whole group (set once, on first occurrence).
+`rawStack` is the literal stack for *this* occurrence — needed if a
+later feature wants to inspect individual events, not just the group.
+
+**Q: Why no unique index on ErrorEvent, when ErrorGroup has one?**
+A: The uniqueness constraint belongs to the *bug*, not the
+*occurrence* — that's the whole point of dedup. Many ErrorEvents are
+expected to point at the same ErrorGroup; that's the one-to-many
+relationship the model exists to represent.
+
+**Q: Why is metadata Mixed instead of a defined sub-schema?**
+A: It's caller-supplied, arbitrary context (e.g. a userId) with no
+shape Faultline itself needs to validate or query on right now.
+Locking in a schema for it would be exactly the kind of premature
+abstraction §2/§18 call out as a defect on this project.
+
+**Q: Why no { timestamps: true }?**
+A: Same reasoning as ErrorGroup's firstSeen/lastSeen — receivedAt
+already is the timestamp that matters for a per-occurrence record;
+Mongoose's own createdAt would just duplicate it.

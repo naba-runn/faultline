@@ -56,9 +56,14 @@ progress**
     rejection, bad-enum rejection, all defaults correct). Not yet
     exercised against live Atlas — no live insert or real
     duplicate-key test has been run on this model yet.
-  - 9.2 (ErrorEvent model): not started — next up.
+  - 9.2 (ErrorEvent model): **DONE** — `server/models/ErrorEvent.js`,
+    schema per DATABASE.md (`errorGroupId` ref, `rawStack`, `env`,
+    `metadata`, `receivedAt`), manually verified via `validateSync()`
+    (valid doc clean, both required-field rejections, all defaults
+    correct). Not yet exercised against live Atlas — no live
+    insert/read test run on this model yet.
   - 9.3 (wire fingerprintService + atomic upsert into
-    ingestController): not started.
+    ingestController): not started — next up.
 
 > Note: AppError/catchAsync were intentionally NOT used across
 > Milestone 1 — plain try/catch throughout, matching TASKS.md's
@@ -115,9 +120,10 @@ progress**
 
 ## Not Yet Built
 
-Dedup persistence — ErrorGroup model done (9.1); ErrorEvent model
-and the wired upsert logic still remain (9.2, 9.3). AI enrichment,
-all React pages, demo app. See TASKS.md for the full breakdown.
+Dedup persistence — ErrorGroup (9.1) and ErrorEvent (9.2) models done;
+the wired atomic-upsert logic in ingestController still remains (9.3).
+AI enrichment, all React pages, demo app. See TASKS.md for the full
+breakdown.
 
 ## Key Architectural Decisions Already Locked In
 
