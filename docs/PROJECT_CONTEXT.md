@@ -43,6 +43,18 @@ Task 8 — Stack normalizer + fingerprint service: **DONE**
     manually verified (cross-env equality, type-mismatch produces
     different fingerprint, stackless fallback)
 
+Task 9 — ErrorGroup/ErrorEvent models + atomic upsert dedup: **in
+progress**
+  - 9.1 (ErrorGroup model): **DONE** — `server/models/ErrorGroup.js`,
+    compound unique index on `{ projectId, fingerprint }`, manually
+    verified via `validateSync()` (valid doc clean, required-field
+    rejection, bad-enum rejection, all defaults correct). Not yet
+    exercised against live Atlas — no live insert or real
+    duplicate-key test has been run on this model yet.
+  - 9.2 (ErrorEvent model): not started — next up.
+  - 9.3 (wire fingerprintService + atomic upsert into
+    ingestController): not started.
+
 > Note: AppError/catchAsync were intentionally NOT used across
 > Milestone 1 — plain try/catch throughout, matching TASKS.md's
 > assignment of that pattern to Task 20.
@@ -98,8 +110,9 @@ Task 8 — Stack normalizer + fingerprint service: **DONE**
 
 ## Not Yet Built
 
-Dedup persistence (ErrorGroup/ErrorEvent, Task 9), AI enrichment, all
-React pages, demo app. See TASKS.md for the full breakdown.
+Dedup persistence — ErrorGroup model done (9.1); ErrorEvent model
+and the wired upsert logic still remain (9.2, 9.3). AI enrichment,
+all React pages, demo app. See TASKS.md for the full breakdown.
 
 ## Key Architectural Decisions Already Locked In
 
