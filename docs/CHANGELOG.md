@@ -5,6 +5,19 @@ Entries are added per task, not per commit-within-a-task.
 
 ## [Unreleased]
 
+### Added — Task 5.2: API key generation + hashing utility
+- `server/utils/apiKey.js` — `generateApiKey()`: 32 random bytes
+  (crypto.randomBytes) as hex, prefixed `flt_`; `hashApiKey(rawKey)`:
+  SHA-256 hash for storage. Pure functions, no DB, no req/res — same
+  style as `generateToken.js`. SHA-256 chosen over bcrypt deliberately
+  (see DECISIONS.md) — API keys are high-entropy random strings, not
+  human-chosen secrets, and this will sit on the hot ingestion path in
+  Task 6
+- Verified manually: keys are `flt_`-prefixed and unique per call,
+  64-char hex (32 bytes), hashing is deterministic (same key → same
+  hash) and collision-free across different keys, hash differs from
+  the raw key
+
 ### Added — Task 5.1: Project model
 - `server/models/Project.js` — Mongoose schema: `ownerId` (ref `User`,
   indexed), `name`, `apiKeyHash`, `githubRepo` (optional, validated

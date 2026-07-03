@@ -22,6 +22,7 @@ faultline/
 │   │   ├── Project.js        (ownerId ref User, name, apiKeyHash, githubRepo validated, timestamps)
 │   │   └── User.js           (name, email unique, passwordHash w/ bcrypt hook)
 │   ├── utils/
+│   │   ├── apiKey.js         (generateApiKey, hashApiKey — SHA-256, not bcrypt)
 │   │   └── generateToken.js  (JWT signing helper)
 │   ├── app.js                 (Express app: middleware, /api/auth routes, health check, 404, error stub)
 │   ├── server.js               (bootstrap: connects DB, starts listener, crash guards)

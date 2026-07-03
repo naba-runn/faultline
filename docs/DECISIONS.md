@@ -87,3 +87,36 @@ changed" is immediately useful once updates exist, and the cost is one
 extra Date field, free via Mongoose's `timestamps` option. Nothing in
 the architecture review's "locked in" list forbids this — the original
 sketch simply predated CRUD being scoped.
+
+## API key hashing: SHA-256, not bcrypt
+
+**Decision:** `apiKey.js` hashes raw API keys with SHA-256
+(`hashApiKey`), not bcrypt — a deliberate departure from the
+password-hashing pattern in `User.js`.
+
+**Alternatives considered:**
+1. Reuse bcrypt for consistency with password hashing.
+2. HMAC-SHA256 with a server-side secret pepper, for extra defense if
+   the DB is compromised without the app server.
+
+**Justification:** Bcrypt's deliberate slowness (cost 12 costs
+~250-300ms/hash, see the password-hashing decision above) exists to
+resist offline brute-forcing of *low-entropy, human-chosen* secrets.
+An API key here is 256 bits of `crypto.randomBytes` — brute-forcing it
+via hash speed is already infeasible regardless of hash function, so
+bcrypt's slowness buys nothing and costs real latency on a path that
+matters: `apiKeyMiddleware` (Task 6) will hash the incoming key on
+*every* ingestion request, not once at login. SHA-256 is fast,
+deterministic, and sufficient given the input entropy.
+
+HMAC-with-pepper (option 2) is a genuinely stronger design — it means
+a stolen DB alone (without the app's secret) doesn't let an attacker
+directly compare hashes — but it's an added-complexity/marginal-benefit
+tradeoff not clearly justified at this project's threat model (a
+portfolio/demo project). Noting it here as the documented "what I'd
+add for a real production system" answer, not building it now.
+
+**Note for Task 6:** comparing the incoming key's hash against the
+stored hash must use `crypto.timingSafeEqual`, not `===`, to avoid a
+timing side-channel — flagging now so it isn't missed when
+`apiKeyMiddleware` is built.
