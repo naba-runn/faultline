@@ -11,5 +11,8 @@ router.use(authMiddleware);
 
 router.post('/', projectController.createProject);
 router.get('/', projectController.listProjects);
+router.get('/:id', projectController.getProject);
+router.patch('/:id', projectController.updateProject);
+router.delete('/:id', projectController.deleteProject);
 
 module.exports = router;

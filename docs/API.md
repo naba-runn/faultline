@@ -118,13 +118,52 @@ first. `apiKeyHash` is never included.
 { "success": true, "data": { "projects": [ { "id": "...", "name": "...", "githubRepo": "...", "createdAt": "...", "updatedAt": "..." } ] } }
 ```
 
+### `GET /api/projects/:id`
+
+Requires auth: `Authorization: Bearer <token>`.
+
+**Success (200):** `{ "success": true, "data": { "project": {...} } }`
+(same shape as the list endpoint's items).
+
+**Errors:**
+| Status | Cause | Body |
+|---|---|---|
+| 404 | Project doesn't exist, belongs to another user, or `:id` isn't a valid ObjectId | `{ "success": false, "error": "Project not found" }` (all three cases deliberately identical — see DECISIONS.md) |
+
+### `PATCH /api/projects/:id`
+
+Requires auth: `Authorization: Bearer <token>`. Updates `name` and/or
+`githubRepo` only — does not rotate the API key.
+
+**Request body (either or both fields):**
+```json
+{ "name": "New Name", "githubRepo": "owner/repo" }
+```
+
+**Success (200):** same shape as `GET /api/projects/:id`, with
+`updatedAt` reflecting the change.
+
+**Errors:**
+| Status | Cause | Body |
+|---|---|---|
+| 400 | Malformed `githubRepo` | `{ "success": false, "error": "githubRepo must be in \"owner/repo\" form" }` |
+| 404 | Same three cases as GET | `{ "success": false, "error": "Project not found" }` |
+
+### `DELETE /api/projects/:id`
+
+Requires auth: `Authorization: Bearer <token>`.
+
+**Success:** `204 No Content`, empty body.
+
+**Errors:**
+| Status | Cause | Body |
+|---|---|---|
+| 404 | Same three cases as GET | `{ "success": false, "error": "Project not found" }` |
+
 ## Not Yet Implemented
 
 Planned per the blueprint (added to this table as each is built):
 
-- `GET /api/projects/:id`
-- `PATCH /api/projects/:id`
-- `DELETE /api/projects/:id`
 - `POST /api/events`
 - `GET /api/projects/:id/groups`
 - `GET /api/groups/:id`

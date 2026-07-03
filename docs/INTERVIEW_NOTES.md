@@ -110,3 +110,35 @@ human creates about their own account, so they go through the human's
 auth, not a project-scoped credential that doesn't exist yet at
 creation time anyway (chicken-and-egg — you can't API-key-auth your
 way into creating the thing that gives you an API key).
+
+## Feature: Project Get/Update/Delete — Task 5.4
+
+**Q: How do you make sure a user can't read or modify someone else's project by guessing an ID?**
+A: Every query scopes by `{ _id: projectId, ownerId }` together, in
+the Mongo query itself — never a plain `findById` followed by an
+ownership check afterward. That matters: a separate check-after-fetch
+means the document briefly exists in memory before being rejected,
+which is exactly the kind of pattern a future refactor could
+accidentally break (e.g. someone adds a debug log of the fetched
+document before the ownership check runs). Scoping the query means
+Mongo itself never returns another user's document to the service
+layer.
+
+**Q: Why 404 instead of 403 when a project exists but isn't yours?**
+A: Enumeration avoidance, same principle as the login endpoint. A 403
+confirms the ID is real and belongs to someone; an attacker could map
+out valid project IDs by iterating and watching for 403 vs 404, even
+without ever seeing the project's contents. A uniform 404 for
+"doesn't exist," "isn't yours," and "isn't even a valid ObjectId
+shape" closes that off, at zero cost to a legitimate client, which
+only ever requests IDs it already has.
+
+**Q: Walk me through a bug you actually hit while building this.**
+A: A duplicate `module.exports` at the bottom of `projectService.js`
+silently overwrote the real one — no syntax error, the file loaded
+fine, but `getProject`/`updateProject`/`deleteProject` were missing
+from what the module actually exported, so calling them threw
+`projectService.getProject is not a function` at request time, not at
+require time. Caught it by testing every endpoint immediately rather
+than assuming the code matched what was written, which is exactly why
+manual verification is a gate on every subtask here, not a formality.

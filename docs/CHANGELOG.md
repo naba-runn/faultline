@@ -5,6 +5,30 @@ Entries are added per task, not per commit-within-a-task.
 
 ## [Unreleased]
 
+### Added — Task 5.4: Project read-one, update, delete
+- `server/services/projectService.js` — `getProject()`,
+  `updateProject()`, `deleteProject()`, all scoped by `{ _id, ownerId }`
+  so a user can only ever touch their own project; not-found and
+  not-yours are deliberately indistinguishable (both return `null`/
+  `false`) — same enumeration-avoidance principle as login (see
+  DECISIONS.md)
+- `server/controllers/projectController.js` — `getProject()`,
+  `updateProject()`, `deleteProject()`; all three map Mongoose
+  `CastError` (malformed ObjectId in the URL) to `404`, not `500`
+- `server/routes/projectRoutes.js` — `GET/PATCH/DELETE /:id`, all
+  `authMiddleware`-guarded
+- Fixed during manual testing: a duplicate `module.exports` at the end
+  of `projectService.js` was silently overwriting the real one,
+  dropping `getProject`/`updateProject`/`deleteProject` from what the
+  file actually exported (no syntax error — just missing functions at
+  call time). Removed the stray second export.
+- Verified manually: get-by-id returns the correct project; a
+  well-formed but nonexistent ObjectId returns 404; a malformed ID
+  string returns 404 (not 500); update changes `name`/`githubRepo` and
+  bumps `updatedAt`; update with a malformed `githubRepo` returns 400;
+  delete returns 204; a get immediately after delete returns 404,
+  confirming the delete actually took effect
+
 ### Added — Task 5.3: Project create + list endpoints
 - `server/services/projectService.js` — `createProject()`: generates
   a raw API key, hashes it, persists only the hash, returns the raw

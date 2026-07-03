@@ -120,3 +120,34 @@ add for a real production system" answer, not building it now.
 stored hash must use `crypto.timingSafeEqual`, not `===`, to avoid a
 timing side-channel — flagging now so it isn't missed when
 `apiKeyMiddleware` is built.
+
+## Project not-found vs. not-yours: identical 404, not 403
+
+**Decision:** `GET/PATCH/DELETE /api/projects/:id` return an identical
+`404 "Project not found"` whether the project genuinely doesn't exist,
+belongs to a different user, or `:id` isn't even a syntactically valid
+ObjectId. There is no `403 Forbidden` case anywhere in this path.
+
+**Alternatives considered:**
+1. `404` for nonexistent, `403` for exists-but-not-yours — the more
+   "RESTfully correct" distinction.
+
+**Justification:** Same account-enumeration logic already applied to
+login and auth middleware. A `403` on someone else's project confirms
+that project ID exists and belongs to *someone* — an attacker
+iterating over ObjectIds could map out which project IDs are real even
+without ever seeing their contents. Collapsing to a uniform `404`
+costs nothing for a legitimate user (their own client only ever
+requests IDs it already knows about) and closes that enumeration
+surface. Malformed ObjectIds (Mongoose `CastError`) get folded into
+the same `404` for the same reason — a `400`/`500` there would
+distinguish "well-formed but not yours" from "not even a real ID
+shape," which is itself a smaller information leak.
+
+**Implementation note:** this only works because every service
+function scopes its Mongo query by `{ _id: projectId, ownerId }`
+together, not `_id` alone followed by an ownership check in the
+controller — a separate ownership check after a plain `findById`
+would briefly fetch (and risk exposing via a bug) another user's
+document before rejecting it. Scoping the query itself means Mongo
+never returns another user's document to the service layer at all.

@@ -12,15 +12,15 @@ faultline/
 │   │   └── db.js             (Mongoose connection to Atlas)
 │   ├── controllers/
 │   │   ├── authController.js (register, login, me)
-│   │   └── projectController.js (createProject, listProjects)
+│   │   └── projectController.js (createProject, listProjects, getProject, updateProject, deleteProject)
 │   ├── services/
 │   │   ├── authService.js    (register, login — business logic, no req/res)
-│   │   └── projectService.js (createProject, listProjects)
+│   │   └── projectService.js (create/list/get/update/delete — all ownership-scoped in the query itself)
 │   ├── middleware/
 │   │   └── authMiddleware.js (JWT verification, attaches req.user)
 │   ├── routes/
 │   │   ├── authRoutes.js     (POST /register, POST /login, GET /me)
-│   │   └── projectRoutes.js  (POST /, GET / — both authMiddleware-guarded)
+│   │   └── projectRoutes.js  (POST /, GET /, GET/PATCH/DELETE /:id — all authMiddleware-guarded)
 │   ├── models/
 │   │   ├── Project.js        (ownerId ref User, name, apiKeyHash, githubRepo validated, timestamps)
 │   │   └── User.js           (name, email unique, passwordHash w/ bcrypt hook)
