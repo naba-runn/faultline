@@ -1,8 +1,8 @@
 # Faultline — Database Design
 
-**Status: `User` (Task 2) and `Project` (Task 5.1) models implemented.
-`ErrorGroup` and `ErrorEvent` remain planned — implemented starting
-Task 9.**
+**Status: `User` (Task 2), `Project` (Task 5.1), and `ErrorGroup`
+(Task 9.1) models implemented. `ErrorEvent` remains planned —
+implemented next, Task 9.2.**
 
 ## Implemented Collections
 
@@ -88,6 +88,115 @@ Verified manually:
 See `docs/DECISIONS.md` for why `Project` tracks `updatedAt` when
 `User` deliberately doesn't.
 
+### ErrorGroup (`server/models/ErrorGroup.js`)
+
+```javascript
+const mongoose = require('mongoose');
+
+const aiSummarySchema = new mongoose.Schema(
+  {
+    rootCause: { type: String },
+    severity: {
+      type: String,
+      enum: ['low', 'medium', 'high', 'critical'],
+    },
+    suggestedFix: [{ type: String }],
+    confidence: { type: Number, min: 0, max: 1 },
+    affectedFile: { type: String },
+    affectedFunction: { type: String },
+  },
+  { _id: false }
+);
+
+const statusHistoryEntrySchema = new mongoose.Schema(
+  {
+    status: {
+      type: String,
+      enum: ['open', 'resolved', 'ignored'],
+      required: true,
+    },
+    changedAt: { type: Date, required: true, default: Date.now },
+  },
+  { _id: false }
+);
+
+const errorGroupSchema = new mongoose.Schema(
+  {
+    projectId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Project',
+      required: [true, 'projectId is required'],
+      index: true,
+    },
+    fingerprint: {
+      type: String,
+      required: [true, 'fingerprint is required'],
+    },
+    message: {
+      type: String,
+      required: [true, 'message is required'],
+    },
+    stackSample: {
+      type: String,
+      required: [true, 'stackSample is required'],
+    },
+    status: {
+      type: String,
+      enum: ['open', 'resolved', 'ignored'],
+      default: 'open',
+    },
+    statusHistory: {
+      type: [statusHistoryEntrySchema],
+      default: [],
+    },
+    aiSummary: {
+      type: aiSummarySchema,
+      default: null,
+    },
+    count: {
+      type: Number,
+      default: 1,
+    },
+    firstSeen: {
+      type: Date,
+      required: true,
+      default: Date.now,
+    },
+    lastSeen: {
+      type: Date,
+      required: true,
+      default: Date.now,
+    },
+  },
+  {
+    // No { timestamps: true } — firstSeen/lastSeen already cover that
+    // role, but with dedup-specific semantics. See DECISIONS.md.
+  }
+);
+
+// Compound unique index — the core of dedup. Task 9.3's atomic
+// findOneAndUpdate(..., { upsert: true }) keyed on
+// { projectId, fingerprint } relies on this to guarantee no two
+// documents for the same bug in the same project can ever exist,
+// even under concurrent writes at the same millisecond.
+errorGroupSchema.index({ projectId: 1, fingerprint: 1 }, { unique: true });
+
+module.exports = mongoose.model('ErrorGroup', errorGroupSchema);
+```
+
+Verified manually:
+- Valid document passes `validateSync()` cleanly (returns `undefined` —
+  Mongoose only returns an `Error` object when validation actually
+  fails)
+- Missing `projectId`/`message`/`stackSample` correctly rejected
+- Invalid `status` enum value correctly rejected
+- Defaults confirmed: `status: 'open'`, `count: 1`,
+  `statusHistory: []`, `aiSummary: null`
+
+Compound unique index on `{ projectId, fingerprint }` is declared but
+not yet exercised against live Atlas — that happens in Task 9.3 once
+the upsert logic exists to actually trigger a duplicate-key scenario.
+
 ## Planned Collections (not yet implemented)
 
 **Note (Task 7):** `POST /api/events` exists as a skeleton — it
@@ -98,14 +207,6 @@ because the endpoint exists; persistence starts at Task 9.
 ```
 
 
-ErrorGroup {
-  _id, projectId (ref Project), fingerprint (indexed, compound unique with
-  projectId), message, stackSample, status: enum[open, resolved, ignored],
-  statusHistory: [{ status, changedAt }],
-  aiSummary: { rootCause, severity, suggestedFix[], confidence, affectedFile,
-  affectedFunction } | null,
-  count, firstSeen, lastSeen
-}
 
 ErrorEvent {
   _id, errorGroupId (ref ErrorGroup), rawStack, env, metadata, receivedAt

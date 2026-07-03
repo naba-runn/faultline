@@ -5,6 +5,15 @@ Entries are added per task, not per commit-within-a-task.
 
 ## [Unreleased]
 
+### Added — Task 9.1: ErrorGroup model
+- `server/models/ErrorGroup.js` — schema per `DATABASE.md`'s locked-in
+  design: `projectId`, `fingerprint`, `message`, `stackSample`,
+  `status` (enum, default `open`), `statusHistory[]`, `aiSummary`
+  (nested, nullable), `count`, `firstSeen`/`lastSeen`. Compound unique
+  index on `{ projectId, fingerprint }`.
+- Manually verified: valid doc validates clean, required-field
+  rejection, bad enum rejection, all defaults correct
+
 ### Added — Task 8.2: Fingerprint service
 - `server/services/fingerprintService.js` — `generateFingerprint()`:
   combines an extracted error type with `stackNormalizer`'s normalized

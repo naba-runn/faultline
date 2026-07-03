@@ -275,3 +275,17 @@ thrown as plain strings) fall into the generic `"Error"` bucket, which
 slightly reduces fingerprint specificity for those cases. Not fixed
 here — flagged as a known heuristic tradeoff, not a bug, since the
 demo app and most real-world JS errors do follow the convention.
+
+## ErrorGroup uses firstSeen/lastSeen instead of Mongoose timestamps
+
+**Decision:** `ErrorGroup` does not use `{ timestamps: true }`.
+`firstSeen`/`lastSeen` fields cover that role instead, both defaulting
+to `Date.now` on creation.
+
+**Justification:** Mongoose's `updatedAt` bumps on *any* document
+save. `lastSeen` has narrower, dedup-specific semantics — it should
+only bump when a duplicate event arrives for an existing group (via
+the Task 9.3 upsert's `$set`), not on unrelated edits like a status
+PATCH (Task 18). Keeping both fields would let them drift apart and
+raise the question of which one is authoritative; `firstSeen`/
+`lastSeen` alone is the simpler, correct model.

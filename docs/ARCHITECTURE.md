@@ -27,6 +27,7 @@ faultline/
 │   │   └── ingestRoutes.js   (POST / — apiKeyMiddleware-guarded, mounted at /api/events)
 │   ├── models/
 │   │   ├── Project.js        (ownerId ref User, name, apiKeyHash, githubRepo validated, timestamps)
+│   │   ├── ErrorGroup.js     (projectId + fingerprint compound-unique index — the dedup backbone; firstSeen/lastSeen instead of timestamps)
 │   │   └── User.js           (name, email unique, passwordHash w/ bcrypt hook)
 │   ├── utils/
 │   │   ├── apiKey.js           (generateApiKey, hashApiKey — SHA-256, not bcrypt)

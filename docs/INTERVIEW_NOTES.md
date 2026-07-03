@@ -267,3 +267,20 @@ A: SHA-256, same reasoning as API key hashing (Task 5.2) — this isn't
 a low-entropy secret being protected from brute force, it's a
 deterministic bucketing key computed on every ingested event. bcrypt's
 deliberate slowness would just add unnecessary latency to a hot path.
+
+## Feature: ErrorGroup model — Task 9.1
+
+**Q: Why is aiSummary a nested schema instead of separate fields?**
+A: It's optional as a whole (`null` until Task 13's enrichment runs),
+and grouping it makes that "not yet enriched" state a single clean
+`null` check rather than five individually-nullable fields.
+
+**Q: Why `{ _id: false }` on the sub-schemas?**
+A: `aiSummary` and each `statusHistory` entry are embedded documents,
+never queried or referenced independently — giving them their own
+`_id` would just be unused overhead.
+
+**Q: What actually prevents two ErrorGroups for the same bug?**
+A: The unique compound index on `{ projectId, fingerprint }` declared
+here. This subtask only declares it; Task 9.3's atomic upsert is what
+relies on it to make concurrent-duplicate handling actually safe.
