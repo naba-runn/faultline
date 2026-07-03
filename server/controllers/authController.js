@@ -26,6 +26,14 @@ async function login(req, res) {
   }
 }
 
+function me(req, res) {
+  // authMiddleware already attached req.user (passwordHash excluded)
+  res.status(200).json({
+    success: true,
+    data: { user: req.user },
+  });
+}
+
 
 
 async function register(req, res) {
@@ -62,4 +70,4 @@ async function register(req, res) {
   }
 }
 
-module.exports = { register, login };
+module.exports = { register, login, me };
