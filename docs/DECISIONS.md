@@ -66,3 +66,24 @@ small amount of debugging convenience (a legitimate user can't tell
 "my token expired" from "I sent garbage") for a real security property;
 acceptable since the frontend's response to either case is identical
 anyway — redirect to login.
+
+## Project schema tracks `updatedAt`, unlike `User`
+
+**Decision:** `Project` uses `timestamps: { createdAt: true, updatedAt:
+true }`, while `User` only tracks `createdAt`. `DATABASE.md`'s original
+sketch of the `Project` schema (written during the architecture review,
+before Task 5 was broken into subtasks) only listed `createdAt` — this
+is a deliberate, documented deviation, not drift.
+
+**Alternatives considered:**
+1. Match `User` exactly (`createdAt` only), add `updatedAt` later if
+   needed.
+
+**Justification:** Task 5's scope explicitly includes CRUD, meaning
+`Project` supports `PATCH` (subtask 5.4) — `name` and `githubRepo` can
+change after creation. `User` has no update path yet, so `updatedAt`
+would be dead weight there. For `Project`, "when was this last
+changed" is immediately useful once updates exist, and the cost is one
+extra Date field, free via Mongoose's `timestamps` option. Nothing in
+the architecture review's "locked in" list forbids this — the original
+sketch simply predated CRUD being scoped.

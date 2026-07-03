@@ -1,7 +1,8 @@
 # Faultline — Database Design
 
-**Status: `User` model implemented (Task 2). `ErrorGroup` and
-`ErrorEvent` remain planned — implemented starting Task 9.**
+**Status: `User` (Task 2) and `Project` (Task 5.1) models implemented.
+`ErrorGroup` and `ErrorEvent` remain planned — implemented starting
+Task 9.**
 
 ## Implemented Collections
 
@@ -44,13 +45,53 @@ Verified manually:
 See `docs/DECISIONS.md` for the reasoning behind hashing in the model
 vs. the service layer, and the bcrypt cost-factor choice.
 
+### Project (`server/models/Project.js`)
+
+```javascript
+{
+  ownerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+    index: true,
+  },
+  name: {
+    type: String,
+    required: true,
+    trim: true,
+    maxlength: 100,
+  },
+  apiKeyHash: {
+    type: String,
+    required: true,   // set in Task 5.2/5.3; raw key never persisted
+  },
+  githubRepo: {
+    type: String,
+    trim: true,
+    default: null,
+    match: /^[\w.-]+\/[\w.-]+$/,   // "owner/repo" only, optional
+  },
+  createdAt: Date,
+  updatedAt: Date,   // via { timestamps: { createdAt: true, updatedAt: true } }
+}
+```
+
+Verified manually:
+- Valid project (with and without `githubRepo`) saves correctly
+  against the Atlas dev cluster, with real `createdAt`/`updatedAt`
+  timestamps
+- Malformed `githubRepo` correctly rejected by the `match` validator
+  (confirmed via `validateSync()` first, then a live save attempt)
+- Missing `name` correctly rejected as required
+- Read-back and delete round-trip confirmed
+
+See `docs/DECISIONS.md` for why `Project` tracks `updatedAt` when
+`User` deliberately doesn't.
+
 ## Planned Collections (not yet implemented)
 
 ```
-Project {
-  _id, ownerId (ref User), name, apiKeyHash, githubRepo (optional, validated
-  as "owner/repo"), createdAt
-}
+
 
 ErrorGroup {
   _id, projectId (ref Project), fingerprint (indexed, compound unique with
@@ -84,4 +125,4 @@ ErrorEvent {
   reopened" analysis named as a future improvement.
 
 Populated with real Mongoose schema code as each subsequent model task
-lands (`Project` in Task 5, `ErrorGroup`/`ErrorEvent` in Task 9).
+lands (`ErrorGroup`/`ErrorEvent` in Task 9).

@@ -5,6 +5,18 @@ Entries are added per task, not per commit-within-a-task.
 
 ## [Unreleased]
 
+### Added — Task 5.1: Project model
+- `server/models/Project.js` — Mongoose schema: `ownerId` (ref `User`,
+  indexed), `name`, `apiKeyHash`, `githubRepo` (optional, validated
+  against `^[\w.-]+\/[\w.-]+$`), timestamps (`createdAt` + `updatedAt`
+  — see DECISIONS.md for why Project tracks `updatedAt` when `User`
+  doesn't)
+- Verified manually against the Atlas dev cluster: valid project with
+  `githubRepo` set saves correctly with real timestamps; valid project
+  with `githubRepo` omitted saves with `null`; malformed `githubRepo`
+  and missing `name` both correctly rejected with `ValidationError`;
+  read-back and delete round-trip confirmed
+
 ### Milestone 1 complete: Backend Foundation
 Tasks 1–4 done: Express skeleton, MongoDB connection + User model,
 register/login with bcrypt + JWT, and JWT auth middleware with a

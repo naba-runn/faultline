@@ -19,6 +19,7 @@ faultline/
 │   ├── routes/
 │   │   └── authRoutes.js     (POST /register, POST /login, GET /me)
 │   ├── models/
+│   │   ├── Project.js        (ownerId ref User, name, apiKeyHash, githubRepo validated, timestamps)
 │   │   └── User.js           (name, email unique, passwordHash w/ bcrypt hook)
 │   ├── utils/
 │   │   └── generateToken.js  (JWT signing helper)
