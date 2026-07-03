@@ -6,9 +6,25 @@ approved blueprint. Check off as completed; do not reorder or skip.
 ## Milestone 1: Backend Foundation
 
 - [x] **Task 1** — Monorepo init & Express skeleton
-- [ ] **Task 2** — MongoDB connection + User model
-- [ ] **Task 3** — Register/login endpoints (bcrypt + JWT)
-- [ ] **Task 4** — `authMiddleware` + protected route guard
+  - [x] 1.1 — Folder structure + `server/package.json` + `.env.example`
+  - [x] 1.2 — `server/config/env.js` (env loader)
+  - [x] 1.3 — `server/app.js` (helmet, cors, body cap, morgan, `/health`, 404, error stub)
+  - [x] 1.4 — `server/server.js` (bootstrap, unhandled rejection guard)
+  - [x] 1.5 — Manual test + git commit + docs correction
+- [x] **Task 2** — MongoDB connection + User model
+  - [x] 2.1 — `server/config/db.js` (Mongoose connection, wired into server.js)
+  - [x] 2.2 — `server/models/User.js` schema
+  - [x] 2.3 — Password hashing (pre-save bcrypt hook) + `comparePassword` method
+  - [x] 2.4 — Manual test + `DATABASE.md` update + commit
+- [x] **Task 3** — Register/login endpoints (bcrypt + JWT)
+  - [x] 3.1 — `server/utils/generateToken.js` (JWT signing helper)
+  - [x] 3.2 — `authService.register` + `authController.register` + route
+  - [x] 3.3 — `authService.login` + `authController.login` + route
+  - [x] 3.4 — Manual test + `API.md` update + commit
+- [x] **Task 4** — `authMiddleware` + protected route guard
+  - [x] 4.1 — `server/middleware/authMiddleware.js` (JWT verification, attaches `req.user`)
+  - [x] 4.2 — Protected test route `GET /api/auth/me` + manual test (valid/missing/invalid/expired token)
+  - [x] 4.3 — `API.md` update + commit
 
 ## Milestone 2: Projects & Ingestion
 

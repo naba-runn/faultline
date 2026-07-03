@@ -19,21 +19,39 @@ approved v2 blueprint — treat as final, do not redesign).
 
 ## Current Milestone
 
-**Milestone 1: Backend Foundation** (Day 1 Morning on the roadmap)
-Status: In progress — Task 1 of 4 complete.
+**Milestone 1: Backend Foundation** — **COMPLETE** (4 of 4 tasks done)
+**Milestone 2: Projects & Ingestion** — starting now
 
 ## Current Task
 
-Task 1 — Monorepo init & Express skeleton: **DONE**
-Task 2 — MongoDB connection + User model: **NEXT**
+Task 4 — `authMiddleware` + protected route guard: **DONE** (all 4
+cases verified: valid/missing/invalid/expired token)
+Task 5 — Project model + CRUD + API key generation/hashing: **NEXT**
+
+> Note: AppError/catchAsync were intentionally NOT used across
+> Milestone 1 — plain try/catch throughout, matching TASKS.md's
+> assignment of that pattern to Task 20.
 
 ## Completed So Far
 
-- Monorepo structure (`client/`, `server/`, `docs/`, `demo-app/`)
-- Express app skeleton with health check, security middleware (helmet,
-  cors, body-size cap), request logging, 404 handler, and a stub
-  centralized error handler
-- Environment config loader (`server/config/env.js`)
+- Monorepo folder scaffolding (`server/{config,controllers,services,
+  middleware,routes,models,utils}`, `client/`, `demo-app/`)
+- `server/package.json` with core dependencies
+- `server/.env.example`
+- `client/README.md`, `demo-app/README.md` placeholders
+- `server/config/env.js` — env loader with required-var validation
+- `server/app.js` — Express skeleton (helmet, cors, body cap, morgan,
+  `/health`, 404 handler, error handler stub)
+- `server/server.js` — bootstrap with unhandledRejection/uncaughtException guards
+- `server/config/db.js` — Mongoose connection to MongoDB Atlas (M0 dev cluster)
+- `server/models/User.js` — schema (name, email unique, passwordHash, createdAt)
+  with bcrypt password hashing (pre-save hook) and `comparePassword` method
+- `server/utils/generateToken.js` — JWT signing helper
+- `server/services/authService.js` — `register()`, `login()`
+- `server/controllers/authController.js` — `register()`, `login()`
+- `server/routes/authRoutes.js` — `POST /api/auth/register`, `POST /api/auth/login`, wired into app.js
+- `server/middleware/authMiddleware.js` — JWT verification, attaches `req.user`
+- `GET /api/auth/me` protected route (authController.me + authMiddleware)
 
 ## Not Yet Built
 
