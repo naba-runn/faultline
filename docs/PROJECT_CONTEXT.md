@@ -25,8 +25,7 @@ approved v2 blueprint — treat as final, do not redesign).
 ## Current Milestone
 
 **Milestone 1: Backend Foundation** — **COMPLETE** (4 of 4 tasks done)
-**Milestone 2: Projects & Ingestion** — in progress (3 of 6 tasks done)
-
+**Milestone 2: Projects & Ingestion** — in progress (4 of 6 tasks done)
 ## Current Task
 
 Task 6 — `apiKeyMiddleware`: **DONE** (5/5 manual test cases passed:
@@ -48,22 +47,21 @@ Task 8 — Stack normalizer + fingerprint service: **DONE**
     manually verified (cross-env equality, type-mismatch produces
     different fingerprint, stackless fallback)
 
-Task 9 — ErrorGroup/ErrorEvent models + atomic upsert dedup: **in
-progress**
+Task 9 — ErrorGroup/ErrorEvent models + atomic upsert dedup: **DONE**
   - 9.1 (ErrorGroup model): **DONE** — `server/models/ErrorGroup.js`,
     compound unique index on `{ projectId, fingerprint }`, manually
     verified via `validateSync()` (valid doc clean, required-field
-    rejection, bad-enum rejection, all defaults correct). Not yet
-    exercised against live Atlas — no live insert or real
-    duplicate-key test has been run on this model yet.
+    rejection, bad-enum rejection, all defaults correct). Compound
+    unique index now exercised live as part of 9.3.
   - 9.2 (ErrorEvent model): **DONE** — `server/models/ErrorEvent.js`,
-    schema per DATABASE.md (`errorGroupId` ref, `rawStack`, `env`,
-    `metadata`, `receivedAt`), manually verified via `validateSync()`
-    (valid doc clean, both required-field rejections, all defaults
-    correct). Not yet exercised against live Atlas — no live
-    insert/read test run on this model yet.
+    manually verified via `validateSync()` (valid doc clean, both
+    required-field rejections, all defaults correct).
   - 9.3 (wire fingerprintService + atomic upsert into
-    ingestController): not started — next up.
+    ingestController): **DONE** — `server/services/errorGroupService.js`
+    (`recordEvent()`), `server/controllers/ingestController.js` updated
+    to call it. Manually verified live against Atlas: duplicate event
+    collapses into one `ErrorGroup` (`count: 2`, 2 linked `ErrorEvent`
+    docs); distinct event produces a separate `ErrorGroup` (`count: 1`).
 
 > Note: AppError/catchAsync were intentionally NOT used across
 > Milestone 1 — plain try/catch throughout, matching TASKS.md's
@@ -117,13 +115,16 @@ progress**
   signature (app frames only, capped at 5, paths anchored to the last
   recognized project-root segment) for `fingerprintService` (Task 8.2)
   to hash
+- `server/services/errorGroupService.js` — `recordEvent()`: fingerprint
+   atomic upsert dedup + `ErrorEvent` creation, wired into
+  `ingestController`
 
 ## Not Yet Built
 
-Dedup persistence — ErrorGroup (9.1) and ErrorEvent (9.2) models done;
-the wired atomic-upsert logic in ingestController still remains (9.3).
-AI enrichment, all React pages, demo app. See TASKS.md for the full
-breakdown.
+Task 9 (dedup persistence) is fully closed. Next up per TASKS.md:
+Task 10 — demo Express app that throws sample errors, to verify dedup
+manually end-to-end. AI enrichment, all React pages. See TASKS.md for
+the full breakdown.
 
 ## Key Architectural Decisions Already Locked In
 

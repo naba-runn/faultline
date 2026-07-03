@@ -5,12 +5,27 @@ Entries are added per task, not per commit-within-a-task.
 
 ## [Unreleased]
 
+### Added — Task 9.3: wire dedup into ingestController
+- `server/services/errorGroupService.js` — `recordEvent()`: fingerprints
+  the event, atomically upserts the owning `ErrorGroup` via
+  `findOneAndUpdate(..., { upsert: true })` keyed on `{ projectId,
+  fingerprint }`, and creates the linked `ErrorEvent`. First-occurrence
+  detected from `lastErrorObject.upserted`, not a separate existence
+  check. `message`/`stackSample` set only on insert; `count`/`lastSeen`
+  updated on every call.
+- `server/controllers/ingestController.js` — now calls `recordEvent`
+  instead of just validating + 202ing; response includes `errorGroupId`
+  and `isNewGroup`; added a 500 path for persistence failures.
+- Manually verified against live Atlas: duplicate event collapses into
+  one `ErrorGroup` with `count: 2`, two linked `ErrorEvent` docs;
+  distinct event produces a separate `ErrorGroup` with `count: 1`
+
 ### Added — Task 9.2: ErrorEvent model
 - `server/models/ErrorEvent.js` — schema per `DATABASE.md`'s locked-in
   shape: `errorGroupId` (ref `ErrorGroup`), `rawStack`, `env`,
   `metadata` (free-form, unvalidated per `API.md`), `receivedAt`. No
   unique index — many events legitimately belong to one group.
-- - Manually verified: valid doc validates clean, required-field
+-  Manually verified: valid doc validates clean, required-field
   rejection on both `errorGroupId` and `rawStack`, all defaults correct
 
 ### Added — Task 9.1: ErrorGroup model

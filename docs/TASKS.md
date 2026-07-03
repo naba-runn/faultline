@@ -32,7 +32,7 @@ approved blueprint. Check off as completed; do not reorder or skip.
 - [x] **Task 6** — `apiKeyMiddleware`
 - [x] **Task 7** — Ingestion endpoint skeleton (`POST /api/events`)
 - [x] **Task 8** — Stack normalizer + fingerprint service
-- [ ] **Task 9** — ErrorGroup/ErrorEvent models + atomic upsert dedup logic
+- [x] **Task 9** — ErrorGroup/ErrorEvent models + atomic upsert dedup logic
 - [ ] **Task 10** — Demo Express app that throws sample errors; verify dedup manually
 
 ## Milestone 3: AI Enrichment

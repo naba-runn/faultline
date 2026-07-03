@@ -167,10 +167,11 @@ Requires auth: `Authorization: Bearer <token>`.
 Requires auth: `Authorization: Bearer <apiKey>` (API key — client
 program, not a dashboard user; see `apiKeyMiddleware`).
 
-**Status: skeleton only (Task 7).** Validates and acknowledges an
-event. Does **not** persist, fingerprint, or dedup yet —
-`ErrorGroup`/`ErrorEvent` models land in Task 9, `fingerprintService`
-in Task 8. Nothing is written to the database by this endpoint yet.
+**Status: fully wired (Task 9.3).** Validates, fingerprints
+(`fingerprintService`), atomically upserts the owning `ErrorGroup`
+(dedup), and persists the individual `ErrorEvent`. AI enrichment is
+*not* triggered here — that's Task 13's fire-and-forget dispatch,
+not yet built.
 
 **Request body:**
 ```json
@@ -182,25 +183,36 @@ in Task 8. Nothing is written to the database by this endpoint yet.
 }
 ```
 `message` and `stack` are required strings. `env` and `metadata` are
-accepted but currently unused (no validation, no storage) until later
-tasks define their shape against the real `ErrorEvent` schema.
+optional, unvalidated, and stored as-is on the created `ErrorEvent`
+(`env` as a free-form string, `metadata` as a free-form object) — no
+shape is enforced, per `DATABASE.md`'s locked `ErrorEvent` design.
+
 
 **Success (202):**
 ```json
 {
   "success": true,
-  "data": { "received": true, "projectId": "..." }
+  "data": {    
+    "received": true,
+    "projectId": "...",
+    "errorGroupId": "...",
+    "isNewGroup": true
+  }    
 }
 ```
-`202 Accepted`, not `201 Created` — deliberately: nothing is created
-yet, so a `201` would misrepresent what happened.
+202 Accepted`, not `201 Created` — deliberately: the contract has
+always meant "accepted for processing," and processing now includes
+persistence but still excludes AI enrichment (Task 13), so `202`
+remains the honest status. `isNewGroup` reflects whether this event's
+fingerprint created a new `ErrorGroup` or matched an existing one.
 
 **Errors:**
 | Status | Cause | Body |
 |---|---|---|
 | 400 | Missing/non-string `message` | `{ "success": false, "error": "message is required and must be a string" }` |
 | 400 | Missing/non-string `stack` | `{ "success": false, "error": "stack is required and must be a string" }` |
-| 401 | Missing/malformed/wrong/revoked API key | `{ "success": false, "error": "Not authorized, no API key provided" }` or `"Not authorized, invalid API key"` — see `apiKeyMiddleware` in DECISIONS.md for why these aren't distinguished further |
+| 401 | Missing/malformed/wrong/revoked API key | `{ "success": false, "error": "Not authorized, no API key provided" }`
+| 500 | Unexpected persistence failure (DB unreachable, etc.) | `{ "success": false, "error": "Failed to process event" }` | or `"Not authorized, invalid API key"` — see `apiKeyMiddleware` in DECISIONS.md for why these aren't distinguished further |
 
 ## Not Yet Implemented
 

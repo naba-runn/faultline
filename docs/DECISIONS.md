@@ -293,3 +293,24 @@ the Task 9.3 upsert's `$set`), not on unrelated edits like a status
 PATCH (Task 18). Keeping both fields would let them drift apart and
 raise the question of which one is authoritative; `firstSeen`/
 `lastSeen` alone is the simpler, correct model.
+
+## ErrorGroup upsert: message/stackSample fixed on insert, count/lastSeen updated every time
+
+**Decision:** In `errorGroupService.recordEvent()`'s atomic
+`findOneAndUpdate`, `message` and `stackSample` are written only via
+`$setOnInsert` — they're set once, on the group's first occurrence,
+and never touched again. `lastSeen` (`$set`) and `count` (`$inc`)
+update on every call, including duplicates.
+
+**Alternatives considered:**
+1. Overwrite `message`/`stackSample` on every occurrence with the
+   latest event's values.
+2. Store a rolling list of samples instead of one.
+
+**Justification:** `stackSample` exists to give a human a single
+representative look at the bug, not a live mirror of the most recent
+occurrence — overwriting it on every duplicate would make it
+non-deterministic (whichever event happened to arrive last "wins")
+for no benefit, since the individual, unaltered stack for every
+occurrence is already preserved per-event in `ErrorEvent.rawStack`.
+Fixing it at

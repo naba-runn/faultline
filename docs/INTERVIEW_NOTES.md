@@ -309,3 +309,26 @@ abstraction §2/§18 call out as a defect on this project.
 A: Same reasoning as ErrorGroup's firstSeen/lastSeen — receivedAt
 already is the timestamp that matters for a per-occurrence record;
 Mongoose's own createdAt would just duplicate it.
+
+## Feature: Dedup wiring — Task 9.3
+
+**Q: Why findOneAndUpdate with upsert instead of findOne then create-or-update?**
+A: Read-then-write has a race: two concurrent requests for a brand-new
+fingerprint could both see "no existing group" and both try to create
+one, and only the unique index would catch it — as a thrown error, not
+a clean result. The atomic upsert makes MongoDB itself resolve the
+race; whichever request arrives "second" at the DB level just updates
+the document the first one created, no error, no special handling.
+
+**Q: How do you know if an event created a new group or matched an existing one?**
+A: `findOneAndUpdate`'s result, with `includeResultMetadata: true`,
+returns `lastErrorObject.upserted` — set only when the upsert actually
+inserted a new document. That's checked directly; there's no separate
+"does this already exist" query before the upsert.
+
+**Q: Why does ErrorEvent creation happen as a separate write instead of inside the same atomic operation?**
+A: Only the `ErrorGroup` upsert needs atomicity — it's the one with a
+uniqueness constraint two concurrent requests could race on.
+`ErrorEvent` has no such constraint; each POST simply gets its own
+document, so a plain `create()` after the upsert is correct and
+simpler than trying to force both writes into one operation.
