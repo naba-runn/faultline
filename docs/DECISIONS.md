@@ -40,3 +40,29 @@ marginal additional brute-force resistance at this threat model
 floor for production-grade hashing and costs ~250-300ms per hash on
 typical hardware — acceptable for register/login, which aren't
 hot-path operations.
+
+---
+
+## Auth failure responses: identical error/status for distinct failure causes
+
+**Decision:** `authService.login()` returns the same `401 "Invalid
+email or password"` whether the email doesn't exist or the password
+is wrong. `authMiddleware` similarly collapses "malformed token" and
+"expired token" into the same `401 "Not authorized, invalid or
+expired token"` (though it does distinguish the separate "user no
+longer exists" case, since that's not attacker-exploitable info about
+someone else's account).
+
+**Alternatives considered:**
+1. Distinct messages per cause (`"Email not found"` vs. `"Incorrect
+   password"`; `"Token expired"` vs. `"Token invalid"`).
+
+**Justification:** Distinct messages for login let an attacker
+enumerate which emails are registered by observing which error they
+get back — a well-known anti-pattern. Collapsing malformed vs. expired
+token similarly avoids leaking token-lifecycle information to a client
+presenting a token it doesn't control the validity of. This trades a
+small amount of debugging convenience (a legitimate user can't tell
+"my token expired" from "I sent garbage") for a real security property;
+acceptable since the frontend's response to either case is identical
+anyway — redirect to login.

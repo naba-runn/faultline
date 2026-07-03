@@ -8,16 +8,24 @@ faultline/
 │   └── README.md
 ├── server/
 │   ├── config/
-│   │   └── env.js          (centralized env var loader)
-│   ├── controllers/        (empty — first controller in Task 3)
-│   ├── services/           (empty — first service in Task 3)
-│   ├── middleware/         (empty — first middleware in Task 4)
-│   ├── routes/             (empty — first routes in Task 3)
-│   ├── models/             (empty — first model in Task 2)
-│   ├── utils/               (empty)
-│   ├── app.js               (Express app: middleware, health check, 404, error stub)
-│   ├── server.js             (bootstrap: starts listener, unhandled rejection guard)
+│   │   ├── env.js           (centralized env var loader)
+│   │   └── db.js             (Mongoose connection to Atlas)
+│   ├── controllers/
+│   │   └── authController.js (register, login, me)
+│   ├── services/
+│   │   └── authService.js    (register, login — business logic, no req/res)
+│   ├── middleware/
+│   │   └── authMiddleware.js (JWT verification, attaches req.user)
+│   ├── routes/
+│   │   └── authRoutes.js     (POST /register, POST /login, GET /me)
+│   ├── models/
+│   │   └── User.js           (name, email unique, passwordHash w/ bcrypt hook)
+│   ├── utils/
+│   │   └── generateToken.js  (JWT signing helper)
+│   ├── app.js                 (Express app: middleware, /api/auth routes, health check, 404, error stub)
+│   ├── server.js               (bootstrap: connects DB, starts listener, crash guards)
 │   ├── package.json
+│   ├── package-lock.json
 │   └── .env.example
 ├── demo-app/                (placeholder — built in Task 10)
 │   └── README.md
@@ -41,17 +49,31 @@ Rule of thumb enforced throughout: **controllers never touch Mongoose
 directly**, and **services never touch `req`/`res`**. This is what
 keeps services unit-testable without spinning up Express.
 
-## Request Flow (current, skeleton only)
+Confirmed in practice through Milestone 1: `authController` calls
+`authService`, never `User` directly; `authService` never references
+`req`/`res`. `authMiddleware` is the one exception to "controllers
+don't touch models," which is expected — middleware sits outside the
+route/controller/service chain and legitimately needs its own DB
+lookup (loading the user for `req.user`).
+
+## Request Flow (current, through Milestone 1)
 
 ```
 Client → app.js middleware chain (helmet → cors → json → morgan)
        → /health route
+       → /api/auth/register  → authController.register → authService.register → User (bcrypt hook hashes password)
+       → /api/auth/login     → authController.login    → authService.login    → User.comparePassword
+       → /api/auth/me        → authMiddleware (verifies JWT, loads req.user) → authController.me
        → (no match) 404 handler
        → (thrown error) centralized error handler stub
 ```
 
+`server.js` now connects to MongoDB Atlas (`config/db.js`) before the
+app starts listening, so nothing accepts traffic before Mongo is
+reachable.
+
 Will be expanded with the full ingestion/dashboard flow diagrams as
-those pieces are built.
+those pieces are built in Milestone 2.
 
 ## Deliberate Non-Choices (don't second-guess these later)
 
@@ -60,3 +82,7 @@ those pieces are built.
 - No queue/broker (BullMQ, Redis) for AI enrichment at MVP scale —
   fire-and-forget dispatch is sufficient; queue is a named future step.
 - No 4-layer AI provider abstraction — `aiService` is pure functions.
+- No `AppError`/`catchAsync` yet, even though `utils/` conventionally
+  includes them (see Layering Convention above) — plain try/catch is
+  used throughout Milestone 1 controllers by design; the refactor to
+  `AppError`/`catchAsync` is explicitly Task 20, not retrofitted early.
