@@ -7,7 +7,7 @@ const config = require('./config/env');
 
 const authRoutes = require('./routes/authRoutes');
 const projectRoutes = require('./routes/projectRoutes');
-const apiKeyMiddleware = require('./middleware/apiKeyMiddleware');
+const ingestRoutes = require('./routes/ingestRoutes');
 
 const app = express();
 
@@ -34,17 +34,7 @@ app.use(morgan(config.isProduction ? 'combined' : 'dev'));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
-
-// TEMPORARY — Task 6.1 manual test route only. Not part of the real
-// API surface. Exercises apiKeyMiddleware in isolation (no JWT)
-// since nothing mounts it for real until Task 7's ingestion
-// endpoint. Delete this block when Task 7 lands.
-app.get('/api/_test/verify-key', apiKeyMiddleware, (req, res) => {
-  res.status(200).json({
-    success: true,
-    data: { projectId: req.project._id, projectName: req.project.name },
-  });
-});
+app.use('/api/events', ingestRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

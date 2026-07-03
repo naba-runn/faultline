@@ -178,3 +178,30 @@ deleted" are all indistinguishable from the caller's perspective. Same
 enumeration-avoidance reasoning as the project 404s and login: telling
 an attacker "that key is well-formed but doesn't exist" vs "that key
 is garbage" leaks information about the keyspace for free.
+
+## Feature: Ingestion endpoint skeleton — Task 7
+
+**Q: Why does POST /api/events return 202 instead of 201 on success?**
+A: `201 Created` asserts a resource now exists. At this stage nothing
+does — `ErrorGroup`/`ErrorEvent` aren't implemented until Task 9, so
+this endpoint validates and acknowledges only. `202 Accepted` says
+"received, will be acted on," which is the true state. Using `201`
+here would be a small but real lie in the API contract that Task 9
+would then either have to quietly keep or noisily change.
+
+**Q: Why accept env/metadata in the body if they're not used yet?**
+A: So client integrations can start sending the full intended payload
+shape now and not need a breaking change later when Task 9 starts
+actually consuming those fields. The endpoint just doesn't validate or
+store them yet — accepting-but-ignoring is forward-compatible;
+rejecting-then-later-accepting is not.
+
+**Q: How would you extend this into real ingestion?**
+A: Task 8 adds fingerprinting (normalize the stack, hash it into a
+fingerprint). Task 9 adds the `ErrorGroup`/`ErrorEvent` models and
+swaps the current `console.log` + `202` for an atomic
+`findOneAndUpdate` upsert keyed on `{ projectId, fingerprint }`,
+reading `upsertedId` to detect first-occurrence without a
+read-then-write race. The validation and auth layers built in Task 7
+don't need to change for that — only what happens after validation
+passes.

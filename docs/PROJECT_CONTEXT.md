@@ -20,15 +20,20 @@ approved v2 blueprint — treat as final, do not redesign).
 ## Current Milestone
 
 **Milestone 1: Backend Foundation** — **COMPLETE** (4 of 4 tasks done)
-**Milestone 2: Projects & Ingestion** — in progress (1 of 6 tasks done)
+**Milestone 2: Projects & Ingestion** — in progress (3 of 6 tasks done)
 
 ## Current Task
 
-Task 5 — Project model + CRUD + API key generation/hashing: **DONE**
-(subtasks 5.1–5.5 complete, including a full manual CRUD lifecycle
-verification — create/list/get/update/delete/post-delete-404 — against
-the live MongoDB Atlas dev cluster. See HANDOFF.md for detail.)
-Task 6 — `apiKeyMiddleware`: **NEXT**
+Task 6 — `apiKeyMiddleware`: **DONE** (5/5 manual test cases passed:
+valid key, missing header, malformed key, wrong key, deleted-project
+key)
+Task 7 — Ingestion endpoint skeleton (`POST /api/events`): **DONE**
+(validates + `202`s; deliberately does not persist — see
+DECISIONS.md's "Ingestion endpoint is a skeleton" entry. Status codes
+verified for all 5 cases; response *bodies* were not individually
+re-confirmed in chat, only status codes — worth a spot-check before
+building Task 8 on top if that matters to you.)
+Task 8 — Stack normalizer + fingerprint service: **NEXT**
 
 > Note: AppError/catchAsync were intentionally NOT used across
 > Milestone 1 — plain try/catch throughout, matching TASKS.md's
@@ -69,12 +74,18 @@ Task 6 — `apiKeyMiddleware`: **NEXT**
 - Full CRUD manually verified end-to-end against the live MongoDB
   Atlas dev cluster, including the post-delete `404` (not `403`)
   enumeration-avoidance behavior from DECISIONS.md
+- `server/middleware/apiKeyMiddleware.js` — verifies `Bearer flt_...`
+  against `apiKeyHash` via indexed lookup + `crypto.timingSafeEqual`,
+  attaches `req.project`; all 5 manual test cases passed
+- `server/routes/ingestRoutes.js`, `server/controllers/ingestController.js`
+  — `POST /api/events` skeleton: validates `message`/`stack`, guarded
+  by `apiKeyMiddleware`, returns `202` without persisting (persistence
+  starts Task 9)
 
 ## Not Yet Built
 
-Ingestion endpoint, API-key middleware, fingerprinting/dedup, AI
-enrichment, all React pages, demo app. See TASKS.md for the full
-breakdown.
+Fingerprinting/dedup, AI enrichment, all React pages, demo app. See
+TASKS.md for the full breakdown.
 
 ## Key Architectural Decisions Already Locked In
 

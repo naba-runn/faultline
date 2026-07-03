@@ -160,11 +160,52 @@ Requires auth: `Authorization: Bearer <token>`.
 |---|---|---|
 | 404 | Same three cases as GET | `{ "success": false, "error": "Project not found" }` |
 
+## Ingestion
+
+### `POST /api/events`
+
+Requires auth: `Authorization: Bearer <apiKey>` (API key — client
+program, not a dashboard user; see `apiKeyMiddleware`).
+
+**Status: skeleton only (Task 7).** Validates and acknowledges an
+event. Does **not** persist, fingerprint, or dedup yet —
+`ErrorGroup`/`ErrorEvent` models land in Task 9, `fingerprintService`
+in Task 8. Nothing is written to the database by this endpoint yet.
+
+**Request body:**
+```json
+{
+  "message": "TypeError: cannot read property x of undefined",
+  "stack": "at foo (/app/index.js:10:5)",
+  "env": "production",
+  "metadata": { "userId": "abc123" }
+}
+```
+`message` and `stack` are required strings. `env` and `metadata` are
+accepted but currently unused (no validation, no storage) until later
+tasks define their shape against the real `ErrorEvent` schema.
+
+**Success (202):**
+```json
+{
+  "success": true,
+  "data": { "received": true, "projectId": "..." }
+}
+```
+`202 Accepted`, not `201 Created` — deliberately: nothing is created
+yet, so a `201` would misrepresent what happened.
+
+**Errors:**
+| Status | Cause | Body |
+|---|---|---|
+| 400 | Missing/non-string `message` | `{ "success": false, "error": "message is required and must be a string" }` |
+| 400 | Missing/non-string `stack` | `{ "success": false, "error": "stack is required and must be a string" }` |
+| 401 | Missing/malformed/wrong/revoked API key | `{ "success": false, "error": "Not authorized, no API key provided" }` or `"Not authorized, invalid API key"` — see `apiKeyMiddleware` in DECISIONS.md for why these aren't distinguished further |
+
 ## Not Yet Implemented
 
 Planned per the blueprint (added to this table as each is built):
 
-- `POST /api/events`
 - `GET /api/projects/:id/groups`
 - `GET /api/groups/:id`
 - `PATCH /api/groups/:id/status`

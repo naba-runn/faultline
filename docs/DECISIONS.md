@@ -160,3 +160,27 @@ controller — a separate ownership check after a plain `findById`
 would briefly fetch (and risk exposing via a bug) another user's
 document before rejecting it. Scoping the query itself means Mongo
 never returns another user's document to the service layer at all.
+
+## Ingestion endpoint is a skeleton, not full ingestion — Task 7
+
+**Decision:** `POST /api/events` currently validates (`message`,
+`stack` required strings) and returns `202 Accepted` without writing
+anything to the database.
+
+**Justification:** `ErrorGroup`/`ErrorEvent` don't exist as models
+until Task 9, and fingerprinting (what would determine *which*
+`ErrorGroup` an event belongs to) doesn't exist until Task 8. Building
+persistence now would mean guessing at a schema Task 9 is explicitly
+responsible for designing, and likely redoing it. `202` rather than
+`201` is deliberate: `201 Created` asserts a resource was created,
+which would be false here — nothing is created yet, only accepted.
+
+**Not yet validated:** `env` and `metadata` are accepted in the
+request body but not validated or used. Their real shape depends on
+what `ErrorEvent` (Task 9) actually needs; validating them now risks
+locking in a shape that turns out wrong.
+
+**For Task 8/9:** when persistence is added, decide there whether
+malformed-but-present `env`/`metadata` should then start being
+rejected, or silently ignored/coerced — not decided yet, deliberately
+deferred alongside the schema itself.

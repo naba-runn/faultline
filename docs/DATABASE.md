@@ -90,6 +90,11 @@ See `docs/DECISIONS.md` for why `Project` tracks `updatedAt` when
 
 ## Planned Collections (not yet implemented)
 
+**Note (Task 7):** `POST /api/events` exists as a skeleton — it
+validates and acknowledges (`202`) but does not write to either
+collection below yet. Don't assume events are being persisted just
+because the endpoint exists; persistence starts at Task 9.
+
 ```
 
 
