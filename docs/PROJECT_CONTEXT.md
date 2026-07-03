@@ -33,13 +33,15 @@ DECISIONS.md's "Ingestion endpoint is a skeleton" entry. Status codes
 verified for all 5 cases; response *bodies* were not individually
 re-confirmed in chat, only status codes — worth a spot-check before
 building Task 8 on top if that matters to you.)
-Task 8 — Stack normalizer + fingerprint service: **IN PROGRESS**
+Task 8 — Stack normalizer + fingerprint service: **DONE**
   - 8.1 (stack normalizer utility): **DONE** — `parseStackFrames`/
     `normalizeStack` in `server/utils/stackNormalizer.js`, manually
     verified (cross-environment path stability, node_modules
     filtering, frame cap, anonymous frames, garbage input)
-  - 8.2 (fingerprintService — hashes the signature into the dedup
-    key): NEXT
+  - 8.2 (fingerprintService — hashes type + signature into the dedup
+    key): **DONE** — `server/services/fingerprintService.js`,
+    manually verified (cross-env equality, type-mismatch produces
+    different fingerprint, stackless fallback)
 
 > Note: AppError/catchAsync were intentionally NOT used across
 > Milestone 1 — plain try/catch throughout, matching TASKS.md's
@@ -96,8 +98,8 @@ Task 8 — Stack normalizer + fingerprint service: **IN PROGRESS**
 
 ## Not Yet Built
 
-Fingerprinting/dedup, AI enrichment, all React pages, demo app. See
-TASKS.md for the full breakdown.
+Dedup persistence (ErrorGroup/ErrorEvent, Task 9), AI enrichment, all
+React pages, demo app. See TASKS.md for the full breakdown.
 
 ## Key Architectural Decisions Already Locked In
 

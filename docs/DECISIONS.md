@@ -237,3 +237,41 @@ from `message`, not the full dynamic message text) before hashing —
 the full message often contains request-specific dynamic values (IDs,
 variable names) that would fragment the fingerprint for what's
 otherwise the same bug.
+
+## Fingerprint = hash(error type + normalized stack signature), not signature alone
+
+**Decision:** `fingerprintService.generateFingerprint()` combines an
+error type extracted from the message (`extractErrorType()`, matching
+the conventional `SomeError:` prefix, falling back to a generic
+`"Error"` bucket when no match) with `stackNormalizer`'s signature,
+then hashes the combined string with SHA-256. If the signature is
+empty (unparseable/missing stack), falls back to hashing the type +
+raw message instead of type alone.
+
+**Alternatives considered:**
+1. Hash the normalized signature alone (no type).
+2. Hash the full raw error message + signature.
+3. On empty signature, still hash type-only rather than falling back
+   to the message.
+
+**Justification:** Signature-alone (option 1) can merge two genuinely
+different bugs that happen to throw from the same line during a
+refactor — e.g. a `TypeError` and a `RangeError` at the same call
+site. Including the type (parsed, not the full message) fixes that
+cheaply. Hashing the full raw message (option 2) reintroduces the
+exact problem `stackNormalizer` was built to avoid — messages usually
+carry dynamic values (IDs, user-specific text) that would fragment the
+"same" bug into many fingerprints. Type-only on empty signature
+(option 3) would collapse every stackless error in a project into one
+fingerprint regardless of how different the underlying bugs are;
+falling back to type + raw message instead preserves fidelity for that
+edge case, same "fall back, don't lose fidelity" pattern used in
+`stackNormalizer`'s frame filtering.
+
+**Known limitation:** `extractErrorType()` only recognizes messages
+following the conventional `SomeError: ...` shape ending in "Error".
+Custom error classes that don't follow this convention (or errors
+thrown as plain strings) fall into the generic `"Error"` bucket, which
+slightly reduces fingerprint specificity for those cases. Not fixed
+here — flagged as a known heuristic tradeoff, not a bug, since the
+demo app and most real-world JS errors do follow the convention.

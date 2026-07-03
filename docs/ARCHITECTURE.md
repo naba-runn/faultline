@@ -16,7 +16,8 @@ faultline/
 │   │   └── ingestController.js  (ingestEvent — validates + 202s, no persistence yet)
 │   ├── services/
 │   │   ├── authService.js    (register, login — business logic, no req/res)
-│   │   └── projectService.js (create/list/get/update/delete — all ownership-scoped in the query itself)
+│   │   ├── projectService.js (create/list/get/update/delete — all ownership-scoped in the query itself)
+│   │   └── fingerprintService.js (generateFingerprint, extractErrorType — pure, combines stackNormalizer's signature + parsed error type into the Task 9 dedup key)
 │   ├── middleware/
 │   │   ├── authMiddleware.js    (JWT verification, attaches req.user)
 │   │   └── apiKeyMiddleware.js  (API-key verification, attaches req.project — hot ingestion path)

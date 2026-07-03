@@ -239,3 +239,31 @@ at a bundle, not the original source. Fixing that properly needs
 source-map-aware stack resolution, which the architecture blueprint
 explicitly scopes out of this project. Worth naming as a known
 limitation if asked, not something to solve here.
+
+## Feature: Fingerprint service — Task 8.2
+
+**Q: Why not just use stackNormalizer's signature as the fingerprint directly?**
+A: The signature alone doesn't capture error *type*. Two different
+bugs — say a TypeError and a RangeError — can share the same call site
+after a refactor and would otherwise collapse into one group. Hashing
+type + signature together fixes that without much extra cost.
+
+**Q: Why parse the error type out instead of hashing the full message?**
+A: Same reasoning as stackNormalizer's path anchoring — the full
+message usually contains dynamic, request-specific values (user IDs,
+variable names). Hashing that directly would treat the same underlying
+bug as a new fingerprint on every occurrence. Parsing just the leading
+type token keeps the fingerprint stable while still distinguishing
+different error classes.
+
+**Q: What happens if the error message doesn't follow the "TypeError: ..." convention?**
+A: `extractErrorType()` falls back to a generic `"Error"` bucket. It's
+a known, deliberate simplification — most real JS/Node errors do
+follow that convention, and getting it wrong just means slightly less
+granular grouping for the minority that don't, not a broken pipeline.
+
+**Q: Is SHA-256 sufficient here, or should this use bcrypt like passwords?**
+A: SHA-256, same reasoning as API key hashing (Task 5.2) — this isn't
+a low-entropy secret being protected from brute force, it's a
+deterministic bucketing key computed on every ingested event. bcrypt's
+deliberate slowness would just add unnecessary latency to a hot path.

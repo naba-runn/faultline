@@ -5,6 +5,18 @@ Entries are added per task, not per commit-within-a-task.
 
 ## [Unreleased]
 
+### Added — Task 8.2: Fingerprint service
+- `server/services/fingerprintService.js` — `generateFingerprint()`:
+  combines an extracted error type with `stackNormalizer`'s normalized
+  signature, hashed via SHA-256, into the dedup key Task 9's
+  `ErrorGroup` upsert will use; `extractErrorType()`: parses the
+  conventional `SomeError:` message prefix, falling back to a generic
+  `"Error"` bucket when unrecognized
+- Manually verified: cross-environment + dynamic-message equality,
+  type-mismatch produces a different fingerprint, extractErrorType
+  edge cases (typed, untyped, undefined message), stackless-message
+  fallback determinism
+
 ### Added — Task 8.1: Stack normalizer utility
 - `server/utils/stackNormalizer.js` — `parseStackFrames()`: parses a
   raw V8/Node stack trace into structured frames (function name, file,
