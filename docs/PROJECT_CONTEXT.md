@@ -20,13 +20,15 @@ approved v2 blueprint — treat as final, do not redesign).
 ## Current Milestone
 
 **Milestone 1: Backend Foundation** — **COMPLETE** (4 of 4 tasks done)
-**Milestone 2: Projects & Ingestion** — starting now
+**Milestone 2: Projects & Ingestion** — in progress (1 of 6 tasks done)
 
 ## Current Task
 
-Task 4 — `authMiddleware` + protected route guard: **DONE** (all 4
-cases verified: valid/missing/invalid/expired token)
-Task 5 — Project model + CRUD + API key generation/hashing: **NEXT**
+Task 5 — Project model + CRUD + API key generation/hashing: **DONE**
+(subtasks 5.1–5.5 complete, including a full manual CRUD lifecycle
+verification — create/list/get/update/delete/post-delete-404 — against
+the live MongoDB Atlas dev cluster. See HANDOFF.md for detail.)
+Task 6 — `apiKeyMiddleware`: **NEXT**
 
 > Note: AppError/catchAsync were intentionally NOT used across
 > Milestone 1 — plain try/catch throughout, matching TASKS.md's
@@ -52,12 +54,27 @@ Task 5 — Project model + CRUD + API key generation/hashing: **NEXT**
 - `server/routes/authRoutes.js` — `POST /api/auth/register`, `POST /api/auth/login`, wired into app.js
 - `server/middleware/authMiddleware.js` — JWT verification, attaches `req.user`
 - `GET /api/auth/me` protected route (authController.me + authMiddleware)
+- `server/models/Project.js` — schema (ownerId ref User, name,
+  apiKeyHash, githubRepo validated `owner/repo`, timestamps incl.
+  updatedAt)
+- `server/utils/apiKey.js` — `generateApiKey()`, `hashApiKey()`
+  (SHA-256, deliberately not bcrypt — see DECISIONS.md)
+- `server/services/projectService.js` — create/list/get/update/delete,
+  every query ownership-scoped via `{ _id: projectId, ownerId }`
+  together (not a separate ownership check after `findById`)
+- `server/controllers/projectController.js` — thin HTTP layer over
+  projectService
+- `server/routes/projectRoutes.js` — `POST /`, `GET /`, `GET/PATCH/DELETE
+  /:id`, all behind `authMiddleware`, wired into app.js as `/api/projects`
+- Full CRUD manually verified end-to-end against the live MongoDB
+  Atlas dev cluster, including the post-delete `404` (not `403`)
+  enumeration-avoidance behavior from DECISIONS.md
 
 ## Not Yet Built
 
-Everything past the skeleton: DB connection, models, auth, ingestion,
-fingerprinting/dedup, AI enrichment, all React pages. See TASKS.md for
-the full breakdown.
+Ingestion endpoint, API-key middleware, fingerprinting/dedup, AI
+enrichment, all React pages, demo app. See TASKS.md for the full
+breakdown.
 
 ## Key Architectural Decisions Already Locked In
 
