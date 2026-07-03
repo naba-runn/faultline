@@ -205,3 +205,37 @@ reading `upsertedId` to detect first-occurrence without a
 read-then-write race. The validation and auth layers built in Task 7
 don't need to change for that — only what happens after validation
 passes.
+
+## Feature: Stack normalizer — Task 8.1
+
+**Q: Why not just hash the raw stack trace text for the fingerprint?**
+A: The raw stack contains machine-specific absolute paths (local dev
+path vs. Docker's `/app` vs. a CI runner's path) that shift for
+reasons unrelated to the actual bug. Hashing that directly would treat
+the same logical error as a brand-new group on every different
+environment. Normalizing first — stripping to a stable relative path
+and a bounded set of app-code frames — is what makes the resulting
+hash mean "the same bug," not "the same machine."
+
+**Q: Why exclude node_modules/internal frames instead of just capping frame count?**
+A: An unfiltered-but-capped stack is often dominated by dependency
+internals (Express's router, Mongoose's query builder) that have
+nothing to do with which application bug occurred, and that churn
+independently across dependency version bumps. Filtering to app
+frames first, then capping, keeps the signature anchored to code the
+project actually owns.
+
+**Q: What happens to an error that occurs entirely inside a dependency, with no app frames at all?**
+A: `normalizeStack()` falls back to using all frames unfiltered rather
+than producing an empty signature — an error can legitimately
+originate inside a library the app calls into, and losing fingerprint
+fidelity for that case would silently break dedup for a real class of
+errors.
+
+**Q: How would this handle minified production JavaScript?**
+A: It would still parse and fingerprint, but frame quality degrades —
+function names collapse to minified identifiers and file paths point
+at a bundle, not the original source. Fixing that properly needs
+source-map-aware stack resolution, which the architecture blueprint
+explicitly scopes out of this project. Worth naming as a known
+limitation if asked, not something to solve here.

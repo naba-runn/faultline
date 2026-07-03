@@ -33,7 +33,13 @@ DECISIONS.md's "Ingestion endpoint is a skeleton" entry. Status codes
 verified for all 5 cases; response *bodies* were not individually
 re-confirmed in chat, only status codes — worth a spot-check before
 building Task 8 on top if that matters to you.)
-Task 8 — Stack normalizer + fingerprint service: **NEXT**
+Task 8 — Stack normalizer + fingerprint service: **IN PROGRESS**
+  - 8.1 (stack normalizer utility): **DONE** — `parseStackFrames`/
+    `normalizeStack` in `server/utils/stackNormalizer.js`, manually
+    verified (cross-environment path stability, node_modules
+    filtering, frame cap, anonymous frames, garbage input)
+  - 8.2 (fingerprintService — hashes the signature into the dedup
+    key): NEXT
 
 > Note: AppError/catchAsync were intentionally NOT used across
 > Milestone 1 — plain try/catch throughout, matching TASKS.md's
@@ -81,6 +87,12 @@ Task 8 — Stack normalizer + fingerprint service: **NEXT**
   — `POST /api/events` skeleton: validates `message`/`stack`, guarded
   by `apiKeyMiddleware`, returns `202` without persisting (persistence
   starts Task 9)
+- `server/utils/stackNormalizer.js` — `parseStackFrames()`,
+  `normalizeStack()`, `normalizeFilePath()`: pure functions, no DB, no
+  req/res; reduces a raw stack trace to a stable cross-environment
+  signature (app frames only, capped at 5, paths anchored to the last
+  recognized project-root segment) for `fingerprintService` (Task 8.2)
+  to hash
 
 ## Not Yet Built
 

@@ -5,6 +5,113 @@ Entries are added per task, not per commit-within-a-task.
 
 ## [Unreleased]
 
+### Added — Task 8.1: Stack normalizer utility
+- `server/utils/stackNormalizer.js` — `parseStackFrames()`: parses a
+  raw V8/Node stack trace into structured frames (function name, file,
+  line, column), skipping unparseable lines rather than throwing;
+  `normalizeStack()`: reduces a stack to a stable signature — app-code
+  frames only (node_modules/node:/internal frames filtered out, falls
+  back to all frames if none remain), capped at the top 5, each
+  frame's path anchored to its last recognized project-root segment
+  instead of the full absolute path; `normalizeFilePath()`: the
+  path-anchoring helper on its own
+- Found and fixed during manual verification: anchoring on the
+  *first* matching root-marker segment (rather than the last) broke
+  cross-environment stability whenever the deploy root itself was
+  also a marker word — e.g. Docker's `/app/server/...` matched `app`
+  before reaching the real root `server`, producing a different
+  signature than the same file locally. Fixed by anchoring on the
+  last match instead. See `DECISIONS.md` for detail.
+- Verified manually (no HTTP surface — pure functions): identical
+  signature for the same logical stack under simulated local vs.
+  Docker-style absolute paths; node_modules/Node-internal frames
+  correctly excluded; falls back to all frames when every frame is
+  non-app code; anonymous frames parsed correctly including the
+  `async` prefix case; empty/unparseable input degrades to an empty
+  signature rather than throwing
+
+### Task 7 complete: Ingestion endpoint skeleton
+`POST /api/events` now validates and acknowledges incoming error
+events behind `apiKeyMiddleware`, returning `202` without persisting
+anything — a deliberate skeleton ahead of Task 8 (fingerprinting) and
+Task 9 (`ErrorGroup`/`ErrorEvent` models). `API.md` documents the full
+request/response contract; `DECISIONS.md` records why `202` and why
+`env`/`metadata` are accepted-but-unused for now.
+
+### Added — Task 7.1: Ingestion endpoint skeleton
+- `server/controllers/ingestController.js` — `ingestEvent()`: validates
+  `message` and `stack` as required strings, returns `202 Accepted`
+  with `{ received: true, projectId }`; deliberately does not persist,
+  fingerprint, or dedup — `ErrorGroup`/`ErrorEvent` don't exist until
+  Task 9, `fingerprintService` doesn't exist until Task 8
+- `server/routes/ingestRoutes.js` — mounts `apiKeyMiddleware` ahead of
+  `POST /`, wired into `app.js` at `/api/events`
+- `server/app.js` — removed the Task 6.1 temporary
+  `/api/_test/verify-key` route now that `apiKeyMiddleware` has its
+  real mount point
+- `docs/API.md` — full Ingestion section: request/response shapes, all
+  failure modes (missing `message`, missing `stack`, bad/missing API key)
+- `docs/DATABASE.md` — note under "Planned Collections" clarifying the
+  endpoint doesn't persist yet
+- `docs/DECISIONS.md` — new "Ingestion endpoint is a skeleton, not full
+  ingestion" entry: explains `202` vs `201`, and why `env`/`metadata`
+  are accepted but not yet validated
+- `docs/INTERVIEW_NOTES.md` — added Task 7 Q&A (why `202` not `201`,
+  why accept unused fields, how this extends into real ingestion)
+- Verified manually: valid key + valid body → `202`; missing `message`
+  → `400`; missing `stack` → `400`; missing/invalid API key → `401`
+  (via `apiKeyMiddleware`). Status codes confirmed for all cases;
+  response *bodies* were not individually re-confirmed byte-for-byte
+  this session — worth a spot-check before Task 8 builds on top
+
+### Task 6 complete: apiKeyMiddleware
+API-key authentication for the ingestion path is done and verified —
+separate from JWT `authMiddleware` by design, since it authenticates a
+client program, not a dashboard user.
+
+### Added — Task 6.1: API key middleware
+- `server/middleware/apiKeyMiddleware.js` — verifies `Authorization:
+  Bearer flt_...`, hashes the raw key (SHA-256 via `hashApiKey`),
+  looks it up with an indexed `Project.findOne({ apiKeyHash })`, then
+  double-checks the match with `crypto.timingSafeEqual` before
+  attaching `req.project`; uniform `401` for every failure mode
+  (missing header, malformed key, no match, deleted-project key) —
+  same enumeration-avoidance pattern used throughout auth/projects
+- `server/app.js` — added a temporary `GET /api/_test/verify-key`
+  route to exercise the middleware in isolation ahead of Task 7's real
+  mount point (removed in Task 7.1, see above)
+- `docs/DECISIONS.md` — closed the Task 6 forward-reference left in
+  the API-key-hashing decision, confirming the `timingSafeEqual`
+  implementation as specified
+- `docs/INTERVIEW_NOTES.md` — added Task 6 Q&A (why a separate
+  middleware from `authMiddleware`, why hash-lookup + `timingSafeEqual`,
+  uniform failure response)
+- Verified manually, all 5 cases: valid key → `200`; missing header,
+  malformed key, wrong key, and a key belonging to a deleted project →
+  all `401`
+
+### Task 5 complete: Project model + CRUD + API key generation/hashing
+Milestone 2's first task, fully closed across five subtasks (5.1–5.5):
+`Project` model, API-key generation/hashing utility, full CRUD
+(create/list/get/update/delete), all JWT-protected and
+ownership-scoped in the query itself, verified end-to-end against a
+live MongoDB Atlas dev cluster including the enumeration-avoidance
+`404` behavior.
+
+### Added — Task 5.5: Full CRUD lifecycle verification
+- No new source files — verification-only subtask
+- Full create → list → get → update → delete → post-delete-`404`
+  sequence run in one continuous pass against the live MongoDB Atlas
+  dev cluster: `updatedAt` correctly bumped on `PATCH` while
+  `createdAt` stayed fixed; `DELETE` returned `204` with an empty
+  body; `GET` after `DELETE` returned a generic `404 "Project not
+  found"`, confirming the not-found/not-yours enumeration-avoidance
+  design in `DECISIONS.md` is actually working, not just documented
+- `docs/TASKS.md` — Task 5 checked off
+- `docs/HANDOFF.md`, `docs/PROJECT_CONTEXT.md` — corrected stale Task
+  5 status (`PROJECT_CONTEXT.md` had been showing Task 5 as "NEXT"
+  since 5.1–5.4 had already landed)
+
 ### Added — Task 5.4: Project read-one, update, delete
 - `server/services/projectService.js` — `getProject()`,
   `updateProject()`, `deleteProject()`, all scoped by `{ _id, ownerId }`

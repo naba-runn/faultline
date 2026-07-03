@@ -184,3 +184,56 @@ locking in a shape that turns out wrong.
 malformed-but-present `env`/`metadata` should then start being
 rejected, or silently ignored/coerced — not decided yet, deliberately
 deferred alongside the schema itself.
+
+## Stack fingerprinting: normalized top-frame signature (app frames only), not a hash of the raw stack
+
+**Decision:** `stackNormalizer.js`'s `normalizeStack()` reduces a raw
+stack trace to a signature built from up to 5 application-code frames
+(dependency/runtime frames — `node_modules`, `node:`, `internal/` —
+filtered out unless zero app frames remain), with each frame's file
+path anchored to the *last* recognized project-root segment
+(`server`/`client`/`src`/`app`/`lib`) rather than the full absolute
+path. `fingerprintService` (Task 8.2) will hash this signature, not
+the raw stack text.
+
+**Alternatives considered:**
+1. Hash the entire raw stack string as-is.
+2. Hash only the error message + top single frame.
+3. Anchor file paths on the *first* matching root-marker segment
+   instead of the last.
+
+**Justification:** Hashing the raw stack (option 1) makes every
+occurrence of the "same" error a distinct fingerprint whenever the
+absolute path differs — which it always will between a local machine,
+Docker, and CI — defeating the point of deduplication. Filtering to
+app-code frames means the same underlying bug still groups together
+even if it surfaces through different dependency versions or internal
+Node call paths on the way up. Capping at 5 frames balances two
+failure modes: too few (option 2, 1 frame) risks merging genuinely
+different bugs that happen to throw from the same function; too many
+risks fragmenting the same bug across trivial call-path differences
+further down the stack — 5 is a reasonable middle ground for a
+portfolio-scale demo, not empirically tuned. Falling back to all
+frames when zero app frames remain handles errors that originate
+entirely inside a dependency, a legitimate case rather than one to
+lose fingerprint fidelity over.
+
+**Bug found during manual verification (option 3, corrected):** the
+first implementation anchored on the *first* matching root-marker
+segment. This silently broke cross-environment fingerprint stability
+whenever the deploy root itself was also a marker word — e.g.
+Docker's conventional `/app/server/services/foo.js` matched `app`
+before reaching the real project root `server`, while the same file
+locally at `/Users/x/faultline/server/services/foo.js` matched
+`server` directly — producing two different signatures for the
+identical bug. Switched to anchoring on the *last* matching marker,
+verified by hand-testing the same logical stack under a simulated
+local path and a simulated Docker path and confirming identical
+signatures.
+
+**Note for Task 8.2:** `fingerprintService` should combine this
+signature with an extracted error *type* (e.g. `TypeError`, parsed
+from `message`, not the full dynamic message text) before hashing —
+the full message often contains request-specific dynamic values (IDs,
+variable names) that would fragment the fingerprint for what's
+otherwise the same bug.

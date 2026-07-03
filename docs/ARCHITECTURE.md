@@ -11,23 +11,27 @@ faultline/
 │   │   ├── env.js           (centralized env var loader)
 │   │   └── db.js             (Mongoose connection to Atlas)
 │   ├── controllers/
-│   │   ├── authController.js (register, login, me)
-│   │   └── projectController.js (createProject, listProjects, getProject, updateProject, deleteProject)
+│   │   ├── authController.js    (register, login, me)
+│   │   ├── projectController.js (createProject, listProjects, getProject, updateProject, deleteProject)
+│   │   └── ingestController.js  (ingestEvent — validates + 202s, no persistence yet)
 │   ├── services/
 │   │   ├── authService.js    (register, login — business logic, no req/res)
 │   │   └── projectService.js (create/list/get/update/delete — all ownership-scoped in the query itself)
 │   ├── middleware/
-│   │   └── authMiddleware.js (JWT verification, attaches req.user)
+│   │   ├── authMiddleware.js    (JWT verification, attaches req.user)
+│   │   └── apiKeyMiddleware.js  (API-key verification, attaches req.project — hot ingestion path)
 │   ├── routes/
 │   │   ├── authRoutes.js     (POST /register, POST /login, GET /me)
-│   │   └── projectRoutes.js  (POST /, GET /, GET/PATCH/DELETE /:id — all authMiddleware-guarded)
+│   │   ├── projectRoutes.js  (POST /, GET /, GET/PATCH/DELETE /:id — all authMiddleware-guarded)
+│   │   └── ingestRoutes.js   (POST / — apiKeyMiddleware-guarded, mounted at /api/events)
 │   ├── models/
 │   │   ├── Project.js        (ownerId ref User, name, apiKeyHash, githubRepo validated, timestamps)
 │   │   └── User.js           (name, email unique, passwordHash w/ bcrypt hook)
 │   ├── utils/
-│   │   ├── apiKey.js         (generateApiKey, hashApiKey — SHA-256, not bcrypt)
-│   │   └── generateToken.js  (JWT signing helper)
-│   ├── app.js                 (Express app: middleware, /api/auth routes, health check, 404, error stub)
+│   │   ├── apiKey.js           (generateApiKey, hashApiKey — SHA-256, not bcrypt)
+│   │   ├── generateToken.js    (JWT signing helper)
+│   │   └── stackNormalizer.js  (parseStackFrames, normalizeStack — pure, used by fingerprintService)
+│   ├── app.js                 (Express app: middleware, /api/auth + /api/projects + /api/events routes, health check, 404, error stub)
 │   ├── server.js               (bootstrap: connects DB, starts listener, crash guards)
 │   ├── package.json
 │   ├── package-lock.json
@@ -69,8 +73,10 @@ Client → app.js middleware chain (helmet → cors → json → morgan)
        → /api/auth/register  → authController.register → authService.register → User (bcrypt hook hashes password)
        → /api/auth/login     → authController.login    → authService.login    → User.comparePassword
        → /api/auth/me        → authMiddleware (verifies JWT, loads req.user) → authController.me
-       → /api/projects (POST)  → authMiddleware → projectController.createProject → projectService.createProject → Project (apiKeyHash persisted, raw key returned once)
-       → /api/projects (GET)   → authMiddleware → projectController.listProjects  → projectService.listProjects  → Project
+       → /api/projects (POST)                 → authMiddleware → projectController.createProject → projectService.createProject → Project (apiKeyHash persisted, raw key returned once)
+       → /api/projects (GET)                  → authMiddleware → projectController.listProjects  → projectService.listProjects  → Project
+       → /api/projects/:id (GET/PATCH/DELETE) → authMiddleware → projectController.{getProject,updateProject,deleteProject} → projectService.* → Project (ownership-scoped in the query itself)
+       → /api/events (POST)  → apiKeyMiddleware (verifies API key hash, loads req.project) → ingestController.ingestEvent → validates message/stack, returns 202 (no persistence — Tasks 8/9 add fingerprinting + models)
        → (no match) 404 handler
        → (thrown error) centralized error handler stub
 ```
