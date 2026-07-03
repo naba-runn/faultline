@@ -29,7 +29,7 @@ approved blueprint. Check off as completed; do not reorder or skip.
 ## Milestone 2: Projects & Ingestion
 
 - [x] **Task 5** — Project model + CRUD + API key generation/hashing
-- [ ] **Task 6** — `apiKeyMiddleware`
+- [x] **Task 6** — `apiKeyMiddleware`
 - [ ] **Task 7** — Ingestion endpoint skeleton (`POST /api/events`)
 - [ ] **Task 8** — Stack normalizer + fingerprint service
 - [ ] **Task 9** — ErrorGroup/ErrorEvent models + atomic upsert dedup logic

@@ -121,6 +121,15 @@ stored hash must use `crypto.timingSafeEqual`, not `===`, to avoid a
 timing side-channel — flagging now so it isn't missed when
 `apiKeyMiddleware` is built.
 
+**Update (Task 6, done):** implemented as specified —
+`apiKeyMiddleware.js` looks up the project by hash via
+`Project.findOne({ apiKeyHash })`, then double-checks the match with
+`crypto.timingSafeEqual` before attaching `req.project`. Both operands
+are fixed 64-char hex SHA-256 digests, so the equal-length requirement
+of `timingSafeEqual` is always satisfied. Manually verified: valid
+key, missing header, malformed key, wrong key, and key belonging to a
+deleted project all behave correctly (200 vs. uniform 401).
+
 ## Project not-found vs. not-yours: identical 404, not 403
 
 **Decision:** `GET/PATCH/DELETE /api/projects/:id` return an identical

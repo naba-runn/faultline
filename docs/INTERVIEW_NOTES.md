@@ -142,3 +142,39 @@ from what the module actually exported, so calling them threw
 require time. Caught it by testing every endpoint immediately rather
 than assuming the code matched what was written, which is exactly why
 manual verification is a gate on every subtask here, not a formality.
+
+## Feature: apiKeyMiddleware — Task 6
+
+**Q: Why is this a separate middleware from authMiddleware instead of one unified auth layer?**
+A: They authenticate fundamentally different callers. `authMiddleware`
+verifies a JWT proving a logged-in human is acting on their own
+dashboard account. `apiKeyMiddleware` verifies a long-lived credential
+proving a client *program* is allowed to send error events for one
+specific project — there's no human, no session, no login step. A
+unified layer would either force API keys through JWT semantics
+(expiry, refresh) that don't fit a program credential, or force JWTs
+through API-key semantics that don't fit a human session. Keeping them
+separate also means each one's failure mode stays legible — a 401 from
+the ingestion endpoint always means "bad API key," never "your login
+session expired."
+
+**Q: Why hash-lookup (`findOne({ apiKeyHash })`) plus a `timingSafeEqual` check, instead of just one or the other?**
+A: The Mongo lookup alone is what actually determines the result — an
+indexed equality query on the hash is fast and correct on its own. The
+`timingSafeEqual` afterward is defense in depth specifically called
+for in `DECISIONS.md`: comparing the incoming key's hash against the
+stored hash with `===` (or relying solely on how the DB engine's
+equality check behaves) risks a timing side-channel that could let an
+attacker infer the hash byte-by-byte from response latency. Since both
+values being compared are fixed-length 64-character hex SHA-256
+digests, `timingSafeEqual`'s equal-length requirement is always
+satisfied, so it can't throw here — it's cheap insurance, not a
+performance concern.
+
+**Q: What does apiKeyMiddleware do if the key is well-formed (right prefix, right length) but doesn't match any project?**
+A: Same uniform 401 as every other failure case — missing header,
+malformed key, wrong key, and "used to be valid but the project was
+deleted" are all indistinguishable from the caller's perspective. Same
+enumeration-avoidance reasoning as the project 404s and login: telling
+an attacker "that key is well-formed but doesn't exist" vs "that key
+is garbage" leaks information about the keyspace for free.
