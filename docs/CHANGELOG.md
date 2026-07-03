@@ -5,6 +5,27 @@ Entries are added per task, not per commit-within-a-task.
 
 ## [Unreleased]
 
+### Added — Task 5.3: Project create + list endpoints
+- `server/services/projectService.js` — `createProject()`: generates
+  a raw API key, hashes it, persists only the hash, returns the raw
+  key alongside the shaped project (the only point the raw key ever
+  exists — never stored, never returned again); `listProjects()`:
+  returns all of the caller's projects, most recent first, shaped
+  output never includes `apiKeyHash`
+- `server/controllers/projectController.js` — `createProject()`,
+  `listProjects()`, thin, maps `ValidationError` to 400
+- `server/routes/projectRoutes.js` — `POST /`, `GET /`, both behind
+  `authMiddleware` (JWT) — deliberately not API-key auth, since these
+  are dashboard-user actions, not the ingestion path (see
+  PROJECT_CONTEXT.md decision #5)
+- Wired into `server/app.js` at `/api/projects`
+- Verified manually: no-auth request → 401; missing `name` → 400;
+  malformed `githubRepo` → 400 with the validator's message surfaced
+  correctly through the controller; valid create → 201 with a
+  `flt_`-prefixed raw key returned exactly once; list → 200 with the
+  created project, confirmed `apiKeyHash` is absent from the response
+  in both the create and list payloads
+
 ### Added — Task 5.2: API key generation + hashing utility
 - `server/utils/apiKey.js` — `generateApiKey()`: 32 random bytes
   (crypto.randomBytes) as hex, prefixed `flt_`; `hashApiKey(rawKey)`:

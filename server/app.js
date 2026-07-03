@@ -6,6 +6,7 @@ const morgan = require('morgan');
 const config = require('./config/env');
 
 const authRoutes = require('./routes/authRoutes');
+const projectRoutes = require('./routes/projectRoutes');
 
 const app = express();
 
@@ -31,6 +32,7 @@ app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 app.use(morgan(config.isProduction ? 'combined' : 'dev'));
 
 app.use('/api/auth', authRoutes);
+app.use('/api/projects', projectRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

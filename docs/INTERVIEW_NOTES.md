@@ -74,3 +74,39 @@ real login (expect 200 + user), no `Authorization` header at all
 with a real secret but an already-past expiry (`expiresIn: '-1s'`,
 generated with a one-off script) — confirms the expiry check itself
 works, not just "malformed tokens get rejected."
+
+
+
+## Feature: Project Create + List — Task 5.3
+
+**Q: Where does API key hashing happen, and why not in the model like password hashing?**
+A: In `projectService.createProject()`, not a Mongoose hook. Password
+hashing lives in the `User` model's `pre('save')` hook because
+hashing is a data-integrity invariant of that model — no code path
+should ever persist a plaintext password. API keys are different: the
+*raw* key has to exist just long enough to return it to the caller
+once, and that generation step is a business action (create a project,
+mint a credential), not a model-level invariant. Putting key
+generation in the service keeps the model dumb (it only ever sees the
+already-hashed value) and keeps "generate + return once" as an
+explicit, visible step in the service function rather than something
+implicit in a save hook.
+
+**Q: How do you make sure the raw API key is never accidentally persisted or logged?**
+A: `Project.apiKeyHash` only ever receives the output of `hashApiKey()`
+— the raw key never touches a Mongoose document. The service function
+returns the raw key in its return value once, the controller passes
+it straight through in the 201 response, and nothing else references
+it. There's no `console.log` of request bodies in this path (morgan
+logs method/path/status, not bodies).
+
+**Q: Why is project creation behind JWT auth and not API-key auth?**
+A: They're deliberately separate middlewares authenticating different
+things. JWT (`authMiddleware`) authenticates a logged-in dashboard
+user performing an action on their own account — creating a project is
+exactly that. API-key auth (Task 6) will authenticate a program
+sending error events, with no human logged in. Projects are things a
+human creates about their own account, so they go through the human's
+auth, not a project-scoped credential that doesn't exist yet at
+creation time anyway (chicken-and-egg — you can't API-key-auth your
+way into creating the thing that gives you an API key).

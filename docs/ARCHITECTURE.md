@@ -11,13 +11,16 @@ faultline/
 │   │   ├── env.js           (centralized env var loader)
 │   │   └── db.js             (Mongoose connection to Atlas)
 │   ├── controllers/
-│   │   └── authController.js (register, login, me)
+│   │   ├── authController.js (register, login, me)
+│   │   └── projectController.js (createProject, listProjects)
 │   ├── services/
-│   │   └── authService.js    (register, login — business logic, no req/res)
+│   │   ├── authService.js    (register, login — business logic, no req/res)
+│   │   └── projectService.js (createProject, listProjects)
 │   ├── middleware/
 │   │   └── authMiddleware.js (JWT verification, attaches req.user)
 │   ├── routes/
-│   │   └── authRoutes.js     (POST /register, POST /login, GET /me)
+│   │   ├── authRoutes.js     (POST /register, POST /login, GET /me)
+│   │   └── projectRoutes.js  (POST /, GET / — both authMiddleware-guarded)
 │   ├── models/
 │   │   ├── Project.js        (ownerId ref User, name, apiKeyHash, githubRepo validated, timestamps)
 │   │   └── User.js           (name, email unique, passwordHash w/ bcrypt hook)
@@ -66,6 +69,8 @@ Client → app.js middleware chain (helmet → cors → json → morgan)
        → /api/auth/register  → authController.register → authService.register → User (bcrypt hook hashes password)
        → /api/auth/login     → authController.login    → authService.login    → User.comparePassword
        → /api/auth/me        → authMiddleware (verifies JWT, loads req.user) → authController.me
+       → /api/projects (POST)  → authMiddleware → projectController.createProject → projectService.createProject → Project (apiKeyHash persisted, raw key returned once)
+       → /api/projects (GET)   → authMiddleware → projectController.listProjects  → projectService.listProjects  → Project
        → (no match) 404 handler
        → (thrown error) centralized error handler stub
 ```

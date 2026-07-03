@@ -71,12 +71,60 @@ Requires auth: `Authorization: Bearer <token>`.
 | 401 | Malformed/invalid signature/expired token | `{ "success": false, "error": "Not authorized, invalid or expired token" }` |
 | 401 | Token valid but the user it refers to no longer exists | `{ "success": false, "error": "Not authorized, user no longer exists" }` |
 
+## Projects
+
+### `POST /api/projects`
+
+Requires auth: `Authorization: Bearer <token>` (JWT — dashboard user,
+not API key).
+
+**Request body:**
+```json
+{ "name": "My First Project", "githubRepo": "naba-runn/faultline" }
+```
+`githubRepo` is optional; if provided, must match `owner/repo` (e.g.
+`^[\w.-]+\/[\w.-]+$`).
+
+**Success (201):**
+```json
+{
+  "success": true,
+  "data": {
+    "project": { "id": "...", "name": "...", "githubRepo": "...", "createdAt": "...", "updatedAt": "..." },
+    "apiKey": "flt_<64 hex chars>"
+  }
+}
+```
+`apiKey` is the **raw key, returned exactly once** — it is not
+recoverable afterward (only its SHA-256 hash is persisted). The
+client is responsible for storing it.
+
+**Errors:**
+| Status | Cause | Body |
+|---|---|---|
+| 400 | Missing `name` | `{ "success": false, "error": "name is required" }` |
+| 400 | Malformed `githubRepo` | `{ "success": false, "error": "githubRepo must be in \"owner/repo\" form" }` |
+| 401 | Missing/invalid/expired token | same shapes as `GET /api/auth/me` |
+
+### `GET /api/projects`
+
+Requires auth: `Authorization: Bearer <token>`.
+
+Returns all projects owned by the authenticated user, most recent
+first. `apiKeyHash` is never included.
+
+**Success (200):**
+```json
+{ "success": true, "data": { "projects": [ { "id": "...", "name": "...", "githubRepo": "...", "createdAt": "...", "updatedAt": "..." } ] } }
+```
+
 ## Not Yet Implemented
 
 Planned per the blueprint (added to this table as each is built):
 
-- `POST /api/projects`
-- `GET /api/projects`
+- `GET /api/projects/:id`
+- `PATCH /api/projects/:id`
+- `DELETE /api/projects/:id`
 - `POST /api/events`
 - `GET /api/projects/:id/groups`
 - `GET /api/groups/:id`
