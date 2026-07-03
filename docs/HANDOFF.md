@@ -1,5 +1,313 @@
 # Faultline — Handoff
 
+# Permanent Project Workflow (Version 2)
+
+These rules apply to every future Claude session unless I explicitly override them.
+
+They supersede earlier workflow instructions.
+
+---
+
+# Primary Objective
+
+The objective is no longer only to build Faultline.
+
+The objective is to maximize engineering quality while minimizing token usage across long-running Claude sessions.
+
+Assume this project will span many Claude conversations.
+
+Optimize for smooth continuation between sessions.
+
+---
+
+# General Rules
+
+* Never redesign the approved architecture.
+* Never recreate completed work.
+* Never repeat completed implementation.
+* Never silently overwrite existing code.
+* Never continue automatically.
+* Complete exactly one implementation subtask at a time.
+* Wait for my confirmation before starting another implementation subtask.
+
+---
+
+# Documentation Policy
+
+Documentation is maintained continuously.
+
+However:
+
+Only update documentation whose contents actually changed.
+
+Never modify documentation merely for consistency.
+
+Typical mapping:
+
+PROJECT_CONTEXT.md
+
+* Update when milestone, task or current project state changes.
+
+TASKS.md
+
+* Update when a task or subtask is completed.
+
+CHANGELOG.md
+
+* Update after every completed implementation subtask.
+
+API.md
+
+* Update only when API changes.
+
+DATABASE.md
+
+* Update only when schemas or relationships change.
+
+ARCHITECTURE.md
+
+* Update only when architecture or request flow changes.
+
+AI_CONTEXT.md
+
+* Update only when AI-related design changes.
+
+DECISIONS.md
+
+* Update whenever a non-trivial engineering decision is made.
+
+INTERVIEW_NOTES.md
+
+* Update whenever a meaningful feature is completed.
+
+README.md
+
+* Update only when setup or user-facing functionality changes.
+
+HANDOFF.md
+
+* Do NOT rewrite after every subtask.
+* Generate only:
+
+  * when I explicitly type HANDOFF
+  * before switching Claude accounts
+  * before ending a work session
+  * when remaining token budget becomes low
+
+---
+
+# Token-Aware Workflow
+
+Claude should continuously consider remaining context budget.
+
+If sufficient context remains:
+
+continue the normal workflow.
+
+If context is becoming low:
+
+do NOT attempt another implementation task.
+
+Instead:
+
+prepare the project for continuation.
+
+---
+
+# Low-Token Recovery Mode
+
+If remaining context appears too low to safely complete both:
+
+* implementation
+  and
+* documentation
+
+switch into Recovery Mode.
+
+Recovery Mode exists to prevent expensive re-analysis by the next Claude session.
+
+In Recovery Mode:
+
+1. Finish the current code changes if safely possible.
+
+2. Do NOT start any new implementation.
+
+3. Record exactly what remains unfinished.
+
+4. Record every documentation file that still requires updates.
+
+5. Record which documentation sections require updating.
+
+6. Record whether implementation is already complete.
+
+7. Record whether manual testing is complete.
+
+8. Record whether git commit has been created.
+
+9. Record whether git push has been completed.
+
+10. Record anything the next Claude must finish before writing more code.
+
+Never leave the next Claude guessing.
+
+---
+
+# Pending Recovery Section
+
+Whenever Recovery Mode is triggered,
+
+HANDOFF.md must contain a section named:
+
+## PENDING_RECOVERY
+
+It should explicitly state:
+
+* implementation finished?
+* documentation pending?
+* which documentation files remain
+* git status
+* testing status
+* next mandatory action
+
+Example:
+
+Implementation:
+Completed
+
+Manual Testing:
+Completed
+
+Documentation Pending:
+
+* PROJECT_CONTEXT.md
+* CHANGELOG.md
+* TASKS.md
+
+Git:
+Not committed
+
+Next Required Action:
+Update the three documentation files above.
+Create commit.
+Push.
+Only then continue implementation.
+
+This section should eliminate the need for repository-wide investigation.
+
+---
+
+# Next Session Prompt
+
+Every HANDOFF.md must end with:
+
+## NEXT_SESSION_PROMPT
+
+Unlike previous versions,
+
+this prompt should NOT be generic.
+
+It should assume the current Claude has maximum context.
+
+Generate a ready-to-paste prompt specifically for the next unfinished subtask.
+
+The prompt should include:
+
+* current milestone
+* current task
+* current subtask
+* exact implementation objective
+* expected files to modify
+* expected documentation files
+* manual tests to perform
+* expected git commit
+* expected stopping point
+
+The next Claude should be able to begin implementation immediately without spending tokens planning the next step.
+
+---
+
+# Planning Policy
+
+Planning should happen in the current session,
+
+not the next one.
+
+The current Claude always has maximum context.
+
+Use that advantage.
+
+The next Claude should implement,
+
+not rediscover.
+
+---
+
+# Definition of Done
+
+A subtask is complete only if:
+
+✓ Code implemented
+
+✓ Manual testing completed
+
+✓ Required documentation updated
+
+✓ Suggested git commit generated
+
+✓ Ready for the next subtask
+
+If Recovery Mode was entered,
+
+replace documentation updates with PENDING_RECOVERY.
+
+---
+
+# Teaching
+
+Continue briefly explaining engineering decisions while implementing.
+
+Keep explanations concise.
+
+Implementation remains the priority.
+
+---
+
+# Code Quality
+
+Continue following:
+
+* modular architecture
+* separation of concerns
+* reusable code
+* centralized error handling
+* security best practices
+* maintainability
+* scalability
+
+Never sacrifice architecture for speed.
+
+---
+
+# Code Reviews
+
+Whenever I request a review,
+
+review the implementation like a Google Staff Software Engineer.
+
+Focus on:
+
+* correctness
+* architecture
+* security
+* scalability
+* readability
+* maintainability
+
+Do not ignore weaknesses.
+
+Be technically honest.
+
+
 ## Handoff: Milestone 2, Task 9 (subtask 9.1 complete) — Task 8 fully closed
 
 Generated at a subtask boundary. Task 8 (stack normalizer +
@@ -230,3 +538,5 @@ These rules apply to every future Claude session unless explicitly overridden.
 - Wait for user confirmation.
 - Maintain DECISIONS.md and INTERVIEW_NOTES.md.
 - Use HANDOFF.md as the current project state.
+
+After every completed subtask, update every documentation file whose contents changed as a result of that subtask. Do not modify documentation that is unaffected. Before ending a session or switching Claude accounts, generate a complete HANDOFF.md summarizing the current project state.
