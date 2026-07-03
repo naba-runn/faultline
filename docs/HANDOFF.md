@@ -51,7 +51,7 @@ faultline/
 │   ├── DATABASE.md
 │   ├── DECISIONS.md
 │   ├── HANDOFF.md
-│   ├── INTERVIEW_NOTES.md    (still empty — see Pending below)
+│   ├── INTERVIEW_NOTES.md    
 │   ├── PROJECT_CONTEXT.md
 │   └── TASKS.md
 ├── .gitignore
@@ -85,10 +85,7 @@ None open. All manual tests across Tasks 1–4 passed as documented in
 - `AppError`/`catchAsync` refactor — deliberately deferred to Task 20,
   not a bug, just not yet done. Controllers currently use plain
   try/catch (see `DECISIONS.md` note on why this is fine for now).
-- `docs/INTERVIEW_NOTES.md` is still empty. Per doc policy this should
-  get an entry per completed feature — none has been written yet
-  despite two features (auth, JWT middleware) being done. Worth
-  catching up on next session (see prompt below).
+
 - The Atlas dev-cluster database user's password (`Nabarundey2704`)
   was posted in plaintext in chat during Task 2.1 debugging. Low risk
   for a dev-only demo DB, but rotating it in Atlas (Database Access →
