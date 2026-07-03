@@ -26,6 +26,9 @@ npm install
 cp .env.example .env
 npm run dev
 ```
+> **Local environment note:** if port 5000 is unavailable on your
+> machine, set `PORT=5050` (or any free port) in `.env` — `.env.example`
+> and `env.js`'s fallback intentionally still default to `5000`.
 
 Health check: `GET http://localhost:5000/health`
 

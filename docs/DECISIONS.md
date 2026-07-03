@@ -276,6 +276,10 @@ slightly reduces fingerprint specificity for those cases. Not fixed
 here — flagged as a known heuristic tradeoff, not a bug, since the
 demo app and most real-world JS errors do follow the convention.
 
+**Known limitation:** `extractErrorType()` only recognizes conventional
+error name patterns. Non-conventional error names collapse into a
+generic `"Error"` bucket. Accepted tradeoff, not scheduled for a fix.
+
 ## ErrorGroup uses firstSeen/lastSeen instead of Mongoose timestamps
 
 **Decision:** `ErrorGroup` does not use `{ timestamps: true }`.

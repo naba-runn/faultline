@@ -44,7 +44,7 @@ approved blueprint. Check off as completed; do not reorder or skip.
 
 ## Milestone 4: Frontend Foundation
 
-- [ ] **Task 15** — React scaffold, AuthContext, axios instance with interceptor
+- [ ] **Task 15** — React scaffold, AuthContext, axios instance with interceptor, schedule first audit session after task completion
 - [ ] **Task 16** — Login/Register pages, ProtectedRoute
 - [ ] **Task 17** — Dashboard + ProjectDetail pages (project list, error group table)
 - [ ] **Task 18** — Status update endpoint + UI
@@ -64,3 +64,17 @@ approved blueprint. Check off as completed; do not reorder or skip.
   docs updated, commit made.
 - Do not batch tasks even if they feel small — one task, one stop, one
   confirmation.
+
+## Deferred / Follow-Up Items
+
+Cross-session backlog — not part of the milestone checklist, not tied
+to task order. Remove an item only when it's actually resolved.
+
+- **Atlas dev-cluster password rotation** — pending since Task 2.1,
+  carried across multiple sessions.
+- **`extractErrorType()` generic-bucket limitation** — non-conventional
+  error names fall into a generic `"Error"` bucket. Documented
+  limitation, not a bug. See DECISIONS.md's fingerprint-composition
+  entry.
+
+  add columns: | Item | Since | Severity | instead of prose bullets.

@@ -1,10 +1,13 @@
 # Faultline — Project Context
 
-> Permanent project workflow is defined in `PROJECT_RULES.md`.
-> Current implementation state is defined in `HANDOFF.md`.
-> Read this file first. It is the single source of truth for "where are we
-> right now." If you are a new Claude session picking this project up,
-> read this, then TASKS.md, then ARCHITECTURE.md.
+> Workflow and behavior rules live in `PROJECT_RULES.md`.
+> This file is the canonical, continuously-updated source of truth for
+> "where are we right now" — edited in place, not regenerated.
+> `HANDOFF.md` carries a condensed snapshot of this file's content
+> forward at session boundaries so a new session can start from one
+> file, but this file remains the ground truth if the two ever drift.
+> Read order for a new session: `PROJECT_RULES.md` → `HANDOFF.md` →
+> this file → `TASKS.md`.
 
 ## What Faultline Is
 
