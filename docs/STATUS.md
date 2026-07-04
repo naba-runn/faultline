@@ -46,6 +46,17 @@ plain changelog of that pass.
 Next up: **Task 14** — derived confidence score +
 affectedFile/affectedFunction fields. Not started.
 
+## Constitution Amendments
+
+- **This pass** — `PROJECT_RULES.md` §4/§8 amended at the user's
+  explicit request: every session must now hand off (a) complete
+  final contents of every changed file (not a diff/patch — the
+  implementation sandbox is a separate filesystem from the user's real
+  repo), with a narrow exception for large files where only one
+  bounded section changed, and (b) detailed, copy-pasteable manual
+  test instructions (exact commands, exact pass/fail signal), with
+  honest disclosure when a test genuinely couldn't be run in-session.
+
 ## Known Open Issues
 
 - **Atlas dev-cluster password rotation** — pending since Task 2.1,
