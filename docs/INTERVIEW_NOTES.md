@@ -350,3 +350,28 @@ A: The latter is Google's deprecated predecessor SDK. Confirmed via
 web search rather than assumed, since this kind of SDK/package-name
 churn is exactly the sort of thing that goes stale in a model's
 training data.
+
+## Feature: githubService — Task 12
+
+**Q: Why re-validate the githubRepo regex here when Project.js already enforces it?**
+A: Defense in depth for the one place this value becomes part of an
+outbound URL. Trusting "something upstream already checked this" is
+exactly the kind of assumption that breaks if a future code path ever
+sets the field a different way (a script, a migration, a bypassed
+validator) — re-checking at the point of dangerous use costs nothing
+and closes that gap.
+
+**Q: Why window the snippet instead of sending the whole file?**
+A: Cost and prompt size shouldn't depend on how large the file
+someone's error happened to be in. `AI_CONTEXT.md` already commits to
+discarding the raw snippet after use (Data Minimization) — windowing
+extends that same instinct to not even pulling in more than needed in
+the first place.
+
+**Q: Why does a 404 return null instead of throwing?**
+A: A missing file is an expected outcome here, not an exceptional one
+— the file path is a best-effort guess derived from a normalized stack
+trace (see DECISIONS.md's noted limitation), so it won't always match
+the repo's real structure. Treating that as "grounding unavailable,
+fall back to stack-trace-only" is the correct behavior, not an error
+to propagate.

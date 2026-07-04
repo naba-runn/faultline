@@ -26,6 +26,10 @@ const config = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
 
   geminiApiKey: process.env.GEMINI_API_KEY || null,
+  // Optional — Contents API works unauthenticated for public repos
+  // (60 req/hour). Only needed for private repos or to raise the rate
+  // limit. See DECISIONS.md (Task 12).
+  githubToken: process.env.GITHUB_TOKEN || null,
 
   clientOrigin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
 

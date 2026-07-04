@@ -194,8 +194,12 @@ Verified manually:
   `statusHistory: []`, `aiSummary: null`
 
 Compound unique index on `{ projectId, fingerprint }` is declared but
-not yet exercised against live Atlas — that happens in Task 9.3 once
-the upsert logic exists to actually trigger a duplicate-key scenario.
+**exercised against live Atlas as of Task 9.3** — confirmed via a
+real duplicate-fingerprint POST sequence: first call inserts (`count:
+1`), second call updates the same document in place (`count: 2`),
+no second document created. A distinct fingerprint correctly produced
+a separate `ErrorGroup`.
+
 
 ### ErrorEvent (`server/models/ErrorEvent.js`)
 ```javascript

@@ -19,8 +19,8 @@ faultline/
 │   │   ├── projectService.js (create/list/get/update/delete — all ownership-scoped in the query itself)
 │   │   ├── fingerprintService.js (generateFingerprint, extractErrorType — pure, combines stackNormalizer's signature + parsed error type into the Task 9 dedup key)
 │   │   ├── errorGroupService.js  (recordEvent — atomic upsert dedup + ErrorEvent creation, Task 9.3)
-│   │   └── aiService.js          (buildPrompt/callGemini/parseAndValidate — pure except callGemini, Task 11)
-│   ├── middleware/
+│   │   ├── aiService.js          (buildPrompt/callGemini/parseAndValidate — pure except callGemini, Task 11)
+│   │   └── githubService.js      (fetchCodeSnippet/extractSnippet — GitHub Contents API grounding, Task 12)│   ├── middleware/
 │   │   ├── authMiddleware.js    (JWT verification, attaches req.user)
 │   │   └── apiKeyMiddleware.js  (API-key verification, attaches req.project — hot ingestion path)
 │   ├── routes/

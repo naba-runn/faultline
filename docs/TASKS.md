@@ -38,7 +38,7 @@ approved blueprint. Check off as completed; do not reorder or skip.
 ## Milestone 3: AI Enrichment
 
 - [x] **Task 11** — `aiService`: buildPrompt / callGemini / parseAndValidate
-- [ ] **Task 12** — GitHub Contents API fetch (grounding)
+- [x] **Task 12** — GitHub Contents API fetch (grounding)
 - [ ] **Task 13** — Wire AI enrichment into "new group" path, fire-and-forget
 - [ ] **Task 14** — Derived confidence score + affectedFile/affectedFunction fields
 

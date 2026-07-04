@@ -5,6 +5,18 @@ Entries are added per task, not per commit-within-a-task.
 
 ## [Unreleased]
 
+### Added — Task 12: GitHub Contents API fetch (grounding)
+- `server/services/githubService.js` — `fetchCodeSnippet()` (best-effort,
+  returns windowed snippet or `null` on any failure), `extractSnippet()`
+  (pure, ±15-line window around a target line, line-number-prefixed)
+- `server/config/env.js`, `server/.env.example` — added optional
+  `GITHUB_TOKEN`
+- Manually verified: `extractSnippet` locally (centered window, clamped
+  at file start/end, empty input, invalid line number all handled);
+  `fetchCodeSnippet` live against a real public repo (valid file
+  fetched, missing file returns `null`, no-repo-configured returns
+  `null`, malformed `githubRepo` string returns `null`)
+
 ### Added — Task 11: aiService (buildPrompt / callGemini / parseAndValidate)
 - `server/services/aiService.js` — `buildPrompt` (pure), `callGemini`
   (thin `@google/genai` wrapper, `gemini-2.5-flash`, JSON

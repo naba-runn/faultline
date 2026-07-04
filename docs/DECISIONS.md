@@ -343,3 +343,34 @@ truth for what exists. `confidence` isn't part of what the LLM returns
 or what `parseAndValidate` checks — it's Task 14's server-derived
 field — so this doesn't block Task 11, but `AI_CONTEXT.md` should be
 corrected to match the Number type before Task 14 assigns a value to it.
+
+## githubService: snippet windowing + optional GITHUB_TOKEN (Task 12)
+
+**Decision:** `fetchCodeSnippet()` returns a windowed slice of the
+file (±15 lines around the target line, each line number-prefixed),
+not the full file content. A new optional `GITHUB_TOKEN` env var was
+added (`config/env.js`, `.env.example`) — unauthenticated requests work
+fine for public repos (60 req/hour), the token only matters for
+private repos or a higher rate limit.
+
+**Alternatives considered:**
+1. Send the entire file content in the prompt.
+2. Require `GITHUB_TOKEN` as mandatory config.
+
+**Justification:** Neither was specified in `AI_CONTEXT.md`, but both
+were unavoidable implementation decisions — you can't fetch a file
+without deciding how much of it to use, or whether auth is required.
+Windowing keeps prompt size/cost bounded regardless of file size and
+matches the Data Minimization principle already stated in
+`AI_CONTEXT.md`. Making the token optional (not required) keeps the
+MVP usable against public repos with zero extra setup, while still
+supporting private repos for anyone who adds one.
+
+**Known limitation, not solved here:** the file path used to query
+GitHub comes from `stackNormalizer`'s `normalizeFilePath()` (Task 8),
+which anchors on conventional root markers (`src`/`server`/`client`/
+`app`/`lib`) — this is a heuristic, not a guarantee it matches the
+GitHub repo's actual folder layout. A wrong guess just means
+`fetchCodeSnippet` 404s and grounding falls back to stack-trace-only
+(`confidence: low`) — never a hard failure, but worth knowing this
+isn't guaranteed-correct path resolution.

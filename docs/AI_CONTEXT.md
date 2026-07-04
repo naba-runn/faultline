@@ -1,8 +1,8 @@
 # Faultline — AI Integration Context
 
-**Status: Task 11 done** (`buildPrompt`/`callGemini`/`parseAndValidate`
-in `server/services/aiService.js`). Tasks 12–14 (GitHub fetch, wiring
-into ingestion, derived confidence/affectedFile/affectedFunction)
+**Status: Tasks 11–12 done** (`aiService.js`'s pure functions +
+`callGemini`; `githubService.js`'s Contents API fetch). Tasks 13–14
+(wiring into ingestion, derived confidence/affectedFile/affectedFunction)
 remain. This file exists so the design decisions from the architecture
 review survive even if implementation happens in a different session.
 
@@ -25,6 +25,13 @@ call fails, ingestion must never fail because of it.
    Contents API. `githubRepo` must be validated against
    `^[\w.-]+\/[\w.-]+$` and only ever used as a path segment against
    the fixed `api.github.com` host — never as a user-supplied URL.
+   **Implemented in `githubService.fetchCodeSnippet()`** — returns a
+   windowed snippet (±15 lines around the target line, not the whole
+   file) or `null` on any failure (no repo configured, invalid format,
+   404, rate limit, network error). Re-validates the regex itself even
+   though `Project.js`'s schema already enforces it — never trust a
+   value at the point it's used to build an outbound request.
+docs/DECISIONS.md — new entry appended
 3. `buildPrompt(context)` — pure function, constructs the prompt from
    error message + stack + (optional) code snippet. Unit-testable with
    no network call.

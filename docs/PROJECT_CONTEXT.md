@@ -26,7 +26,7 @@ approved v2 blueprint — treat as final, do not redesign).
 
 **Milestone 1: Backend Foundation** — **COMPLETE** (4 of 4 tasks done)
 **Milestone 2: Projects & Ingestion** — in progress (6 of 6 tasks done)
-**Milestone 3: AI Enrichment** — in progress (1 of 4 tasks done)
+**Milestone 3: AI Enrichment** — in progress (2 of 4 tasks done)
 ## Current Task
 
 Task 6 — `apiKeyMiddleware`: **DONE** (5/5 manual test cases passed:
@@ -83,6 +83,14 @@ Task 11 — aiService (buildPrompt/callGemini/parseAndValidate): **DONE**
 (valid/invalid inputs), `callGemini` tested live against a real API
 key. Tasks 12 (GitHub fetch), 13 (wire into ingestion), 14 (derived
 confidence/affectedFile/affectedFunction) remain.
+
++Task 12 — GitHub Contents API fetch (grounding): **DONE** —
++`server/services/githubService.js` (`fetchCodeSnippet`/`extractSnippet`).
++Manually verified: pure windowing logic locally, live fetch against a
++real public repo (valid/missing file, no-repo, bad-format all
++correctly return `null` without throwing). Tasks 13 (wire into
++ingestion) and 14 (derived confidence/affectedFile/affectedFunction)
++remain.
 
 > Note: AppError/catchAsync were intentionally NOT used across
 > Milestone 1 — plain try/catch throughout, matching TASKS.md's
