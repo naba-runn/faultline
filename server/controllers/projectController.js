@@ -1,14 +1,12 @@
 const projectService = require('../services/projectService');
+const { sendSuccess, sendError } = require('../utils/httpResponse');
 
 async function createProject(req, res) {
   try {
     const { name, githubRepo } = req.body;
 
     if (!name) {
-      return res.status(400).json({
-        success: false,
-        error: 'name is required',
-      });
+      return sendError(res, 400, 'name is required');
     }
 
     const { project, apiKey } = await projectService.createProject({
@@ -17,24 +15,19 @@ async function createProject(req, res) {
       githubRepo,
     });
 
-    res.status(201).json({
-      success: true,
-      data: { project, apiKey },
-    });
+    return sendSuccess(res, 201, { project, apiKey });
   } catch (err) {
     if (err.name === 'ValidationError') {
-      return res.status(400).json({
-        success: false,
-        error: Object.values(err.errors)
+      return sendError(
+        res,
+        400,
+        Object.values(err.errors)
           .map((e) => e.message)
-          .join(', '),
-      });
+          .join(', ')
+      );
     }
     const statusCode = err.statusCode || 500;
-    res.status(statusCode).json({
-      success: false,
-      error: err.message || 'Internal Server Error',
-    });
+    return sendError(res, statusCode, err.message || 'Internal Server Error');
   }
 }
 
@@ -46,28 +39,16 @@ async function getProject(req, res) {
     });
 
     if (!project) {
-      return res.status(404).json({
-        success: false,
-        error: 'Project not found',
-      });
+      return sendError(res, 404, 'Project not found');
     }
 
-    res.status(200).json({
-      success: true,
-      data: { project },
-    });
+    return sendSuccess(res, 200, { project });
   } catch (err) {
     if (err.name === 'CastError') {
-      return res.status(404).json({
-        success: false,
-        error: 'Project not found',
-      });
+      return sendError(res, 404, 'Project not found');
     }
     const statusCode = err.statusCode || 500;
-    res.status(statusCode).json({
-      success: false,
-      error: err.message || 'Internal Server Error',
-    });
+    return sendError(res, statusCode, err.message || 'Internal Server Error');
   }
 }
 
@@ -83,36 +64,25 @@ async function updateProject(req, res) {
     });
 
     if (!project) {
-      return res.status(404).json({
-        success: false,
-        error: 'Project not found',
-      });
+      return sendError(res, 404, 'Project not found');
     }
 
-    res.status(200).json({
-      success: true,
-      data: { project },
-    });
+    return sendSuccess(res, 200, { project });
   } catch (err) {
     if (err.name === 'CastError') {
-      return res.status(404).json({
-        success: false,
-        error: 'Project not found',
-      });
+      return sendError(res, 404, 'Project not found');
     }
     if (err.name === 'ValidationError') {
-      return res.status(400).json({
-        success: false,
-        error: Object.values(err.errors)
+      return sendError(
+        res,
+        400,
+        Object.values(err.errors)
           .map((e) => e.message)
-          .join(', '),
-      });
+          .join(', ')
+      );
     }
     const statusCode = err.statusCode || 500;
-    res.status(statusCode).json({
-      success: false,
-      error: err.message || 'Internal Server Error',
-    });
+    return sendError(res, statusCode, err.message || 'Internal Server Error');
   }
 }
 
@@ -124,25 +94,19 @@ async function deleteProject(req, res) {
     });
 
     if (!deleted) {
-      return res.status(404).json({
-        success: false,
-        error: 'Project not found',
-      });
+      return sendError(res, 404, 'Project not found');
     }
 
-    res.status(204).send();
+    // 204 No Content — no JSON body, so this deliberately doesn't go
+    // through sendSuccess (which always emits a { success, data }
+    // JSON body). Response shape unchanged from before this refactor.
+    return res.status(204).send();
   } catch (err) {
     if (err.name === 'CastError') {
-      return res.status(404).json({
-        success: false,
-        error: 'Project not found',
-      });
+      return sendError(res, 404, 'Project not found');
     }
     const statusCode = err.statusCode || 500;
-    res.status(statusCode).json({
-      success: false,
-      error: err.message || 'Internal Server Error',
-    });
+    return sendError(res, statusCode, err.message || 'Internal Server Error');
   }
 }
 
@@ -151,16 +115,10 @@ async function listProjects(req, res) {
   try {
     const projects = await projectService.listProjects(req.user._id);
 
-    res.status(200).json({
-      success: true,
-      data: { projects },
-    });
+    return sendSuccess(res, 200, { projects });
   } catch (err) {
     const statusCode = err.statusCode || 500;
-    res.status(statusCode).json({
-      success: false,
-      error: err.message || 'Internal Server Error',
-    });
+    return sendError(res, statusCode, err.message || 'Internal Server Error');
   }
 }
 

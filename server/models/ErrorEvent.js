@@ -27,6 +27,7 @@ const errorEventSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: null,
+      maxlength: 50,
     },
     // Free-form, caller-supplied context (e.g. { userId: "abc123" }).
     // Stored as-is; no shape enforced, matching env above.
@@ -47,5 +48,10 @@ const errorEventSchema = new mongoose.Schema(
     // alongside would be a redundant, always-identical field.
   }
 );
+
+// Index for timeline queries: recent events per group, most recent
+// first. Powers the "recent events per group" query pattern behind
+// the Dashboard's Error Detail View.
+errorEventSchema.index({ errorGroupId: 1, receivedAt: -1 });
 
 module.exports = mongoose.model('ErrorEvent', errorEventSchema);

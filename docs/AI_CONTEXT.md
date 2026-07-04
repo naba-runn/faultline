@@ -6,11 +6,13 @@
 remain. This file exists so the design decisions from the architecture
 review survive even if implementation happens in a different session.
 
-**Known doc gap:** the `confidence` description below (`"high"`/
-`"low"` strings) doesn't match `ErrorGroup.js`'s actual
-`aiSummarySchema` (`Number, min: 0, max: 1`, locked in Task 9.1). Not
-yet reconciled — see DECISIONS.md's Task 11 entry. Fix this before
-Task 14 assigns a value to `confidence`.
+**Doc gap resolved (this pass):** the `confidence` description below
+now correctly matches `ErrorGroup.js`'s `aiSummarySchema` (`Number,
+min: 0, max: 1`, locked in Task 9.1). Previously this file described
+`confidence` as `"high"`/`"low"` strings — flagged across three files
+over multiple sessions and never actually corrected until now. See
+`DECISIONS.md`'s "aiService: package and model choice" entry.
+`confidence` still isn't computed anywhere yet — that's Task 14.
 
 ## Role of AI in This System
 
@@ -46,10 +48,13 @@ docs/DECISIONS.md — new entry appended
 These are computed in code, not asked of the model — do not change
 this without updating this doc and explaining why:
 
-- **`confidence`**: `"high"` if the GitHub file fetch succeeded and was
-  included in the prompt, `"low"` if enrichment fell back to
-  stack-trace-only. LLM self-reported confidence is not reliably
-  calibrated, so we don't ask for it.
+- **`confidence`**: a `Number` in `[0, 1]` (matching
+  `ErrorGroup.js`'s `aiSummarySchema`), derived from whether the
+  GitHub file fetch succeeded and was included in the prompt (higher)
+  vs. enrichment falling back to stack-trace-only (lower). Exact
+  values are Task 14's to decide — not yet implemented. LLM
+  self-reported confidence is not reliably calibrated, so we don't ask
+  for it.
 - **`affectedFile` / `affectedFunction`**: derived from the parsed top
   stack frame, not restated by the model.
 
