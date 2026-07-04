@@ -13,11 +13,13 @@ faultline/
 │   ├── controllers/
 │   │   ├── authController.js    (register, login, me)
 │   │   ├── projectController.js (createProject, listProjects, getProject, updateProject, deleteProject)
-│   │   └── ingestController.js  (ingestEvent — validates + 202s, no persistence yet)
+│   │   └── ingestController.js  (ingestEvent — validates, persists via errorGroupService, 202s)
 │   ├── services/
 │   │   ├── authService.js    (register, login — business logic, no req/res)
 │   │   ├── projectService.js (create/list/get/update/delete — all ownership-scoped in the query itself)
-│   │   └── fingerprintService.js (generateFingerprint, extractErrorType — pure, combines stackNormalizer's signature + parsed error type into the Task 9 dedup key)
+│   │   ├── fingerprintService.js (generateFingerprint, extractErrorType — pure, combines stackNormalizer's signature + parsed error type into the Task 9 dedup key)
+│   │   ├── errorGroupService.js  (recordEvent — atomic upsert dedup + ErrorEvent creation, Task 9.3)
+│   │   └── aiService.js          (buildPrompt/callGemini/parseAndValidate — pure except callGemini, Task 11)
 │   ├── middleware/
 │   │   ├── authMiddleware.js    (JWT verification, attaches req.user)
 │   │   └── apiKeyMiddleware.js  (API-key verification, attaches req.project — hot ingestion path)
@@ -99,7 +101,10 @@ those pieces are built in Milestone 2.
   indirection at this scope.
 - No queue/broker (BullMQ, Redis) for AI enrichment at MVP scale —
   fire-and-forget dispatch is sufficient; queue is a named future step.
-- No 4-layer AI provider abstraction — `aiService` is pure functions.
+- No 4-layer AI provider abstraction — `aiService` is pure functions
+  (except `callGemini`, a thin SDK wrapper). Confirmed in Task 11:
+  `@google/genai` (current unified SDK, not the deprecated
+  `@google/generative-ai`), model `gemini-2.5-flash`.
 - No `AppError`/`catchAsync` yet, even though `utils/` conventionally
   includes them (see Layering Convention above) — plain try/catch is
   used throughout Milestone 1 controllers by design; the refactor to

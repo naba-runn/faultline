@@ -331,4 +331,22 @@ A: Only the `ErrorGroup` upsert needs atomicity — it's the one with a
 uniqueness constraint two concurrent requests could race on.
 `ErrorEvent` has no such constraint; each POST simply gets its own
 document, so a plain `create()` after the upsert is correct and
-simpler than trying to force both writes into one operation.
+simpler than trying to force both writes into one operation.\\## Feature: aiService — Task 11
+
+**Q: Why does callGemini return raw text instead of parsed JSON?**
+A: Keeps the "thin wrapper" honest — `callGemini` only talks to the
+SDK. `parseAndValidate` owns both JSON parsing and shape-checking, so
+one function handles "is this actually usable," and it can be unit
+tested with hand-written strings, no network involved.
+
+**Q: Why does parseAndValidate return null instead of throwing on invalid input?**
+A: Per `AI_CONTEXT.md`'s resilience contract — an invalid AI response
+should result in `aiSummary: null` and ingestion continuing, not a
+crash. Returning `null` makes that the obvious, hard-to-misuse default
+for whatever calls this in Task 13.
+
+**Q: Why @google/genai instead of @google/generative-ai?**
+A: The latter is Google's deprecated predecessor SDK. Confirmed via
+web search rather than assumed, since this kind of SDK/package-name
+churn is exactly the sort of thing that goes stale in a model's
+training data.

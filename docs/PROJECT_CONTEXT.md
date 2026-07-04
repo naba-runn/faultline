@@ -25,7 +25,8 @@ approved v2 blueprint — treat as final, do not redesign).
 ## Current Milestone
 
 **Milestone 1: Backend Foundation** — **COMPLETE** (4 of 4 tasks done)
-**Milestone 2: Projects & Ingestion** — in progress (5 of 6 tasks done)
+**Milestone 2: Projects & Ingestion** — in progress (6 of 6 tasks done)
+**Milestone 3: AI Enrichment** — in progress (1 of 4 tasks done)
 ## Current Task
 
 Task 6 — `apiKeyMiddleware`: **DONE** (5/5 manual test cases passed:
@@ -76,6 +77,12 @@ manually end-to-end — **DONE**
     other two each produced their own `ErrorGroup` (`count: 1`); 5 total
     `ErrorEvent` docs split 3/1/1 across the three groups, all correctly
     linked
+Task 11 — aiService (buildPrompt/callGemini/parseAndValidate): **DONE**
+— `server/services/aiService.js`, using `@google/genai` +
+`gemini-2.5-flash`. Manually verified: pure functions tested locally
+(valid/invalid inputs), `callGemini` tested live against a real API
+key. Tasks 12 (GitHub fetch), 13 (wire into ingestion), 14 (derived
+confidence/affectedFile/affectedFunction) remain.
 
 > Note: AppError/catchAsync were intentionally NOT used across
 > Milestone 1 — plain try/catch throughout, matching TASKS.md's

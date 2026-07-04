@@ -5,6 +5,18 @@ Entries are added per task, not per commit-within-a-task.
 
 ## [Unreleased]
 
+### Added — Task 11: aiService (buildPrompt / callGemini / parseAndValidate)
+- `server/services/aiService.js` — `buildPrompt` (pure), `callGemini`
+  (thin `@google/genai` wrapper, `gemini-2.5-flash`, JSON
+  `responseSchema` mode), `parseAndValidate` (pure, returns
+  `{ rootCause, severity, suggestedFix }` or `null` on any malformed/
+  invalid response)
+- `server/package.json` — added `@google/genai@^2.10.0`
+- Manually verified: `buildPrompt`/`parseAndValidate` locally (valid
+  doc, bad severity, malformed JSON, empty `suggestedFix` all handled
+  correctly); `callGemini` against a live API key (real Gemini call,
+  response validated end-to-end)
+
 ### Added — Task 10: demo Express app
 - `demo-app/index.js` — Express app with three routes (`/crash/type-error`,
   `/crash/range-error`, `/crash/custom`) that each throw a distinct

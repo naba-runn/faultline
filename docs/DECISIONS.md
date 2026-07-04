@@ -313,4 +313,33 @@ occurrence — overwriting it on every duplicate would make it
 non-deterministic (whichever event happened to arrive last "wins")
 for no benefit, since the individual, unaltered stack for every
 occurrence is already preserved per-event in `ErrorEvent.rawStack`.
-Fixing it at
+
+## aiService: package and model choice (Task 11)
+
+**Decision:** Use `@google/genai` (not `@google/generative-ai`) as the
+Gemini SDK, and hardcode `gemini-2.5-flash` as the model in
+`aiService.js`.
+
+**Alternatives considered:**
+1. `@google/generative-ai` — the older SDK many existing tutorials
+   reference.
+2. A newer/heavier model (`gemini-3.5-flash` or a Pro-tier model).
+
+**Justification:** `@google/generative-ai` is Google's deprecated
+predecessor; `@google/genai` is the current GA, actively maintained
+SDK. Verified via web search rather than trained knowledge, since
+Google's SDK naming has changed more than once. On model choice:
+enrichment here is a bounded summarization task (root cause + severity
++ fix suggestions from a stack trace) — it doesn't need frontier
+reasoning, and `gemini-2.5-flash` is stable, cheap, and well-documented.
+Nothing in `AI_CONTEXT.md` locks in a specific model name, so this
+isn't overriding a prior decision, just making an unmade one.
+
+**Known doc gap, not resolved here (out of Task 11's scope):**
+`AI_CONTEXT.md`'s prose describes `confidence` as `"high"`/`"low"`
+strings; `ErrorGroup.js`'s already-implemented `aiSummarySchema`
+(Task 9.1) defines it as `Number, min: 0, max: 1`. Code is ground
+truth for what exists. `confidence` isn't part of what the LLM returns
+or what `parseAndValidate` checks — it's Task 14's server-derived
+field — so this doesn't block Task 11, but `AI_CONTEXT.md` should be
+corrected to match the Number type before Task 14 assigns a value to it.

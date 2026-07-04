@@ -1,8 +1,16 @@
 # Faultline — AI Integration Context
 
-**Status: not yet implemented (starts at Task 11).** This file exists
-now so the design decisions from the architecture review survive even
-if implementation happens in a different session.
+**Status: Task 11 done** (`buildPrompt`/`callGemini`/`parseAndValidate`
+in `server/services/aiService.js`). Tasks 12–14 (GitHub fetch, wiring
+into ingestion, derived confidence/affectedFile/affectedFunction)
+remain. This file exists so the design decisions from the architecture
+review survive even if implementation happens in a different session.
+
+**Known doc gap:** the `confidence` description below (`"high"`/
+`"low"` strings) doesn't match `ErrorGroup.js`'s actual
+`aiSummarySchema` (`Number, min: 0, max: 1`, locked in Task 9.1). Not
+yet reconciled — see DECISIONS.md's Task 11 entry. Fix this before
+Task 14 assigns a value to `confidence`.
 
 ## Role of AI in This System
 
