@@ -91,8 +91,16 @@ bugfixes, doc corrections) go in `DECISIONS.md`'s chronological
 ## 4. Development Workflow
 
 1. Confirm the next subtask against `TASKS.md` and `STATUS.md`.
-2. Implement exactly that subtask — nothing upstream or downstream.
-3. Provide manual test instructions — detailed and copy-pasteable, not
+2. Before implementing, state the recommended effort level and
+   whether extended thinking should be on for this subtask, with a
+   one-line reason — e.g. "medium effort, thinking off: mostly
+   mechanical wiring of existing pieces" or "high effort, thinking on:
+   touches concurrency/dedup logic, worth reasoning through edge cases
+   first." This is a recommendation for the user to set, not something
+   Claude can toggle itself — state it before starting work, not
+   buried inside it.
+3. Implement exactly that subtask — nothing upstream or downstream.
+4. Provide manual test instructions — detailed and copy-pasteable, not
    a general pointer. For each test: the exact commands to run (with
    placeholders clearly marked), what to substitute, and what specific
    output/log line/DB state confirms pass vs. fail. Assume the user
@@ -101,7 +109,7 @@ bugfixes, doc corrections) go in `DECISIONS.md`'s chronological
    network, no live DB, no installed dependencies), say so explicitly
    — never imply a test ran when it didn't (§2's "Honesty over
    reassurance").
-4. Hand off every file changed this session as **complete, final file
+5. Hand off every file changed this session as **complete, final file
    contents** — full files the user can copy-paste directly over
    their local copies — not a diff or a patch file. The implementation
    sandbox is a separate filesystem from the user's actual repo, so a
@@ -113,9 +121,9 @@ bugfixes, doc corrections) go in `DECISIONS.md`'s chronological
    help — instead give the exact anchor line to find and the new
    block to insert relative to it, called out clearly as the
    exception it is.
-5. Update only the documentation whose content actually changed.
-6. Provide a suggested git commit (§9).
-7. Stop. State the subtask is done per the Definition of Done (§8).
+6. Update only the documentation whose content actually changed.
+7. Provide a suggested git commit (§9).
+8. Stop. State the subtask is done per the Definition of Done (§8).
 
 Never batch multiple subtasks into one turn, even if trivially small,
 unless explicitly told otherwise for that session.
@@ -162,10 +170,10 @@ A subtask is complete only when:
 - ✓ Code implemented, matching the locked architecture
 - ✓ Manual testing completed, or detailed copy-pasteable instructions
   handed off (exact commands, exact expected result per test — see §4
-  step 3); if testing genuinely couldn't be run in this environment,
+  step 4); if testing genuinely couldn't be run in this environment,
   that's stated plainly, not glossed over
 - ✓ Complete final contents of every changed file handed off for the
-  user to paste over their local copies (§4 step 4), not a diff/patch
+  user to paste over their local copies (§4 step 5), not a diff/patch
   — except the large-file/bounded-section exception noted there
 - ✓ Only the documentation files whose content actually changed were updated
 - ✓ `STATUS.md` doesn't contradict itself and matches `TASKS.md`'s checkbox state (the Tier-1 consistency check — do this before marking anything done; this is the direct fix for the drift that motivated this pass)

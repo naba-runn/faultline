@@ -56,6 +56,11 @@ affectedFile/affectedFunction fields. Not started.
   bounded section changed, and (b) detailed, copy-pasteable manual
   test instructions (exact commands, exact pass/fail signal), with
   honest disclosure when a test genuinely couldn't be run in-session.
+- **This pass** — `PROJECT_RULES.md` §4 further amended: before
+  starting implementation on a subtask, state a recommended effort
+  level and whether extended thinking should be on, with a one-line
+  reason. A recommendation for the user to set, not something Claude
+  toggles itself.
 
 ## Known Open Issues
 
