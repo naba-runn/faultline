@@ -25,7 +25,7 @@ approved v2 blueprint — treat as final, do not redesign).
 ## Current Milestone
 
 **Milestone 1: Backend Foundation** — **COMPLETE** (4 of 4 tasks done)
-**Milestone 2: Projects & Ingestion** — in progress (4 of 6 tasks done)
+**Milestone 2: Projects & Ingestion** — in progress (5 of 6 tasks done)
 ## Current Task
 
 Task 6 — `apiKeyMiddleware`: **DONE** (5/5 manual test cases passed:
@@ -62,6 +62,20 @@ Task 9 — ErrorGroup/ErrorEvent models + atomic upsert dedup: **DONE**
     to call it. Manually verified live against Atlas: duplicate event
     collapses into one `ErrorGroup` (`count: 2`, 2 linked `ErrorEvent`
     docs); distinct event produces a separate `ErrorGroup` (`count: 1`).
+
+Task 10 — demo Express app that throws sample errors, to verify dedup
+manually end-to-end — **DONE**
+  - `demo-app/index.js` — Express app with three routes (`/crash/type-error`,
+    `/crash/range-error`, `/crash/custom`) that each throw a distinct
+    error, caught by an error-handling middleware that forwards it to
+    Faultline's `/api/events` (fire-and-forget, never blocks or crashes
+    the demo app itself)
+  - `demo-app/package.json`, `.env.example`, `README.md` — setup/usage
+  - Manually verified end-to-end against live server + Atlas: repeated
+    hits on one route collapsed into one `ErrorGroup` (`count: 3`), the
+    other two each produced their own `ErrorGroup` (`count: 1`); 5 total
+    `ErrorEvent` docs split 3/1/1 across the three groups, all correctly
+    linked
 
 > Note: AppError/catchAsync were intentionally NOT used across
 > Milestone 1 — plain try/catch throughout, matching TASKS.md's
@@ -121,10 +135,10 @@ Task 9 — ErrorGroup/ErrorEvent models + atomic upsert dedup: **DONE**
 
 ## Not Yet Built
 
-Task 9 (dedup persistence) is fully closed. Next up per TASKS.md:
-Task 10 — demo Express app that throws sample errors, to verify dedup
-manually end-to-end. AI enrichment, all React pages. See TASKS.md for
-the full breakdown.
+Tasks 9 and 10 are fully closed — dedup persistence exists and is
+verified end-to-end via the demo app. Next up per TASKS.md: Task 11,
+AI enrichment. All React pages, remaining backend polish. See
+TASKS.md for the full breakdown.
 
 ## Key Architectural Decisions Already Locked In
 
@@ -144,6 +158,8 @@ a future session — implement them as-is:
    separate middleware** — one authenticates a program, one a user.
 6. Raw fetched GitHub source snippets are **never persisted** to the DB
    — only the AI's derived summary is stored.
+
+   
 
 ## Where Things Live
 

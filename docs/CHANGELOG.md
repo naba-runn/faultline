@@ -5,6 +5,19 @@ Entries are added per task, not per commit-within-a-task.
 
 ## [Unreleased]
 
+### Added — Task 10: demo Express app
+- `demo-app/index.js` — Express app with three routes (`/crash/type-error`,
+  `/crash/range-error`, `/crash/custom`) that each throw a distinct
+  error, caught by an error-handling middleware that forwards it to
+  Faultline's `/api/events` (fire-and-forget, never blocks or crashes
+  the demo app itself)
+- `demo-app/package.json`, `.env.example`, `README.md` — setup/usage
+- Manually verified end-to-end against live server + Atlas: repeated
+  hits on one route collapsed into one `ErrorGroup` (`count: 3`), the
+  other two each produced their own `ErrorGroup` (`count: 1`); 5 total
+  `ErrorEvent` docs split 3/1/1 across the three groups, all correctly
+  linked
+
 ### Added — Task 9.3: wire dedup into ingestController
 - `server/services/errorGroupService.js` — `recordEvent()`: fingerprints
   the event, atomically upserts the owning `ErrorGroup` via

@@ -38,7 +38,10 @@ faultline/
 │   ├── package.json
 │   ├── package-lock.json
 │   └── .env.example
-├── demo-app/                (placeholder — built in Task 10)
+├── demo-app/                (Task 10 — throws sample errors at Faultline)
+│   ├── package.json
+│   ├── index.js
+│   ├── .env.example
 │   └── README.md
 ├── docs/                    (this folder — permanent project memory)
 ├── .gitignore
