@@ -1,10 +1,14 @@
 # Faultline — AI Integration Context
 
-**Status: Tasks 11–12 done** (`aiService.js`'s pure functions +
-`callGemini`; `githubService.js`'s Contents API fetch). Tasks 13–14
-(wiring into ingestion, derived confidence/affectedFile/affectedFunction)
-remain. This file exists so the design decisions from the architecture
-review survive even if implementation happens in a different session.
+**Status: Tasks 11–13 done** (`aiService.js`'s pure functions +
+`callGemini`; `githubService.js`'s Contents API fetch; Task 13 wired
+both into `errorGroupService.enrichErrorGroup`, dispatched
+fire-and-forget from `ingestController` on new groups only). Task 14
+(derived confidence/affectedFile/affectedFunction) remains — Task 13
+deliberately saves only `{ rootCause, severity, suggestedFix }` on
+`aiSummary`, leaving those three fields unset. This file exists so the
+design decisions from the architecture review survive even if
+implementation happens in a different session.
 
 **Doc gap resolved (this pass):** the `confidence` description below
 now correctly matches `ErrorGroup.js`'s `aiSummarySchema` (`Number,

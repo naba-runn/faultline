@@ -10,8 +10,8 @@
 
 - **Milestone 1 — Backend Foundation:** COMPLETE (4/4 tasks)
 - **Milestone 2 — Projects & Ingestion:** COMPLETE (6/6 tasks)
-- **Milestone 3 — AI Enrichment:** in progress (2/4 tasks — Tasks 11
-  and 12 done; Task 13 next, Task 14 after that)
+- **Milestone 3 — AI Enrichment:** in progress (3/4 tasks — Tasks 11,
+  12, and 13 done; Task 14 next)
 
 Task numbering and full checklist: `TASKS.md`. This section only
 states current position, not a restated description of every task —
@@ -19,17 +19,32 @@ that would duplicate `TASKS.md`.
 
 ## What's Actively In Progress
 
-Nothing mid-implementation as of this pass. The most recent completed
-work was the Foundation-Hardening & Documentation Re-Engineering pass
-(this pass) — Workstream 2 restructured the documentation system
-(this file included), and Workstream 1 closed a set of bugs, security
-gaps, one maintainability item, and one automated test against the
-Milestone 1–3 codebase. See `DECISIONS.md`'s newest entries for what
-changed and why; see the "Shipped Log" at the bottom of `DECISIONS.md`
-for the plain changelog of this pass.
+Nothing mid-implementation as of this pass. Most recently completed:
+**Task 13** — `errorGroupService.enrichErrorGroup` now wires
+`githubService.fetchCodeSnippet` + `aiService.{buildPrompt,callGemini,
+parseAndValidate}` together (parses the stack via `stackNormalizer`,
+fetches a snippet only when `project.githubRepo` is set, saves
+`aiSummary: { rootCause, severity, suggestedFix }` on success, leaves
+it `null` on any failure). Dispatched fire-and-forget from
+`ingestController` after the 202 response, only when `isNewGroup` is
+true, never `await`-ed in the request cycle. Unit tests added
+(`errorGroupService.test.js`) mocking `githubService`/`aiService`/
+`ErrorGroup.findByIdAndUpdate` — **not yet run**, since this sandbox
+has no `node_modules` installed and no network access to `npm
+install`; run `npm test` locally before considering this closed. Live
+manual verification against real Gemini/GitHub calls also still owed
+(see this task's handoff notes).
 
-Next up: **Task 13** — wire `aiService` + `githubService` together
-into the ingestion "new group" path, fire-and-forget. Not started.
+Before this: the Foundation-Hardening & Documentation Re-Engineering
+pass — Workstream 2 restructured the documentation system (this file
+included), and Workstream 1 closed a set of bugs, security gaps, one
+maintainability item, and one automated test against the Milestone
+1–3 codebase. See `DECISIONS.md`'s newest entries for what changed and
+why; see the "Shipped Log" at the bottom of `DECISIONS.md` for the
+plain changelog of that pass.
+
+Next up: **Task 14** — derived confidence score +
+affectedFile/affectedFunction fields. Not started.
 
 ## Known Open Issues
 
@@ -44,17 +59,10 @@ into the ingestion "new group" path, fire-and-forget. Not started.
   to stack-trace-only grounding, never a hard failure (see
   `DECISIONS.md`, "githubService: snippet windowing + optional
   GITHUB_TOKEN").
-- **Git state not independently confirmed.** No commit/push from the
-  prior AI-enrichment session (Tasks 9.2/9.3/10/11/12) was confirmed
-  by the user in that session's chat transcript. Assume nothing past
-  Task 8 is actually committed until verified locally with `git log`
-  / `git status`, and run the suggested commits below in order if
-  they aren't there yet:
-  - `feat(9.3): wire fingerprintService + atomic upsert dedup into ingestController` (bundled with 9.2's model)
-  - `feat(10): add demo Express app, verify dedup end-to-end`
-  - `feat(11): add aiService (buildPrompt/callGemini/parseAndValidate)`
-  - `feat(12): add githubService for GitHub Contents API grounding`
-  - Plus this pass's commits — see this pass's summary for the full list.
+- **Git state confirmed clean.** Verified locally via `git log` /
+  `git status`: Tasks 9.2/9.3/10/11/12 plus this pass's changes are
+  all committed on `refactor-v2` (tip `3f4c45d "Major refactor"`),
+  branch is up to date with `origin/refactor-v2`, working tree clean.
 - **Manual re-verification of this pass's changes is still owed.**
   Everything in this pass was implemented and unit-tested where
   stated, but the live-server manual checks listed in this pass's
@@ -68,7 +76,7 @@ into the ingestion "new group" path, fire-and-forget. Not started.
 Pointers only — see `DECISIONS.md` for full reasoning:
 
 - Dedup uses atomic `findOneAndUpdate` upsert, not read-then-write ("Atomic upsert dedup: `findOneAndUpdate` before read-then-write").
-- AI enrichment will be fire-and-forget, dispatched after the ingestion response is sent (`AI_CONTEXT.md`'s Dispatch Model; not yet wired — that's Task 13).
+- AI enrichment is fire-and-forget, dispatched after the ingestion response is sent, only for new groups (`AI_CONTEXT.md`'s Dispatch Model — wired in Task 13, in `ingestController` + `errorGroupService.enrichErrorGroup`; see `DECISIONS.md`'s "errorGroupService.enrichErrorGroup: orchestration lives in errorGroupService, not aiService (Task 13)").
 - AI confidence will be derived programmatically, never self-reported by the LLM ("aiService: package and model choice").
 - `aiService` is pure functions, not a 4-class provider hierarchy ("aiService: package and model choice").
 - API-key auth (ingestion) and JWT auth (dashboard) are deliberately separate middleware ("API key hashing: SHA-256, not bcrypt").

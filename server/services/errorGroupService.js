@@ -1,6 +1,14 @@
 const ErrorGroup = require('../models/ErrorGroup');
 const ErrorEvent = require('../models/ErrorEvent');
 const { generateFingerprint } = require('./fingerprintService');
+const { normalizeStack } = require('../utils/stackNormalizer');
+// Required as namespace objects, not destructured — same reasoning as
+// ErrorGroup/ErrorEvent above: tests mock these by reassigning the
+// object's own methods, which only works if this file calls through
+// the object (githubService.fetchCodeSnippet(...)) rather than a
+// destructured local that captured the reference at require time.
+const githubService = require('./githubService');
+const aiService = require('./aiService');
 
 /**
  * Performs the atomic ErrorGroup upsert. Split out from recordEvent()
@@ -85,4 +93,53 @@ async function recordEvent({ projectId, message, stack, env, metadata }) {
   return { errorGroup, isNewGroup, errorEvent };
 }
 
-module.exports = { recordEvent };
+/**
+ * Task 13: wires aiService + githubService together for the
+ * "new error group" enrichment path. Called fire-and-forget from
+ * ingestController — never awaited inside the request/response cycle
+ * (AI_CONTEXT.md's Dispatch Model) — so this function must never
+ * throw out to its caller; every failure mode is caught and logged
+ * here instead, leaving `aiSummary: null` on the group untouched.
+ *
+ * Only sets rootCause/severity/suggestedFix on aiSummary. confidence/
+ * affectedFile/affectedFunction are deliberately left unset — those
+ * are derived server-side in Task 14, not this task's scope.
+ */
+async function enrichErrorGroup({ errorGroup, project, message, stack }) {
+  try {
+    const { frames } = normalizeStack(stack);
+    const topFrame = frames[0] || null;
+
+    let codeSnippet = null;
+    if (project && project.githubRepo && topFrame) {
+      codeSnippet = await githubService.fetchCodeSnippet({
+        githubRepo: project.githubRepo,
+        filePath: topFrame.file,
+        line: topFrame.line,
+      });
+    }
+
+    const prompt = aiService.buildPrompt({ message, stack, codeSnippet });
+    const rawResponse = await aiService.callGemini(prompt);
+    const parsed = aiService.parseAndValidate(rawResponse);
+
+    if (!parsed) {
+      console.warn(
+        `[errorGroupService] AI enrichment returned no valid summary for group ${errorGroup._id} — leaving aiSummary null`
+      );
+      return;
+    }
+
+    await ErrorGroup.findByIdAndUpdate(errorGroup._id, { $set: { aiSummary: parsed } });
+  } catch (err) {
+    // Enrichment must never break ingestion — by the time this runs,
+    // the 202 has already been sent. Log and stop; aiSummary stays
+    // null on the group, same as the parseAndValidate-failure case.
+    console.error(
+      `[errorGroupService] AI enrichment failed for group ${errorGroup._id}:`,
+      err.message
+    );
+  }
+}
+
+module.exports = { recordEvent, enrichErrorGroup };

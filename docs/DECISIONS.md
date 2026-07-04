@@ -742,6 +742,81 @@ file, missing file → `null`, no-repo-configured → `null`, malformed
 
 ---
 
+## errorGroupService.enrichErrorGroup: orchestration lives in errorGroupService, not aiService (Task 13)
+
+**Decision:** The Task 13 wiring — parse the stack for the top app
+frame, conditionally fetch a GitHub snippet, build the prompt, call
+Gemini, validate, and save `aiSummary` — lives in a new
+`errorGroupService.enrichErrorGroup()` function, not inside
+`aiService.js` or as a new top-level service/module.
+`ingestController.ingestEvent` calls it fire-and-forget (not
+`await`-ed) only when `isNewGroup` is true, after the 202 response has
+already been sent. `githubService`/`aiService` are now required as
+namespace objects (`const aiService = require('./aiService')`) rather
+than destructured, matching how `ErrorGroup`/`ErrorEvent` were already
+required — destructuring would have captured the exported functions
+by value at require time, making them unmockable in tests without a
+mocking library.
+
+**Alternatives considered:**
+1. A new `enrichmentService.js` / dedicated orchestration module.
+2. Put the orchestration inside `aiService.js` itself.
+3. Do the wiring directly in `ingestController`.
+
+**Justification:** `errorGroupService.js` already owns every write to
+`ErrorGroup` (the Task 9.3 upsert) — enrichment is just another
+ErrorGroup write, triggered by the same "new group" signal
+`recordEvent()` already computes. A new module (1) would be an
+unrequested abstraction for one call site (`PROJECT_RULES.md` §2/§11).
+Putting it in `aiService.js` (2) would break that file's Task
+11-locked scope (`buildPrompt`/`callGemini`/`parseAndValidate` only,
+per its own header comment) and would need `aiService` to reach into
+`githubService` and `ErrorGroup`, which its docstring explicitly says
+it doesn't do. Doing it directly in the controller (3) would violate
+the layering convention (`ARCHITECTURE.md` §"Layering Convention") —
+controllers never touch Mongoose, and this orchestration ends in a
+`ErrorGroup.findByIdAndUpdate`.
+
+**Justification (fire-and-forget placement):** The dispatch call sits
+in `ingestController`, after `sendSuccess` but not `return`-ed or
+`await`-ed, so the enrichment work starts only once the response has
+already been handed to Express — matching `AI_CONTEXT.md`'s Dispatch
+Model exactly (ingestion latency independent of LLM latency, no queue
+infra needed at MVP scale).
+
+**Shipped:** Task 13 — `errorGroupService.enrichErrorGroup()` added;
+`ingestController.ingestEvent` dispatches it fire-and-forget for new
+groups only. Unit tests added in `errorGroupService.test.js` (mocking
+`githubService`/`aiService`/`ErrorGroup.findByIdAndUpdate`, same
+approach as the existing `recordEvent` tests) covering: no-`githubRepo`
+skips the snippet fetch, a configured `githubRepo` fetches using the
+top app stack frame's file/line, an invalid/unparseable Gemini response
+leaves `aiSummary` untouched, and a thrown Gemini error is caught
+internally and never propagates. **Not yet run** — this
+implementation environment has no `node_modules` installed and no
+network access to `npm install`; run `npm test` locally before
+considering this done. Live manual verification (real Gemini +
+GitHub Contents API call against a project with `githubRepo` set,
+and one without) is also still owed — see `STATUS.md`.
+
+**Likely interview questions:**
+- *Why not `await` the enrichment call at all, even briefly?* — Any
+  `await`, even one that resolves fast in the common case, ties
+  ingestion latency to LLM latency in the slow/failing case. Firing it
+  after the response is sent removes that coupling entirely without
+  needing a job queue.
+- *What happens if `enrichErrorGroup` throws?* — It can't, out to its
+  caller — the whole body is wrapped in one try/catch that logs and
+  returns. That's deliberate: a fire-and-forget call with no `.catch()`
+  at the call site would otherwise risk an unhandled promise rejection
+  crashing the process.
+- *Why only enrich new groups, never duplicates?* — `AI_CONTEXT.md`'s
+  "Role of AI in This System": enrichment runs exactly once per new
+  error group, not per event — re-running it on every duplicate
+  occurrence would be wasted Gemini/GitHub calls for the same bug.
+
+---
+
 ## errorGroupService: retry-once on duplicate-key error
 
 **Decision:** `errorGroupService.recordEvent()`'s atomic upsert now
@@ -1026,7 +1101,7 @@ above. Migrated from `CHANGELOG.md`.
   warning (not a hard crash — `server.js` decides whether to refuse to
   start), exports a single typed `config` object.
 - **Task 1.1** — Monorepo folder structure scaffolded
-  (`server/{config,controllers,services,middleware,routes,models,
+  `server/{config,controllers,services,middleware,routes,models,
   utils}`, `client/` and `demo-app/` placeholders); `server/package.json`
   with core dependencies; `server/.env.example` documenting required
   env vars.

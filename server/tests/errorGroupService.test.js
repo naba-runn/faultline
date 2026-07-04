@@ -29,7 +29,9 @@ const assert = require('node:assert/strict');
 
 const ErrorGroup = require('../models/ErrorGroup');
 const ErrorEvent = require('../models/ErrorEvent');
-const { recordEvent } = require('../services/errorGroupService');
+const githubService = require('../services/githubService');
+const aiService = require('../services/aiService');
+const { recordEvent, enrichErrorGroup } = require('../services/errorGroupService');
 
 function fakeObjectId(seed) {
   // Mongoose ObjectIds aren't needed for real here — recordEvent only
@@ -173,6 +175,158 @@ test('recordEvent: a non-E11000 error is not retried and propagates to the calle
         /connection reset/
       );
       assert.equal(attempts, 1, 'no retry for a non-duplicate-key error');
+    }
+  );
+});
+
+// --- enrichErrorGroup (Task 13) ---
+//
+// Same reasoning as above: no live Gemini/GitHub credentials or
+// network access in this environment, so githubService/aiService's
+// exported functions are monkey-patched with in-memory fakes rather
+// than hit for real. This exercises enrichErrorGroup's own wiring
+// logic (frame selection, conditional snippet fetch, save-on-success,
+// leave-null-on-failure) — it does not verify the real Gemini/GitHub
+// calls themselves, which is what the live manual test (this task's
+// handoff notes) is for.
+
+function withMockedEnrichmentDeps(mocks, fn) {
+  const originalFetchCodeSnippet = githubService.fetchCodeSnippet;
+  const originalBuildPrompt = aiService.buildPrompt;
+  const originalCallGemini = aiService.callGemini;
+  const originalParseAndValidate = aiService.parseAndValidate;
+  const originalFindByIdAndUpdate = ErrorGroup.findByIdAndUpdate;
+
+  githubService.fetchCodeSnippet = mocks.fetchCodeSnippet || originalFetchCodeSnippet;
+  aiService.buildPrompt = mocks.buildPrompt || originalBuildPrompt;
+  aiService.callGemini = mocks.callGemini || originalCallGemini;
+  aiService.parseAndValidate = mocks.parseAndValidate || originalParseAndValidate;
+  ErrorGroup.findByIdAndUpdate = mocks.findByIdAndUpdate || originalFindByIdAndUpdate;
+
+  return fn().finally(() => {
+    githubService.fetchCodeSnippet = originalFetchCodeSnippet;
+    aiService.buildPrompt = originalBuildPrompt;
+    aiService.callGemini = originalCallGemini;
+    aiService.parseAndValidate = originalParseAndValidate;
+    ErrorGroup.findByIdAndUpdate = originalFindByIdAndUpdate;
+  });
+}
+
+test('enrichErrorGroup: no githubRepo configured — skips snippet fetch, still saves aiSummary', async () => {
+  let snippetFetchCalled = false;
+  let savedUpdate = null;
+
+  await withMockedEnrichmentDeps(
+    {
+      fetchCodeSnippet: async () => {
+        snippetFetchCalled = true;
+        return 'should not be called';
+      },
+      buildPrompt: ({ codeSnippet }) => {
+        assert.equal(codeSnippet, null, 'no githubRepo means codeSnippet must stay null');
+        return 'prompt';
+      },
+      callGemini: async () => '{"rootCause":"x","severity":"low","suggestedFix":["do x"]}',
+      parseAndValidate: (raw) => JSON.parse(raw),
+      findByIdAndUpdate: async (id, update) => {
+        savedUpdate = update;
+        return { _id: id };
+      },
+    },
+    async () => {
+      await enrichErrorGroup({
+        errorGroup: { _id: fakeObjectId('group-no-repo') },
+        project: { githubRepo: null },
+        message: 'TypeError: x is not a function',
+        stack: 'at foo (/app/server/index.js:1:1)',
+      });
+
+      assert.equal(snippetFetchCalled, false);
+      assert.deepEqual(savedUpdate.$set.aiSummary, {
+        rootCause: 'x',
+        severity: 'low',
+        suggestedFix: ['do x'],
+      });
+    }
+  );
+});
+
+test('enrichErrorGroup: githubRepo configured — fetches snippet for the top app frame', async () => {
+  let fetchArgs = null;
+
+  await withMockedEnrichmentDeps(
+    {
+      fetchCodeSnippet: async (args) => {
+        fetchArgs = args;
+        return '1: const x = 1;';
+      },
+      buildPrompt: ({ codeSnippet }) => {
+        assert.equal(codeSnippet, '1: const x = 1;');
+        return 'prompt';
+      },
+      callGemini: async () => '{"rootCause":"y","severity":"high","suggestedFix":["do y"]}',
+      parseAndValidate: (raw) => JSON.parse(raw),
+      findByIdAndUpdate: async () => ({}),
+    },
+    async () => {
+      await enrichErrorGroup({
+        errorGroup: { _id: fakeObjectId('group-with-repo') },
+        project: { githubRepo: 'owner/repo' },
+        message: 'TypeError: x is not a function',
+        stack: 'at foo (/app/server/routes/foo.js:10:2)',
+      });
+
+      assert.equal(fetchArgs.githubRepo, 'owner/repo');
+      assert.equal(fetchArgs.filePath, '/app/server/routes/foo.js');
+      assert.equal(fetchArgs.line, 10);
+    }
+  );
+});
+
+test('enrichErrorGroup: invalid/unparseable Gemini response — leaves aiSummary untouched, does not throw', async () => {
+  let saveCalled = false;
+
+  await withMockedEnrichmentDeps(
+    {
+      fetchCodeSnippet: async () => null,
+      buildPrompt: () => 'prompt',
+      callGemini: async () => 'not valid json',
+      parseAndValidate: () => null,
+      findByIdAndUpdate: async () => {
+        saveCalled = true;
+      },
+    },
+    async () => {
+      await enrichErrorGroup({
+        errorGroup: { _id: fakeObjectId('group-bad-response') },
+        project: { githubRepo: null },
+        message: 'Error: boom',
+        stack: 'at baz (/app/server/index.js:3:3)',
+      });
+
+      assert.equal(saveCalled, false, 'must not save when parseAndValidate returns null');
+    }
+  );
+});
+
+test('enrichErrorGroup: Gemini call throws — caught internally, never propagates', async () => {
+  await withMockedEnrichmentDeps(
+    {
+      fetchCodeSnippet: async () => null,
+      buildPrompt: () => 'prompt',
+      callGemini: async () => {
+        throw new Error('Gemini API unavailable');
+      },
+    },
+    async () => {
+      await assert.doesNotReject(() =>
+        enrichErrorGroup({
+          errorGroup: { _id: fakeObjectId('group-gemini-down') },
+          project: { githubRepo: null },
+          message: 'Error: boom',
+          stack: 'at qux (/app/server/index.js:4:4)',
+        })
+      );
     }
   );
 });

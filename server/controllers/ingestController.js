@@ -1,14 +1,14 @@
-const { recordEvent } = require('../services/errorGroupService');
+const { recordEvent, enrichErrorGroup } = require('../services/errorGroupService');
 const { sendSuccess, sendError } = require('../utils/httpResponse');
 
 /**
  * Ingestion endpoint. Validates, fingerprints, atomically upserts the
- * owning ErrorGroup (dedup), and records the individual ErrorEvent. AI
- * enrichment is NOT triggered here — that's Task 13's fire-and-forget
- * dispatch, which will read `isNewGroup` (already computed by
- * errorGroupService) once wired in. Controller stays thin: parse req,
- * call the service, shape the response — no Mongoose calls happen
- * directly in this file.
+ * owning ErrorGroup (dedup), and records the individual ErrorEvent. On
+ * a brand-new group only, AI enrichment is dispatched fire-and-forget
+ * — kicked off after the response is sent, never `await`-ed in the
+ * request/response cycle (AI_CONTEXT.md's Dispatch Model). Controller
+ * stays thin: parse req, call the service, shape the response — no
+ * Mongoose calls happen directly in this file.
  */
 async function ingestEvent(req, res) {
   const { message, stack, env, metadata } = req.body;
@@ -38,14 +38,24 @@ async function ingestEvent(req, res) {
 
     // 202 Accepted, not 201 Created — this endpoint's contract has
     // always been "accepted for processing," and now that's literally
-    // true: the event was persisted, but AI enrichment (the other half
-    // of "processing") hasn't run yet and won't for existing groups.
-    return sendSuccess(res, 202, {
+    // true: the event was persisted, and for a new group AI enrichment
+    // (the other half of "processing") is about to be dispatched below
+    // — but not awaited, so it never delays this response.
+    sendSuccess(res, 202, {
       received: true,
       projectId: req.project._id,
       errorGroupId: errorGroup._id,
       isNewGroup,
     });
+
+    if (isNewGroup) {
+      // Fire-and-forget: intentionally not awaited. enrichErrorGroup
+      // catches all of its own failures internally, so there's nothing
+      // to .catch() here — see errorGroupService.js.
+      enrichErrorGroup({ errorGroup, project: req.project, message, stack });
+    }
+
+    return;
   } catch (err) {
     // Plain try/catch, matching PROJECT_RULES.md §11 — AppError/
     // catchAsync is Task 20, not retrofitted early.
