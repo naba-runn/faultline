@@ -817,6 +817,72 @@ and one without) is also still owed — see `STATUS.md`.
 
 ---
 
+## Task 14: confidence values and affectedFile/affectedFunction source
+
+**Decision:** `confidence` is a **binary** value, not a continuous
+score: `0.8` when `enrichErrorGroup` actually fetched a GitHub
+snippet and it grounded the prompt, `0.4` when it didn't (no
+`githubRepo` configured on the project, the stack had no parseable
+top frame, or the GitHub fetch itself failed/404'd). `affectedFile`
+and `affectedFunction` are read directly off
+`stackNormalizer.normalizeStack(stack).frames[0]` (`.file` /
+`.functionName`) — both saved as `null`, not omitted, when the stack
+didn't parse into any frames at all.
+
+**Alternatives considered:**
+1. A continuous confidence score (e.g. weighted by stack depth, how
+   many frames were app-code vs. dependency code, or a rubric based on
+   the model's own severity rating).
+2. Ask the LLM to self-report confidence and use that directly.
+3. Omit `affectedFile`/`affectedFunction` entirely rather than storing
+   `null` when there's no top frame.
+
+**Justification:** `AI_CONTEXT.md` already rejects (2) explicitly —
+LLM self-reported confidence isn't reliably calibrated. A continuous
+score (1) would need a rubric with no real signal behind it at MVP
+scale — the only fact this codebase actually has about the
+enrichment's grounding is binary (a real source snippet reached the
+prompt, or it didn't), so a two-value confidence is the honest
+reflection of that, not an under-engineered placeholder for something
+fancier. Storing explicit `null` (not omitting the fields, rejecting
+option 3) keeps `aiSummary`'s shape uniform across every saved
+document — a UI reading this collection later doesn't need to
+special-case "field present" vs. "field absent," just "is it null."
+
+**Shipped:** Task 14 — `errorGroupService.enrichErrorGroup` now
+computes all three fields and includes them in the saved `aiSummary`
+alongside Task 13's `rootCause`/`severity`/`suggestedFix`. Tests
+updated/added in `errorGroupService.test.js`: grounded path saves
+`confidence: 0.8` with the real top frame's file/function; ungrounded
+path (no `githubRepo`) saves `confidence: 0.4` with the top frame's
+file/function still populated (a frame parsed fine, there just wasn't
+a `githubRepo` to fetch from); a stack with no parseable frames at all
+saves `confidence: 0.4` and both fields as `null`. **Not yet run** —
+same sandbox limitation as Task 13 (no `node_modules`, no network);
+run `npm test` locally. Live manual verification also still owed —
+see `STATUS.md`.
+
+**Likely interview questions:**
+- *Why binary confidence instead of something more granular?* — There
+  wasn't a second real signal to build a rubric on. A confidence score
+  invented from nothing (stack depth, frame count) would just be
+  noise dressed up as precision. The one fact that's actually true and
+  useful — "did the model see real source or not" — is binary, so the
+  score is too.
+- *Why is `affectedFile` still populated when there's no `githubRepo`
+  configured?* — `affectedFile`/`affectedFunction` answer "where did
+  this stack trace point," which doesn't depend on GitHub access at
+  all — that's a separate question from `confidence`, which answers
+  "how much did the model actually see." A project with no
+  `githubRepo` can still have a perfectly parseable stack frame.
+- *Why store `null` instead of leaving the fields off the document?*
+  — Uniform document shape. Every `ErrorGroup` with a non-null
+  `aiSummary` has all five fields present, so any code reading this
+  later checks one thing (`=== null`) instead of also handling
+  "key doesn't exist."
+
+---
+
 ## errorGroupService: retry-once on duplicate-key error
 
 **Decision:** `errorGroupService.recordEvent()`'s atomic upsert now
@@ -1101,7 +1167,7 @@ above. Migrated from `CHANGELOG.md`.
   warning (not a hard crash — `server.js` decides whether to refuse to
   start), exports a single typed `config` object.
 - **Task 1.1** — Monorepo folder structure scaffolded
-  `server/{config,controllers,services,middleware,routes,models,
+  (`server/{config,controllers,services,middleware,routes,models,
   utils}`, `client/` and `demo-app/` placeholders); `server/package.json`
   with core dependencies; `server/.env.example` documenting required
   env vars.

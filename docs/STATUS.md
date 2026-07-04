@@ -10,8 +10,7 @@
 
 - **Milestone 1 — Backend Foundation:** COMPLETE (4/4 tasks)
 - **Milestone 2 — Projects & Ingestion:** COMPLETE (6/6 tasks)
-- **Milestone 3 — AI Enrichment:** in progress (3/4 tasks — Tasks 11,
-  12, and 13 done; Task 14 next)
+- **Milestone 3 — AI Enrichment:** COMPLETE (4/4 tasks)
 
 Task numbering and full checklist: `TASKS.md`. This section only
 states current position, not a restated description of every task —
@@ -20,31 +19,30 @@ that would duplicate `TASKS.md`.
 ## What's Actively In Progress
 
 Nothing mid-implementation as of this pass. Most recently completed:
-**Task 13** — `errorGroupService.enrichErrorGroup` now wires
-`githubService.fetchCodeSnippet` + `aiService.{buildPrompt,callGemini,
-parseAndValidate}` together (parses the stack via `stackNormalizer`,
-fetches a snippet only when `project.githubRepo` is set, saves
-`aiSummary: { rootCause, severity, suggestedFix }` on success, leaves
-it `null` on any failure). Dispatched fire-and-forget from
-`ingestController` after the 202 response, only when `isNewGroup` is
-true, never `await`-ed in the request cycle. Unit tests added
-(`errorGroupService.test.js`) mocking `githubService`/`aiService`/
-`ErrorGroup.findByIdAndUpdate` — **not yet run**, since this sandbox
-has no `node_modules` installed and no network access to `npm
-install`; run `npm test` locally before considering this closed. Live
-manual verification against real Gemini/GitHub calls also still owed
-(see this task's handoff notes).
+**Task 14** — `errorGroupService.enrichErrorGroup` now also computes
+`confidence` (`0.8` if the GitHub snippet was actually fetched and
+grounded the prompt, `0.4` otherwise — binary, not a continuous
+score) and `affectedFile`/`affectedFunction` (straight from
+`stackNormalizer.normalizeStack(stack).frames[0]`, both `null` if the
+stack didn't parse into any frames), alongside Task 13's
+`rootCause`/`severity`/`suggestedFix`. All three are still only ever
+computed server-side, never asked of the LLM. Tests updated/added in
+`errorGroupService.test.js` covering: grounded (`0.8`) vs. ungrounded
+(`0.4`) confidence, `affectedFile`/`affectedFunction` populated from a
+real top frame, and both saved as `null` when the stack has no
+parseable frames at all — **not yet run**, same sandbox limitation as
+before (no `node_modules`, no network for `npm install`); run `npm
+test` locally before considering this closed. Live manual verification
+also still owed (see this task's handoff notes).
 
-Before this: the Foundation-Hardening & Documentation Re-Engineering
-pass — Workstream 2 restructured the documentation system (this file
-included), and Workstream 1 closed a set of bugs, security gaps, one
-maintainability item, and one automated test against the Milestone
-1–3 codebase. See `DECISIONS.md`'s newest entries for what changed and
-why; see the "Shipped Log" at the bottom of `DECISIONS.md` for the
-plain changelog of that pass.
+Milestone 3 (AI Enrichment) is now fully complete (4/4). Next up is
+Milestone 4.
 
-Next up: **Task 14** — derived confidence score +
-affectedFile/affectedFunction fields. Not started.
+Before this: Task 13 — wiring `aiService` + `githubService` into the
+ingestion "new group" path, fire-and-forget.
+
+Next up: **Task 15** — React scaffold, `AuthContext`, axios instance
+with interceptor. Not started.
 
 ## Constitution Amendments
 
@@ -93,7 +91,7 @@ Pointers only — see `DECISIONS.md` for full reasoning:
 
 - Dedup uses atomic `findOneAndUpdate` upsert, not read-then-write ("Atomic upsert dedup: `findOneAndUpdate` before read-then-write").
 - AI enrichment is fire-and-forget, dispatched after the ingestion response is sent, only for new groups (`AI_CONTEXT.md`'s Dispatch Model — wired in Task 13, in `ingestController` + `errorGroupService.enrichErrorGroup`; see `DECISIONS.md`'s "errorGroupService.enrichErrorGroup: orchestration lives in errorGroupService, not aiService (Task 13)").
-- AI confidence will be derived programmatically, never self-reported by the LLM ("aiService: package and model choice").
+- AI confidence is derived programmatically as a binary value (`0.8` grounded / `0.4` ungrounded), never self-reported by the LLM ("Task 14: confidence values and affectedFile/affectedFunction source").
 - `aiService` is pure functions, not a 4-class provider hierarchy ("aiService: package and model choice").
 - API-key auth (ingestion) and JWT auth (dashboard) are deliberately separate middleware ("API key hashing: SHA-256, not bcrypt").
 - Raw fetched GitHub source snippets are never persisted ("githubService: snippet windowing + optional GITHUB_TOKEN").

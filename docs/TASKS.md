@@ -40,7 +40,7 @@ approved blueprint. Check off as completed; do not reorder or skip.
 - [x] **Task 11** — `aiService`: buildPrompt / callGemini / parseAndValidate
 - [x] **Task 12** — GitHub Contents API fetch (grounding)
 - [x] **Task 13** — Wire AI enrichment into "new group" path, fire-and-forget
-- [ ] **Task 14** — Derived confidence score + affectedFile/affectedFunction fields
+- [x] **Task 14** — Derived confidence score + affectedFile/affectedFunction fields
 
 ## Milestone 4: Frontend Foundation
 

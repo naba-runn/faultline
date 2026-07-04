@@ -212,7 +212,7 @@ function withMockedEnrichmentDeps(mocks, fn) {
   });
 }
 
-test('enrichErrorGroup: no githubRepo configured — skips snippet fetch, still saves aiSummary', async () => {
+test('enrichErrorGroup: no githubRepo configured — skips snippet fetch, saves aiSummary with low confidence and no affectedFile/Function', async () => {
   let snippetFetchCalled = false;
   let savedUpdate = null;
 
@@ -246,13 +246,17 @@ test('enrichErrorGroup: no githubRepo configured — skips snippet fetch, still 
         rootCause: 'x',
         severity: 'low',
         suggestedFix: ['do x'],
+        confidence: 0.4,
+        affectedFile: '/app/server/index.js',
+        affectedFunction: 'foo',
       });
     }
   );
 });
 
-test('enrichErrorGroup: githubRepo configured — fetches snippet for the top app frame', async () => {
+test('enrichErrorGroup: githubRepo configured — fetches snippet for the top app frame, saves aiSummary with high confidence', async () => {
   let fetchArgs = null;
+  let savedUpdate = null;
 
   await withMockedEnrichmentDeps(
     {
@@ -266,7 +270,10 @@ test('enrichErrorGroup: githubRepo configured — fetches snippet for the top ap
       },
       callGemini: async () => '{"rootCause":"y","severity":"high","suggestedFix":["do y"]}',
       parseAndValidate: (raw) => JSON.parse(raw),
-      findByIdAndUpdate: async () => ({}),
+      findByIdAndUpdate: async (id, update) => {
+        savedUpdate = update;
+        return {};
+      },
     },
     async () => {
       await enrichErrorGroup({
@@ -279,6 +286,48 @@ test('enrichErrorGroup: githubRepo configured — fetches snippet for the top ap
       assert.equal(fetchArgs.githubRepo, 'owner/repo');
       assert.equal(fetchArgs.filePath, '/app/server/routes/foo.js');
       assert.equal(fetchArgs.line, 10);
+      assert.equal(savedUpdate.$set.aiSummary.confidence, 0.8);
+      assert.equal(savedUpdate.$set.aiSummary.affectedFile, '/app/server/routes/foo.js');
+      assert.equal(savedUpdate.$set.aiSummary.affectedFunction, 'foo');
+    }
+  );
+});
+
+test('enrichErrorGroup: unparseable stack (no frames) — affectedFile/affectedFunction saved as null, confidence stays low', async () => {
+  let savedUpdate = null;
+
+  await withMockedEnrichmentDeps(
+    {
+      fetchCodeSnippet: async () => {
+        throw new Error('should not be called — no top frame to fetch for');
+      },
+      buildPrompt: ({ codeSnippet }) => {
+        assert.equal(codeSnippet, null);
+        return 'prompt';
+      },
+      callGemini: async () => '{"rootCause":"z","severity":"medium","suggestedFix":["do z"]}',
+      parseAndValidate: (raw) => JSON.parse(raw),
+      findByIdAndUpdate: async (id, update) => {
+        savedUpdate = update;
+        return {};
+      },
+    },
+    async () => {
+      await enrichErrorGroup({
+        errorGroup: { _id: fakeObjectId('group-no-frames') },
+        project: { githubRepo: 'owner/repo' },
+        message: 'Error: totally unstructured',
+        stack: 'this is not a real stack trace at all',
+      });
+
+      assert.deepEqual(savedUpdate.$set.aiSummary, {
+        rootCause: 'z',
+        severity: 'medium',
+        suggestedFix: ['do z'],
+        confidence: 0.4,
+        affectedFile: null,
+        affectedFunction: null,
+      });
     }
   );
 });

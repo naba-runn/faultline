@@ -1,12 +1,10 @@
 # Faultline — AI Integration Context
 
-**Status: Tasks 11–13 done** (`aiService.js`'s pure functions +
+**Status: Tasks 11–14 done** (`aiService.js`'s pure functions +
 `callGemini`; `githubService.js`'s Contents API fetch; Task 13 wired
 both into `errorGroupService.enrichErrorGroup`, dispatched
-fire-and-forget from `ingestController` on new groups only). Task 14
-(derived confidence/affectedFile/affectedFunction) remains — Task 13
-deliberately saves only `{ rootCause, severity, suggestedFix }` on
-`aiSummary`, leaving those three fields unset. This file exists so the
+fire-and-forget from `ingestController` on new groups only; Task 14
+added the three server-derived fields below). This file exists so the
 design decisions from the architecture review survive even if
 implementation happens in a different session.
 
@@ -16,7 +14,7 @@ min: 0, max: 1`, locked in Task 9.1). Previously this file described
 `confidence` as `"high"`/`"low"` strings — flagged across three files
 over multiple sessions and never actually corrected until now. See
 `DECISIONS.md`'s "aiService: package and model choice" entry.
-`confidence` still isn't computed anywhere yet — that's Task 14.
+`confidence` is now computed — see "Fields Derived Server-Side" below.
 
 ## Role of AI in This System
 
@@ -24,7 +22,7 @@ Enrichment, not product. Triggered exactly once per new error group
 (never per event, never user-facing as a chat interface). If the AI
 call fails, ingestion must never fail because of it.
 
-## Pipeline (to implement in Tasks 11–14)
+## Pipeline (implemented across Tasks 11–14)
 
 1. Parse the stack trace, extract the top application frame (file + line).
 2. If `project.githubRepo` is set, fetch that file via GitHub's
@@ -55,12 +53,19 @@ this without updating this doc and explaining why:
 - **`confidence`**: a `Number` in `[0, 1]` (matching
   `ErrorGroup.js`'s `aiSummarySchema`), derived from whether the
   GitHub file fetch succeeded and was included in the prompt (higher)
-  vs. enrichment falling back to stack-trace-only (lower). Exact
-  values are Task 14's to decide — not yet implemented. LLM
+  vs. enrichment falling back to stack-trace-only (lower). LLM
   self-reported confidence is not reliably calibrated, so we don't ask
-  for it.
+  for it. **Implemented in Task 14** as a binary value, not a
+  continuous score: `0.8` when a snippet was fetched and grounded the
+  prompt, `0.4` when it wasn't (no `githubRepo` configured, no parsed
+  top frame, or the GitHub fetch failed) — see
+  `errorGroupService.enrichErrorGroup` and `DECISIONS.md`'s "Task 14:
+  confidence values and affectedFile/affectedFunction source".
 - **`affectedFile` / `affectedFunction`**: derived from the parsed top
-  stack frame, not restated by the model.
+  stack frame, not restated by the model. **Implemented in Task 14**:
+  taken directly from `stackNormalizer.normalizeStack(stack).frames[0]`
+  (`.file` / `.functionName`) — both saved as `null` if the stack
+  didn't parse into any frames at all.
 
 ## Dispatch Model
 

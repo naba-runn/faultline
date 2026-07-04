@@ -93,6 +93,14 @@ async function recordEvent({ projectId, message, stack, env, metadata }) {
   return { errorGroup, isNewGroup, errorEvent };
 }
 
+// Task 14: confidence is binary based on whether the GitHub snippet
+// was actually included in the prompt (grounded) or not (stack-trace-
+// only) — not a continuous score computed from anything more granular.
+// See DECISIONS.md, "Task 14: confidence values and
+// affectedFile/affectedFunction source" for why these two values.
+const GROUNDED_CONFIDENCE = 0.8;
+const UNGROUNDED_CONFIDENCE = 0.4;
+
 /**
  * Task 13: wires aiService + githubService together for the
  * "new error group" enrichment path. Called fire-and-forget from
@@ -101,9 +109,11 @@ async function recordEvent({ projectId, message, stack, env, metadata }) {
  * throw out to its caller; every failure mode is caught and logged
  * here instead, leaving `aiSummary: null` on the group untouched.
  *
- * Only sets rootCause/severity/suggestedFix on aiSummary. confidence/
- * affectedFile/affectedFunction are deliberately left unset — those
- * are derived server-side in Task 14, not this task's scope.
+ * Task 14 adds confidence/affectedFile/affectedFunction on top of
+ * Task 13's rootCause/severity/suggestedFix — all three derived
+ * server-side from data this function already has, never asked of
+ * the LLM (AI_CONTEXT.md's "Fields Derived Server-Side, Not From the
+ * LLM"). See DECISIONS.md for the exact confidence values chosen.
  */
 async function enrichErrorGroup({ errorGroup, project, message, stack }) {
   try {
@@ -130,7 +140,19 @@ async function enrichErrorGroup({ errorGroup, project, message, stack }) {
       return;
     }
 
-    await ErrorGroup.findByIdAndUpdate(errorGroup._id, { $set: { aiSummary: parsed } });
+    const aiSummary = {
+      ...parsed,
+      // Higher when the model actually saw real source (grounded),
+      // lower when it only had the error message + stack to go on.
+      // Never the LLM's own self-reported confidence — see
+      // AI_CONTEXT.md and DECISIONS.md's "Task 14: confidence values
+      // and affectedFile/affectedFunction source" entry.
+      confidence: codeSnippet ? GROUNDED_CONFIDENCE : UNGROUNDED_CONFIDENCE,
+      affectedFile: topFrame ? topFrame.file : null,
+      affectedFunction: topFrame ? topFrame.functionName : null,
+    };
+
+    await ErrorGroup.findByIdAndUpdate(errorGroup._id, { $set: { aiSummary } });
   } catch (err) {
     // Enrichment must never break ingestion — by the time this runs,
     // the 202 has already been sent. Log and stop; aiSummary stays
