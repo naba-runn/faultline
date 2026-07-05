@@ -1,66 +1,49 @@
-const express = require('express');
-const helmet = require('helmet');
-const cors = require('cors');
-const morgan = require('morgan');
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import LoginPage from './pages/LoginPage.jsx';
+import RegisterPage from './pages/RegisterPage.jsx';
+import DashboardPage from './pages/DashboardPage.jsx';
+import ProjectDetailPage from './pages/ProjectDetailPage.jsx';
+import GroupDetailPage from './pages/GroupDetailPage.jsx';
+import ProtectedRoute from './components/ProtectedRoute.jsx';
 
-const config = require('./config/env');
-const errorMiddleware = require('./middleware/errorMiddleware');
+// Task 17 added the real Dashboard (project list + create form) and
+// ProjectDetail (error group table), replacing Task 16's Dashboard
+// placeholder. Task 19 adds ErrorGroupDetail (a per-group page) below.
+function App() {
+    return (
+        <BrowserRouter>
+            <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/register" element={<RegisterPage />} />
+                <Route
+                    path="/dashboard"
+                    element={
+                        <ProtectedRoute>
+                            <DashboardPage />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/projects/:id"
+                    element={
+                        <ProtectedRoute>
+                            <ProjectDetailPage />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/groups/:id"
+                    element={
+                        <ProtectedRoute>
+                            <GroupDetailPage />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
+        </BrowserRouter>
+    );
+}
 
-const authRoutes = require('./routes/authRoutes');
-const projectRoutes = require('./routes/projectRoutes');
-const ingestRoutes = require('./routes/ingestRoutes');
-const groupRoutes = require('./routes/groupRoutes');
-
-const app = express();
-
-// Security headers
-app.use(helmet());
-
-// CORS — allow only the configured client origin
-app.use(
-    cors({
-        origin: config.clientOrigin,
-        credentials: true,
-    })
-);
-
-// Body parsing with a size cap — prevents unbounded payloads from
-// reaching route handlers. Ingestion-specific field-level validation
-// (stackSample/metadata max length) is a separate concern, added in
-// Task 21.
-app.use(express.json({ limit: '100kb' }));
-app.use(express.urlencoded({ extended: true, limit: '100kb' }));
-
-// Request logging — dev-friendly format locally, combined in production
-app.use(morgan(config.isProduction ? 'combined' : 'dev'));
-
-app.use('/api/auth', authRoutes);
-app.use('/api/projects', projectRoutes);
-app.use('/api/events', ingestRoutes);
-app.use('/api/groups', groupRoutes);
-
-// Health check
-app.get('/health', (req, res) => {
-    res.status(200).json({
-        success: true,
-        status: 'ok',
-        env: config.nodeEnv,
-        timestamp: new Date().toISOString(),
-    });
-});
-
-// 404 handler — no route matched
-app.use((req, res) => {
-    res.status(404).json({
-        success: false,
-        error: 'Not Found',
-        message: `No route for ${req.method} ${req.originalUrl}`,
-    });
-});
-
-// Centralized error handler — Task 20. Must be mounted last. See
-// middleware/errorMiddleware.js for the full handling order
-// (AppError / CastError / ValidationError / unanticipated).
-app.use(errorMiddleware);
-
-module.exports = app;
+export default App;
