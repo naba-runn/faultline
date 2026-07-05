@@ -32,10 +32,11 @@ function LoginPage() {
     }
 
     return (
-        <div>
-            <h1>Log in</h1>
+        <div className="page-narrow">
+            <h1>Faultline</h1>
+            <p className="topbar-meta">Log in to your dashboard.</p>
             <form onSubmit={handleSubmit}>
-                <div>
+                <div className="field">
                     <label htmlFor="email">Email</label>
                     <input
                         id="email"
@@ -45,7 +46,7 @@ function LoginPage() {
                         required
                     />
                 </div>
-                <div>
+                <div className="field">
                     <label htmlFor="password">Password</label>
                     <input
                         id="password"
@@ -55,8 +56,8 @@ function LoginPage() {
                         required
                     />
                 </div>
-                {error && <p role="alert">{error}</p>}
-                <button type="submit" disabled={submitting}>
+                {error && <p className="alert alert-error" role="alert">{error}</p>}
+                <button type="submit" className="btn btn-primary" disabled={submitting}>
                     {submitting ? 'Logging in...' : 'Log in'}
                 </button>
             </form>

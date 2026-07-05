@@ -1,0 +1,484 @@
+/*
+ * Faultline — global styles (Task 23).
+ *
+ * Design direction: Faultline's subject matter is stack traces, error
+ * fingerprints, and event logs — data that is monospace by nature, not
+ * by preference. The token system below leans into that: a clean sans
+ * for UI chrome (nav, headings, buttons, labels), monospace for
+ * anything that IS data (error messages, stack traces, counts,
+ * timestamps, the API key, status/severity values, project names).
+ *
+ * Palette is a deep graphite console, not pure black — #14171c
+ * background, #1b1f26 raised surfaces, #2a2f38 hairline borders — with
+ * a single desaturated teal accent (#5fb3b3) for interactive elements.
+ * Severity/status get their own small pill badges since those are the
+ * two things a user scans a table for fastest.
+ *
+ * One stylesheet, plain CSS custom properties, no framework — matches
+ * PROJECT_RULES.md §11's "premature abstraction is a defect" stance;
+ * client/package.json has no CSS framework and this doesn't add one.
+ */
+
+:root {
+    --color-bg: #14171c;
+    --color-surface: #1b1f26;
+    --color-surface-raised: #21262e;
+    --color-border: #2a2f38;
+    --color-border-strong: #384049;
+
+    --color-text: #e4e7eb;
+    --color-text-muted: #8b929e;
+    --color-text-faint: #5b6270;
+
+    --color-accent: #5fb3b3;
+    --color-accent-strong: #7fc9c9;
+    --color-accent-bg: rgba(95, 179, 179, 0.12);
+
+    --color-danger: #e5484d;
+    --color-danger-bg: rgba(229, 72, 77, 0.14);
+    --color-warning: #f0a860;
+    --color-warning-bg: rgba(240, 168, 96, 0.14);
+    --color-caution: #e8c468;
+    --color-caution-bg: rgba(232, 196, 104, 0.14);
+    --color-success: #5fb392;
+    --color-success-bg: rgba(95, 179, 146, 0.14);
+
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+
+    --radius: 6px;
+    --radius-sm: 4px;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+    height: 100%;
+}
+
+body {
+    margin: 0;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+    font-family: var(--font-sans);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 0.6em 0;
+}
+
+h1 {
+    font-size: 1.5rem;
+}
+
+h2 {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-muted);
+    margin-top: 2rem;
+    margin-bottom: 0.75rem;
+}
+
+p {
+    margin: 0 0 1em 0;
+}
+
+a {
+    color: var(--color-accent);
+    text-decoration: none;
+}
+
+a:hover,
+a:focus-visible {
+    text-decoration: underline;
+}
+
+code,
+pre {
+    font-family: var(--font-mono);
+}
+
+/* Visible keyboard focus everywhere — frontend-design skill's quality
+   floor, not optional polish. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.001ms !important;
+        transition-duration: 0.001ms !important;
+    }
+}
+
+/* ---------- Layout shells ---------- */
+
+.page {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem 4rem 1.5rem;
+}
+
+.page-narrow {
+    max-width: 420px;
+    margin: 0 auto;
+    padding: 4rem 1.5rem;
+}
+
+.topbar {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 1px solid var(--color-border);
+    padding-bottom: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.topbar-meta {
+    color: var(--color-text-muted);
+    font-size: 0.85rem;
+    margin: 0;
+}
+
+.back-link {
+    display: inline-block;
+    margin-bottom: 1.25rem;
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+}
+
+.back-link:hover {
+    color: var(--color-accent);
+}
+
+.card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+/* ---------- Forms ---------- */
+
+.field {
+    margin-bottom: 0.9rem;
+}
+
+.field label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    margin-bottom: 0.3rem;
+}
+
+.field input,
+.field select {
+    width: 100%;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    color: var(--color-text);
+    padding: 0.5rem 0.65rem;
+    font-family: var(--font-sans);
+    font-size: 0.9rem;
+}
+
+.field input:focus-visible,
+.field select:focus-visible {
+    border-color: var(--color-accent);
+}
+
+.field-inline {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.btn {
+    font-family: var(--font-sans);
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.5rem 1rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-border-strong);
+    background: var(--color-surface-raised);
+    color: var(--color-text);
+    cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+    border-color: var(--color-accent);
+    color: var(--color-accent-strong);
+}
+
+.btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.btn-primary {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: #0d2323;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: var(--color-accent-strong);
+    border-color: var(--color-accent-strong);
+    color: #0d2323;
+}
+
+.btn-ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--color-text-muted);
+    padding: 0.4rem 0.6rem;
+}
+
+.btn-ghost:hover:not(:disabled) {
+    color: var(--color-accent);
+    border-color: transparent;
+}
+
+/* ---------- Alerts ---------- */
+
+.alert {
+    border-radius: var(--radius-sm);
+    padding: 0.65rem 0.9rem;
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+}
+
+.alert-error {
+    background: var(--color-danger-bg);
+    color: #ffb0b3;
+    border: 1px solid rgba(229, 72, 77, 0.35);
+}
+
+.alert-info {
+    background: var(--color-accent-bg);
+    color: var(--color-accent-strong);
+    border: 1px solid rgba(95, 179, 179, 0.35);
+}
+
+.api-key-reveal {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    word-break: break-all;
+    display: block;
+    margin-top: 0.5rem;
+    padding: 0.6rem 0.75rem;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    color: var(--color-accent-strong);
+}
+
+/* ---------- Tables ---------- */
+
+.table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+thead th {
+    position: sticky;
+    top: 0;
+    text-align: left;
+    font-family: var(--font-sans);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    background: var(--color-surface-raised);
+    padding: 0.6rem 0.9rem;
+    border-bottom: 1px solid var(--color-border);
+    white-space: nowrap;
+}
+
+tbody td {
+    padding: 0.6rem 0.9rem;
+    border-bottom: 1px solid var(--color-border);
+    font-family: var(--font-mono);
+    color: var(--color-text);
+    vertical-align: middle;
+}
+
+tbody tr:last-child td {
+    border-bottom: none;
+}
+
+tbody tr:hover td {
+    background: var(--color-surface-raised);
+}
+
+.cell-message a {
+    color: var(--color-text);
+}
+
+.cell-message a:hover {
+    color: var(--color-accent);
+}
+
+.cell-muted {
+    color: var(--color-text-muted);
+}
+
+table select {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    background: var(--color-bg);
+    color: var(--color-text);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    padding: 0.25rem 0.4rem;
+}
+
+/* ---------- Badges (severity / status) ---------- */
+
+.badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    text-transform: lowercase;
+    white-space: nowrap;
+}
+
+.badge-severity-critical {
+    background: var(--color-danger-bg);
+    color: var(--color-danger);
+}
+
+.badge-severity-high {
+    background: var(--color-warning-bg);
+    color: var(--color-warning);
+}
+
+.badge-severity-medium {
+    background: var(--color-caution-bg);
+    color: var(--color-caution);
+}
+
+.badge-severity-low {
+    background: var(--color-accent-bg);
+    color: var(--color-accent-strong);
+}
+
+.badge-status-open {
+    background: var(--color-warning-bg);
+    color: var(--color-warning);
+}
+
+.badge-status-resolved {
+    background: var(--color-success-bg);
+    color: var(--color-success);
+}
+
+.badge-status-ignored {
+    background: var(--color-surface-raised);
+    color: var(--color-text-faint);
+}
+
+/* ---------- Monospace data ---------- */
+
+.mono {
+    font-family: var(--font-mono);
+}
+
+.stack-sample {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 0.9rem 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    overflow-x: auto;
+    white-space: pre;
+}
+
+.sparkline-wrap {
+    color: var(--color-accent);
+}
+
+/* ---------- Simulate Error (signature element) ---------- */
+/*
+ * Styled as a terminal command invocation rather than a generic
+ * button — the tool's own subject matter (a service that ingests
+ * program errors) is the reason this reads as $ simulate-error rather
+ * than a plain "Simulate" label with no context.
+ */
+
+.simulate-panel {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.simulate-btn {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    font-weight: 600;
+    background: var(--color-bg);
+    color: var(--color-accent-strong);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    padding: 0.55rem 1rem;
+    cursor: pointer;
+}
+
+.simulate-btn::before {
+    content: '$ ';
+    color: var(--color-text-faint);
+}
+
+.simulate-btn:hover:not(:disabled) {
+    border-color: var(--color-accent);
+    background: var(--color-accent-bg);
+}
+
+.simulate-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.simulate-result {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+}
+
+.simulate-result strong {
+    color: var(--color-accent-strong);
+}

@@ -1331,6 +1331,114 @@ Known Open Issues in `STATUS.md`).
 
 ---
 
+## Task 23: dark theme + monospace tokens + table polish, and `POST /api/projects/:id/simulate` for the "Simulate Error" button
+
+**Decision:** Two parts.
+
+1. **Client-side theme (`client/src/index.css`, imported once in
+   `main.jsx`):** a single global stylesheet, plain CSS custom
+   properties, no framework added. Dark graphite palette (`#14171c`
+   background, `#1b1f26` surfaces, `#2a2f38` hairline borders, `#5fb3b3`
+   teal accent) — deliberately not pure black and not the neon-
+   acid-green dark-mode default. A clean sans (`var(--font-sans)`) for
+   UI chrome (nav, headings, buttons, labels); monospace
+   (`var(--font-mono)`) specifically for content that IS data — error
+   messages, stack traces, counts, timestamps, the revealed API key,
+   status/severity values — not applied globally. Severity and status
+   render as small colored pill badges (`.badge-severity-*`,
+   `.badge-status-*`) rather than plain text, since those are the two
+   things a user scans a table for fastest. Tables got a dedicated
+   `.table-wrap`/sticky-header/row-hover treatment across all three
+   list views (Dashboard's project list, ProjectDetail's group table,
+   GroupDetail's event table).
+2. **`POST /api/projects/:id/simulate` (new endpoint) backing the
+   "Simulate Error" button:** JWT-authed, ownership-scoped exactly like
+   every other project route (reuses `projectService.getProject`, same
+   pattern as `listProjectGroups`). On success, calls the *same*
+   `errorGroupService.recordEvent` — and, on a new group,
+   `enrichErrorGroup` — that `ingestController.ingestEvent` calls for
+   real ingestion. One of a small fixed set of canned
+   message/stack pairs (`projectController.js`'s `CANNED_ERRORS`) is
+   chosen at random per call. `ProjectDetailPage.jsx`'s button calls
+   this endpoint, then refetches the group list so the affected row
+   (new or duplicate) appears/updates immediately.
+
+**Alternatives considered (for the button):**
+1. Point the button at the existing standalone `demo-app` (already has
+   `/crash/*` routes reporting to Faultline with its own configured API
+   key) — no new backend code at all.
+2. The chosen approach: a new JWT-authed endpoint reusing the real
+   ingestion services.
+3. Store/expose a project's raw API key after creation so the
+   dashboard could call `POST /api/events` directly with it.
+
+**Justification:** (1, rejected) — this would only ever demo a
+separate, unstyled Express app on a different port, requires that app
+to be running locally, and doesn't exercise anything about Faultline's
+own backend from the dashboard's perspective; a weaker interview demo
+("here's a link to another app") than clicking a button and watching a
+new `ErrorGroup` with an AI summary appear in the same view. (3,
+rejected) — `apiKeyHash` is a one-way hash specifically so the raw key
+is never recoverable after creation (see "API key hashing" decision);
+reversing that for developer convenience would undermine the actual
+security property, not just relax a formality. (2, chosen) — reuses
+100% of the existing dedup/fingerprint/AI pipeline through a new,
+narrow, ownership-scoped auth path; no new business logic, no new
+model, no duplicated dedup code — extends the existing pattern
+(`listProjectGroups`'s ownership-check shape) rather than re-deriving
+one, per `PROJECT_RULES.md` §11.
+
+**Shipped:** This pass —
+`server/controllers/projectController.js` (`CANNED_ERRORS`,
+`simulateError`), `server/routes/projectRoutes.js`
+(`POST /:id/simulate`), `client/src/index.css` (new file, full token
+system), `client/src/main.jsx` (imports it),
+`client/src/pages/{LoginPage,RegisterPage,DashboardPage,
+ProjectDetailPage,GroupDetailPage}.jsx` (all restyled onto the new
+classes; `ProjectDetailPage.jsx` additionally gets the Simulate Error
+panel and its handler). Verified: `projectController.js`/
+`projectRoutes.js` load without throwing; 22-test server suite
+(`npm test`) passes unchanged (no existing test touches
+`projectController`, so none needed updating). All client `.jsx`
+files parse cleanly under a Babel JSX transform (`@babel/preset-react`)
+run outside the project's own `node_modules`, since the sandboxed
+`node_modules`' native Rollup/esbuild binaries were built for a
+different platform and couldn't run a real `vite build` in this
+environment — see manual test instructions for what's still owed
+against a live server. No automated test exists for `simulateError`
+itself (matches the project's existing test coverage, which has no
+controller-level tests for any project route).
+
+**Known, deliberately out-of-scope consequences:**
+- `simulateError` has no automated test — same gap as every other
+  `projectController` function; not newly introduced by this task.
+- The canned errors' fake file paths (`/app/src/services/...`) won't
+  match any real project's `githubRepo`, so GitHub-grounded enrichment
+  will always fall back to stack-trace-only confidence (`0.4`) for
+  simulated errors, never the grounded `0.8` — expected, not a bug;
+  simulated errors are for demonstrating the pipeline shape, not for
+  testing GitHub grounding specifically (use the real `demo-app` for
+  that, per its own README).
+
+**Likely interview questions:**
+- *Why not let the button call `/api/events` directly?* — It's
+  API-key-authenticated by design, and a project's raw key is
+  one-way-hashed at creation specifically so it's never recoverable
+  (see "API key hashing" decision) — reusing it from a JWT session
+  would mean storing or re-deriving something deliberately designed
+  not to be. See Justification (3) above.
+- *Why monospace only on some elements, not the whole page?* — The
+  content that's inherently code-like (messages, stacks, counts,
+  timestamps) benefits from a monospace's fixed-width alignment and
+  "this is data" visual signal; headings, nav, and buttons are UI
+  chrome, not data, and read better in a proportional face.
+- *Why badges for severity/status instead of colored text?* — A pill
+  shape is scannable at a glance across a table column in a way plain
+  colored text isn't — this was chosen because severity/status are the
+  two fields a user needs to triage a list of errors fastest.
+
+---
+
 ## Shipped Log
 
 Chronological, most-recent-first, entries with no dedicated decision

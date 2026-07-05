@@ -68,21 +68,22 @@ function DashboardPage() {
     }
 
     return (
-        <div>
-            <header>
-                <h1>Dashboard</h1>
-                <p>
-                    Logged in as {user?.name}.{' '}
-                    <button type="button" onClick={logout}>
+        <div className="page">
+            <header className="topbar">
+                <h1>Faultline</h1>
+                <p className="topbar-meta">
+                    {user?.name}
+                    {' · '}
+                    <button type="button" className="btn-ghost" onClick={logout}>
                         Log out
                     </button>
                 </p>
             </header>
 
-            <section>
+            <section className="card">
                 <h2>New project</h2>
                 <form onSubmit={handleCreate}>
-                    <div>
+                    <div className="field">
                         <label htmlFor="project-name">Name</label>
                         <input
                             id="project-name"
@@ -92,7 +93,7 @@ function DashboardPage() {
                             required
                         />
                     </div>
-                    <div>
+                    <div className="field">
                         <label htmlFor="project-repo">GitHub repo (optional, owner/repo)</label>
                         <input
                             id="project-repo"
@@ -102,38 +103,48 @@ function DashboardPage() {
                             placeholder="owner/repo"
                         />
                     </div>
-                    {createError && <p role="alert">{createError}</p>}
-                    <button type="submit" disabled={creating}>
+                    {createError && <p className="alert alert-error" role="alert">{createError}</p>}
+                    <button type="submit" className="btn btn-primary" disabled={creating}>
                         {creating ? 'Creating...' : 'Create project'}
                     </button>
                 </form>
 
                 {newApiKey && (
-                    <div role="alert">
-                        <p>
-                            <strong>Save this API key now — it will not be shown again:</strong>
-                        </p>
-                        <code>{newApiKey}</code>
+                    <div className="alert alert-info" role="alert">
+                        <strong>Save this API key now — it will not be shown again:</strong>
+                        <code className="api-key-reveal">{newApiKey}</code>
                     </div>
                 )}
             </section>
 
             <section>
                 <h2>Your projects</h2>
-                {loading && <p>Loading projects...</p>}
-                {!loading && loadError && <p role="alert">{loadError}</p>}
+                {loading && <p className="cell-muted">Loading projects...</p>}
+                {!loading && loadError && <p className="alert alert-error" role="alert">{loadError}</p>}
                 {!loading && !loadError && projects.length === 0 && (
-                    <p>No projects yet — create one above to get started.</p>
+                    <p className="cell-muted">No projects yet — create one above to get started.</p>
                 )}
                 {!loading && !loadError && projects.length > 0 && (
-                    <ul>
-                        {projects.map((project) => (
-                            <li key={project.id}>
-                                <Link to={`/projects/${project.id}`}>{project.name}</Link>
-                                {project.githubRepo && <span> ({project.githubRepo})</span>}
-                            </li>
-                        ))}
-                    </ul>
+                    <div className="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Project</th>
+                                    <th>Repo</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {projects.map((project) => (
+                                    <tr key={project.id}>
+                                        <td className="cell-message">
+                                            <Link to={`/projects/${project.id}`}>{project.name}</Link>
+                                        </td>
+                                        <td className="cell-muted">{project.githubRepo || '—'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                 )}
             </section>
         </div>

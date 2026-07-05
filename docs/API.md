@@ -202,6 +202,53 @@ page will fetch.
 |---|---|---|
 | 404 | Same three cases as `GET /api/projects/:id` | `{ "success": false, "error": "Project not found" }` |
 
+### `POST /api/projects/:id/simulate`
+
+Requires auth: `Authorization: Bearer <token>` (JWT — dashboard user,
+same as every other project route; not the ingestion API key). Added
+in Task 23, for the dashboard's "Simulate Error" button.
+
+Exists because the ingestion endpoint (`POST /api/events`) is
+API-key-authenticated, and a project's raw API key is shown exactly
+once at creation and never stored in retrievable form (see
+`POST /api/projects` above) — a logged-in dashboard user has no way to
+call `/api/events` directly for their own project. This endpoint
+closes that gap by reusing `errorGroupService.recordEvent` and (on a
+new group) `enrichErrorGroup` — the same functions the real ingestion
+path calls — behind ownership-scoped JWT auth instead. No new dedup,
+fingerprinting, or AI logic; only a new auth path into the existing
+pipeline. Ownership is checked the same way as
+`GET /api/projects/:id/groups` (reuses `projectService.getProject`).
+
+One of a small, fixed set of canned synthetic errors
+(`projectController.js`'s `CANNED_ERRORS`) is chosen at random per
+call — not user-supplied free text.
+
+**Request body:** none.
+
+**Success (202):**
+```json
+{
+  "success": true,
+  "data": {
+    "received": true,
+    "projectId": "...",
+    "errorGroupId": "...",
+    "isNewGroup": true
+  }
+}
+```
+Same 202 semantics as `POST /api/events` — accepted for processing.
+When `isNewGroup` is `true`, AI enrichment is dispatched fire-and-
+forget after this response is sent, same dispatch model as real
+ingestion (`AI_CONTEXT.md`'s Dispatch Model) — `aiSummary` will not be
+populated yet in an immediate follow-up `GET`.
+
+**Errors:**
+| Status | Cause | Body |
+|---|---|---|
+| 404 | Same three cases as `GET /api/projects/:id` | `{ "success": false, "error": "Project not found" }` |
+
 ## Error Groups
 
 ### `PATCH /api/groups/:id/status`

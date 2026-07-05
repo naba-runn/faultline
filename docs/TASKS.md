@@ -53,9 +53,9 @@ approved blueprint. Check off as completed; do not reorder or skip.
 
 - [x] **Task 19** — ErrorGroupDetail page (AI panel as checklist, event list, sparkline)
 - [x] **Task 20** — Centralized error middleware (AppError + catchAsync) + validation pass
-- [ ] **Task 21** — ~~Rate limiting (ingestion + login)~~ (pulled forward ahead of schedule — see `DECISIONS.md`'s "Rate limiting: login and ingestion" entry), payload size caps still remain
-- [ ] **Task 22** — Cursor pagination on group list endpoint
-- [ ] **Task 23** — Dark theme, monospace tokens, table layout, "Simulate Error" demo button
+- [x] **Task 21** — ~~Rate limiting (ingestion + login)~~ (pulled forward ahead of schedule — see `DECISIONS.md`'s "Rate limiting: login and ingestion" entry), payload size caps still remain
+- [x] **Task 22** — Cursor pagination on group list endpoint
+- [x] **Task 23** — Dark theme, monospace tokens, table layout, "Simulate Error" demo button
 - [ ] **Task 24** — README, screenshots/GIF, deploy (Vercel + Render + Atlas)
 
 ## Notes

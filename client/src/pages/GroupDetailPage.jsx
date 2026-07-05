@@ -16,6 +16,19 @@ function formatDate(iso) {
     return new Date(iso).toLocaleString();
 }
 
+function SeverityBadge({ severity }) {
+    if (!severity) return <span className="cell-muted">—</span>;
+    return (
+        <span className={`badge badge-severity-${severity}`}>
+            {SEVERITY_LABEL[severity] || severity}
+        </span>
+    );
+}
+
+function StatusBadge({ status }) {
+    return <span className={`badge badge-status-${status}`}>{status}</span>;
+}
+
 // Buckets the (already-capped, most-recent-first) events by calendar
 // day, ascending, for the sparkline. This only ever sees the same
 // window of events the page already fetched — it does not requery the
@@ -37,16 +50,16 @@ function buildSparklineBuckets(events) {
 // Minimal hand-rolled inline SVG line — no charting library added for
 // one sparkline (client/package.json has none; adding one would be
 // exactly the kind of unprompted dependency PROJECT_RULES.md §2 rules
-// out). Colors deliberately left to `currentColor`; the dark-theme
-// pass is Task 23, not this one.
+// out). Colors deliberately left to `currentColor`, which now resolves
+// to the accent teal via the .sparkline-wrap class (Task 23's theme).
 function Sparkline({ buckets }) {
     if (buckets.length === 0) {
-        return <p>No event data to chart yet.</p>;
+        return <p className="cell-muted">No event data to chart yet.</p>;
     }
 
     if (buckets.length === 1) {
         return (
-            <p>
+            <p className="cell-muted">
                 Only one day of data in the current window ({buckets[0].count} event
                 {buckets[0].count === 1 ? '' : 's'} on {buckets[0].day}) — not enough to
                 show a trend line yet.
@@ -69,15 +82,17 @@ function Sparkline({ buckets }) {
         .join(' ');
 
     return (
-        <svg
-            viewBox={`0 0 ${width} ${height}`}
-            width={width}
-            height={height}
-            role="img"
-            aria-label="Event count per day"
-        >
-            <polyline points={points} fill="none" stroke="currentColor" strokeWidth="2" />
-        </svg>
+        <div className="sparkline-wrap">
+            <svg
+                viewBox={`0 0 ${width} ${height}`}
+                width={width}
+                height={height}
+                role="img"
+                aria-label="Event count per day"
+            >
+                <polyline points={points} fill="none" stroke="currentColor" strokeWidth="2" />
+            </svg>
+        </div>
     );
 }
 
@@ -99,13 +114,13 @@ function AiChecklist({ suggestedFix }) {
         <ul>
             {suggestedFix.map((step, index) => (
                 <li key={index}>
-                    <label>
+                    <label className="field-inline">
                         <input
                             type="checkbox"
                             checked={Boolean(checked[index])}
                             onChange={() => toggle(index)}
-                        />{' '}
-                        {step}
+                        />
+                        <span className="mono">{step}</span>
                     </label>
                 </li>
             ))}
@@ -118,7 +133,8 @@ function AiChecklist({ suggestedFix }) {
 // payload (see docs/DECISIONS.md, "Task 19" for why one endpoint, not
 // two). Status is shown read-only here — changing it stays on
 // ProjectDetailPage (Task 18's PATCH), not duplicated on this page,
-// per PROJECT_RULES.md §2's no-scope-creep rule.
+// per PROJECT_RULES.md §2's no-scope-creep rule. Task 23 adds the
+// dark theme/badge/table polish.
 function GroupDetailPage() {
     const { id } = useParams();
 
@@ -148,14 +164,18 @@ function GroupDetailPage() {
     }, [fetchData]);
 
     if (loading) {
-        return <p>Loading error group...</p>;
+        return (
+            <div className="page">
+                <p className="cell-muted">Loading error group...</p>
+            </div>
+        );
     }
 
     if (error) {
         return (
-            <div>
-                <p role="alert">{error}</p>
-                <Link to="/dashboard">Back to dashboard</Link>
+            <div className="page">
+                <p className="alert alert-error" role="alert">{error}</p>
+                <Link to="/dashboard" className="back-link">← Back to dashboard</Link>
             </div>
         );
     }
@@ -164,61 +184,72 @@ function GroupDetailPage() {
     const buckets = buildSparklineBuckets(events);
 
     return (
-        <div>
-            <p>
-                <Link to={`/projects/${group.projectId}`}>Back to project</Link>
-            </p>
+        <div className="page">
+            <Link to={`/projects/${group.projectId}`} className="back-link">← Back to project</Link>
 
-            <h1>{group.message}</h1>
-            <p>
-                Status: {group.status} · Seen {group.count} time{group.count === 1 ? '' : 's'} ·
-                First seen {formatDate(group.firstSeen)} · Last seen {formatDate(group.lastSeen)}
-            </p>
+            <header>
+                <h1 className="mono">{group.message}</h1>
+                <p className="topbar-meta">
+                    <StatusBadge status={group.status} />
+                    {' · '}Seen {group.count} time{group.count === 1 ? '' : 's'}
+                    {' · '}First seen {formatDate(group.firstSeen)}
+                    {' · '}Last seen {formatDate(group.lastSeen)}
+                </p>
+            </header>
 
-            <section>
+            <section className="card">
                 <h2>AI analysis</h2>
                 {aiSummary ? (
                     <div>
                         <p>
-                            Severity: {SEVERITY_LABEL[aiSummary.severity] || aiSummary.severity} ·{' '}
+                            <SeverityBadge severity={aiSummary.severity} />
+                            {' · '}
                             Confidence:{' '}
-                            {typeof aiSummary.confidence === 'number'
-                                ? `${Math.round(aiSummary.confidence * 100)}%`
-                                : '—'}
-                            {aiSummary.affectedFile &&
-                                ` · ${aiSummary.affectedFile}${aiSummary.affectedFunction ? ` (${aiSummary.affectedFunction})` : ''
-                                }`}
+                            <span className="mono">
+                                {typeof aiSummary.confidence === 'number'
+                                    ? `${Math.round(aiSummary.confidence * 100)}%`
+                                    : '—'}
+                            </span>
+                            {aiSummary.affectedFile && (
+                                <>
+                                    {' · '}
+                                    <span className="mono cell-muted">
+                                        {aiSummary.affectedFile}
+                                        {aiSummary.affectedFunction ? ` (${aiSummary.affectedFunction})` : ''}
+                                    </span>
+                                </>
+                            )}
                         </p>
                         <p>{aiSummary.rootCause}</p>
                         {aiSummary.suggestedFix && aiSummary.suggestedFix.length > 0 && (
                             <>
-                                <h3>Suggested fix</h3>
+                                <h2>Suggested fix</h2>
                                 <AiChecklist suggestedFix={aiSummary.suggestedFix} />
-                                <p>
+                                <p className="cell-muted">
                                     <em>Checklist state is local to this page view — it isn't saved.</em>
                                 </p>
                             </>
                         )}
                     </div>
                 ) : (
-                    <p>No AI analysis available yet for this error group.</p>
+                    <p className="cell-muted">No AI analysis available yet for this error group.</p>
                 )}
             </section>
 
-            <section>
+            <section className="card">
                 <h2>Activity</h2>
-                <p>
+                <p className="cell-muted">
                     Event volume — last {events.length} occurrence{events.length === 1 ? '' : 's'} fetched
                     {group.count > events.length ? ` (of ${group.count} total)` : ''}.
                 </p>
                 <Sparkline buckets={buckets} />
             </section>
 
-            <section>
-                <h2>Recent events</h2>
-                {events.length === 0 ? (
-                    <p>No events recorded yet.</p>
-                ) : (
+            <h2>Recent events</h2>
+            {events.length === 0 ? (
+                <p className="cell-muted">No events recorded yet.</p>
+            ) : (
+                <div className="table-wrap">
                     <table>
                         <thead>
                             <tr>
@@ -230,18 +261,16 @@ function GroupDetailPage() {
                             {events.map((event) => (
                                 <tr key={event.id}>
                                     <td>{formatDate(event.receivedAt)}</td>
-                                    <td>{event.env || '—'}</td>
+                                    <td className="cell-muted">{event.env || '—'}</td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
-                )}
-            </section>
+                </div>
+            )}
 
-            <section>
-                <h2>Stack sample</h2>
-                <pre>{group.stackSample}</pre>
-            </section>
+            <h2>Stack sample</h2>
+            <pre className="stack-sample">{group.stackSample}</pre>
         </div>
     );
 }

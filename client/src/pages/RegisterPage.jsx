@@ -31,10 +31,11 @@ function RegisterPage() {
     }
 
     return (
-        <div>
-            <h1>Register</h1>
+        <div className="page-narrow">
+            <h1>Faultline</h1>
+            <p className="topbar-meta">Create your account.</p>
             <form onSubmit={handleSubmit}>
-                <div>
+                <div className="field">
                     <label htmlFor="name">Name</label>
                     <input
                         id="name"
@@ -44,7 +45,7 @@ function RegisterPage() {
                         required
                     />
                 </div>
-                <div>
+                <div className="field">
                     <label htmlFor="email">Email</label>
                     <input
                         id="email"
@@ -54,7 +55,7 @@ function RegisterPage() {
                         required
                     />
                 </div>
-                <div>
+                <div className="field">
                     <label htmlFor="password">Password</label>
                     <input
                         id="password"
@@ -64,8 +65,8 @@ function RegisterPage() {
                         required
                     />
                 </div>
-                {error && <p role="alert">{error}</p>}
-                <button type="submit" disabled={submitting}>
+                {error && <p className="alert alert-error" role="alert">{error}</p>}
+                <button type="submit" className="btn btn-primary" disabled={submitting}>
                     {submitting ? 'Registering...' : 'Register'}
                 </button>
             </form>

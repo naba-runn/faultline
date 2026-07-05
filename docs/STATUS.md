@@ -12,7 +12,7 @@
 - **Milestone 2 — Projects & Ingestion:** COMPLETE (6/6 tasks)
 - **Milestone 3 — AI Enrichment:** COMPLETE (4/4 tasks)
 - **Milestone 4 — Dashboard Auth & Core Pages:** COMPLETE (4/4 tasks)
-- **Milestone 5 — Detail View & Polish:** IN PROGRESS (4/6 tasks — 19, 20, 21, 22 done)
+- **Milestone 5 — Detail View & Polish:** IN PROGRESS (5/6 tasks — 19, 20, 21, 22, 23 done)
 
 Task numbering and full checklist: `TASKS.md`. This section only
 states current position, not a restated description of every task —
@@ -21,7 +21,27 @@ that would duplicate `TASKS.md`.
 ## What's Actively In Progress
 
 Nothing mid-implementation as of this pass. Most recently completed:
-**Task 22 — Cursor pagination on the group list endpoint**
+**Task 23 — dark theme, monospace tokens, table layout, "Simulate
+Error" demo button.** Two parts: (1) a new global stylesheet
+(`client/src/index.css`) applying a dark graphite/teal token system —
+monospace specifically for data (error messages, stacks, counts,
+timestamps, the API key), sans for UI chrome, severity/status as
+colored pill badges — across all five client pages; (2) a new
+`POST /api/projects/:id/simulate` endpoint (JWT-authed, ownership-
+scoped) backing the button, which reuses the exact same
+`errorGroupService.recordEvent`/`enrichErrorGroup` the real ingestion
+path calls, avoiding the need to expose or reconstruct a project's
+one-way-hashed API key. Full reasoning in `DECISIONS.md`'s "Task 23:
+dark theme + monospace tokens + table polish, and
+`POST /api/projects/:id/simulate`" entry.
+
+**Known consequence, not a bug:** simulated errors' canned fake file
+paths never match a real project's `githubRepo`, so simulated-error AI
+enrichment always falls back to stack-trace-only confidence (`0.4`),
+never the GitHub-grounded `0.8` — use the real `demo-app` to exercise
+grounded enrichment specifically.
+
+Before that: **Task 22 — Cursor pagination on the group list endpoint**
 (`errorGroupService.listErrorGroups` now takes `{ limit, cursor }`,
 returns `{ groups, nextCursor }`; sorted on `{ lastSeen: -1, _id: -1 }`
 with `_id` as a tie-breaker for rows sharing a `lastSeen` millisecond;
@@ -110,6 +130,17 @@ Log):**
 - `projectController.js` loads without throwing.
 
 **Manual test status:**
+- Task 23: `projectController.js`/`projectRoutes.js` verified to load
+  without throwing; 22-test server suite passes unchanged (no existing
+  test touches `projectController`). All client `.jsx` files verified
+  to parse cleanly via a Babel JSX transform run outside the sandboxed
+  `node_modules` (whose native Rollup/esbuild binaries are built for a
+  different platform than this environment, so a real `vite build`
+  couldn't be run here — see this pass's manual test instructions for
+  what's owed against a live dev server: visual review of the theme,
+  the Simulate Error button's full click → new-group/duplicate →
+  table-update flow, and badge rendering for each severity/status
+  value).
 - Task 20.3's four `400` branches: exercised in-process only in their
   original pass; still owed against a live server (unchanged this
   pass).
@@ -134,9 +165,9 @@ Log):**
 Tasks 17/18/19/20.1/20.2 remain closed exactly as previously recorded
 — no changes to any of them this pass; full detail in `DECISIONS.md`.
 
-Next up: **Task 23** — dark theme, monospace tokens, table layout,
-"Simulate Error" demo button. Not started. This is the next unchecked
-box in Milestone 5.
+Next up: **Task 24** — README, screenshots/GIF, deploy (Vercel +
+Render + Atlas). Not started. This is the next unchecked box in
+Milestone 5, and the last task in the roadmap.
 
 ## Constitution Amendments
 
@@ -189,6 +220,21 @@ box in Milestone 5.
   config mismatch. Worth double-checking this file's key against
   whichever project you're testing before assuming a pagination/dedup
   issue is a real bug.
+- **Simulated errors (Task 23's "Simulate Error" button) never exercise
+  GitHub-grounded AI enrichment** — the canned fake file paths
+  (`/app/src/services/...`) won't match any real project's
+  `githubRepo`, so `enrichErrorGroup` always falls back to stack-
+  trace-only confidence (`0.4`) for these. Expected, not a bug — use
+  the real `demo-app` (whose stack traces can be made to match an
+  actual linked repo) to test grounded enrichment specifically.
+- **Task 23's theme/button changes have not yet been visually confirmed
+  in a real browser against a live server** — this pass verified
+  syntax (all `.jsx` parse cleanly via Babel, run outside the sandboxed
+  `node_modules` whose native binaries target a different platform than
+  this environment) and that the server-side pieces load/test cleanly,
+  but the actual rendered dark theme, badge colors, and the Simulate
+  Error button's end-to-end click flow are still owed a live check —
+  see this pass's manual test instructions.
 
 ## Currently-Relevant Locked-In Decisions
 
@@ -208,6 +254,7 @@ Pointers only — see `DECISIONS.md` for full reasoning:
 - `projectController.createProject`/`updateProject` typeof-guard `name`/`githubRepo` before calling the service; `githubRepo`'s format stays exclusively a schema-level (`Project.js`) concern ("Task 20.3: project input validation — closing the typeof gap").
 - `POST /api/events` caps `message`/`stack` at 1000/10,000 characters — a field-level concern separate from the global 100kb body cap; `env`/`metadata` remain deliberately uncapped (Task 21 Shipped Log entry).
 - `GET /api/projects/:id/groups` paginates via an opaque `{lastSeen, _id}` cursor, not offset/skip or `lastSeen` alone — `_id` is a required tie-breaker since `lastSeen` isn't guaranteed unique ("Task 22: cursor pagination on the group list endpoint").
+- `POST /api/projects/:id/simulate` (JWT, ownership-scoped) reuses the exact same `errorGroupService.recordEvent`/`enrichErrorGroup` real ingestion calls, rather than exposing or reconstructing a project's one-way-hashed API key ("Task 23: dark theme + monospace tokens + table polish, and `POST /api/projects/:id/simulate`").
 
 ## Where Things Live
 
