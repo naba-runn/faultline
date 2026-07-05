@@ -44,7 +44,7 @@ approved blueprint. Check off as completed; do not reorder or skip.
 
 ## Milestone 4: Frontend Foundation
 
-- [ ] **Task 15** — React scaffold, AuthContext, axios instance with interceptor, schedule first audit session after task completion
+- [ ] **Task 15** — React scaffold, AuthContext, axios instance with interceptor
 - [ ] **Task 16** — Login/Register pages, ProtectedRoute
 - [ ] **Task 17** — Dashboard + ProjectDetail pages (project list, error group table)
 - [ ] **Task 18** — Status update endpoint + UI

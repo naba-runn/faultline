@@ -19,27 +19,34 @@ that would duplicate `TASKS.md`.
 ## What's Actively In Progress
 
 Nothing mid-implementation as of this pass. Most recently completed:
-**Task 14** — `errorGroupService.enrichErrorGroup` now also computes
-`confidence` (`0.8` if the GitHub snippet was actually fetched and
-grounded the prompt, `0.4` otherwise — binary, not a continuous
-score) and `affectedFile`/`affectedFunction` (straight from
-`stackNormalizer.normalizeStack(stack).frames[0]`, both `null` if the
-stack didn't parse into any frames), alongside Task 13's
-`rootCause`/`severity`/`suggestedFix`. All three are still only ever
-computed server-side, never asked of the LLM. Tests updated/added in
-`errorGroupService.test.js` covering: grounded (`0.8`) vs. ungrounded
-(`0.4`) confidence, `affectedFile`/`affectedFunction` populated from a
-real top frame, and both saved as `null` when the stack has no
-parseable frames at all — **not yet run**, same sandbox limitation as
-before (no `node_modules`, no network for `npm install`); run `npm
-test` locally before considering this closed. Live manual verification
-also still owed (see this task's handoff notes).
+**a full audit of Tasks 1-14**, per `PROJECT_RULES.md` §13's every-10
+cadence (already overdue). Core logic — auth, projects, ingestion,
+dedup, AI enrichment — all confirmed correct against the actual code,
+no functional bugs found there. Found and fixed one real code gap
+(`Project.apiKeyHash` had no index — added `unique: true`) and six
+documentation-drift items (`.env.example` missing `GITHUB_TOKEN`,
+`API.md`'s ingestion section describing the pre-Task-13 world,
+`ARCHITECTURE.md`'s folder tree and Request Flow section stuck at
+Milestone 1, `DATABASE.md`'s stale header + a broken leftover section,
+and a stray garbled clause on `TASKS.md`'s Task 15 line that an
+earlier pass had incorrectly claimed was already removed). Full
+findings and fixes logged in `DECISIONS.md`'s Shipped Log, "Audit
+session (Tasks 1-14)" entry.
 
-Milestone 3 (AI Enrichment) is now fully complete (4/4). Next up is
-Milestone 4.
+**Not re-run:** `npm test` and any live server checks — this audit was
+static (code + docs cross-referenced by reading, not executing), same
+sandbox limitation as every prior pass (no `node_modules`, no
+network). Run `npm test` locally once after pulling in the
+`apiKeyHash` schema change — building a unique index against existing
+Atlas data is the one part of this pass worth confirming succeeds
+cleanly (should be a non-issue: 256-bit random keys make a real
+collision astronomically unlikely).
 
-Before this: Task 13 — wiring `aiService` + `githubService` into the
-ingestion "new group" path, fire-and-forget.
+Milestone 3 (AI Enrichment) is fully complete (4/4). Next audit due
+per cadence after Task 24 — the last task on the roadmap.
+
+Before this: Task 14 — derived confidence score +
+affectedFile/affectedFunction fields.
 
 Next up: **Task 15** — React scaffold, `AuthContext`, axios instance
 with interceptor. Not started.

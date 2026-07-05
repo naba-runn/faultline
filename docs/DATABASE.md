@@ -1,8 +1,10 @@
 # Faultline — Database Design
 
-**Status: `User` (Task 2), `Project` (Task 5.1), `ErrorGroup`
-(Task 9.1), and `ErrorEvent` (Task 9.2) models implemented. Only the
-atomic-upsert wiring connecting them remains — Task 9.3.**
+**Status: `User` (Task 2), `Project` (Task 5.1, `apiKeyHash` now
+unique-indexed as of the Task 1-14 audit), `ErrorGroup` (Task 9.1,
+`aiSummary` fully populated as of Task 14), and `ErrorEvent` (Task
+9.2) models implemented. Atomic-upsert dedup (Task 9.3) and AI
+enrichment (Tasks 13/14) are both wired and live-verified.**
 
 ## Implemented Collections
 
@@ -64,6 +66,7 @@ vs. the service layer, and the bcrypt cost-factor choice.
   apiKeyHash: {
     type: String,
     required: true,   // set in Task 5.2/5.3; raw key never persisted
+    unique: true,     // added in the Task 1-14 audit — was missing an index/uniqueness constraint despite apiKeyMiddleware's hot-path lookup assuming one existed
   },
   githubRepo: {
     type: String,
@@ -246,21 +249,6 @@ module.exports = mongoose.model('ErrorEvent', errorEventSchema);
 Verified manually (`validateSync()`): valid doc clean, missing
 `errorGroupId` rejected, missing `rawStack` rejected, defaults
 (`env: null`, `metadata: {}`, real `receivedAt`) all correct.
-
-## Planned Collections (not yet implemented)
-
-**Note (Task 7):** `POST /api/events` exists as a skeleton — it
-validates and acknowledges (`202`) but does not write to either
-collection below yet. Don't assume events are being persisted just
-because the endpoint exists; persistence starts at Task 9.
-
-```
-
-
-
-`ErrorGroup` (9.1) and `ErrorEvent` (9.2) both landed with real schema
- code. Only Task 9.3's upsert wiring remains before Task 9 closes.
-```
 
 ## Key Design Decisions (locked in, implement as-is)
 

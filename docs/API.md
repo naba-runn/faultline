@@ -167,11 +167,17 @@ Requires auth: `Authorization: Bearer <token>`.
 Requires auth: `Authorization: Bearer <apiKey>` (API key — client
 program, not a dashboard user; see `apiKeyMiddleware`).
 
-**Status: fully wired (Task 9.3).** Validates, fingerprints
+**Status: fully wired (Tasks 9.3, 13, 14).** Validates, fingerprints
 (`fingerprintService`), atomically upserts the owning `ErrorGroup`
-(dedup), and persists the individual `ErrorEvent`. AI enrichment is
-*not* triggered here — that's Task 13's fire-and-forget dispatch,
-not yet built.
+(dedup), and persists the individual `ErrorEvent`. On a **new** group
+only, AI enrichment is dispatched fire-and-forget after the response
+is sent (never `await`-ed in this request cycle) —
+`errorGroupService.enrichErrorGroup` fetches a GitHub source snippet
+when the project has `githubRepo` configured, calls Gemini, and saves
+`aiSummary: { rootCause, severity, suggestedFix, confidence,
+affectedFile, affectedFunction }` on the group a few seconds later.
+Duplicate events never re-trigger enrichment. See `AI_CONTEXT.md` for
+the full pipeline and `DECISIONS.md`'s Task 13/14 entries.
 
 **Request body:**
 ```json
@@ -200,11 +206,12 @@ shape is enforced, per `DATABASE.md`'s locked `ErrorEvent` design.
   }    
 }
 ```
-202 Accepted`, not `201 Created` — deliberately: the contract has
-always meant "accepted for processing," and processing now includes
-persistence but still excludes AI enrichment (Task 13), so `202`
-remains the honest status. `isNewGroup` reflects whether this event's
-fingerprint created a new `ErrorGroup` or matched an existing one.
+`202 Accepted`, not `201 Created` — deliberately: the contract has
+always meant "accepted for processing." `isNewGroup` reflects whether
+this event's fingerprint created a new `ErrorGroup` or matched an
+existing one; on a new group, AI enrichment is dispatched right after
+this response is sent (see the Status note above) — the `202` never
+waits on it.
 
 **Errors:**
 | Status | Cause | Body |

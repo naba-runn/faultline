@@ -18,23 +18,29 @@ faultline/
 │   │   ├── authService.js    (register, login — business logic, no req/res)
 │   │   ├── projectService.js (create/list/get/update/delete — all ownership-scoped in the query itself)
 │   │   ├── fingerprintService.js (generateFingerprint, extractErrorType — pure, combines stackNormalizer's signature + parsed error type into the Task 9 dedup key)
-│   │   ├── errorGroupService.js  (recordEvent — atomic upsert dedup + ErrorEvent creation, Task 9.3)
+│   │   ├── errorGroupService.js  (recordEvent — atomic upsert dedup + ErrorEvent creation, Task 9.3; enrichErrorGroup — AI enrichment orchestration, Tasks 13/14)
 │   │   ├── aiService.js          (buildPrompt/callGemini/parseAndValidate — pure except callGemini, Task 11)
-│   │   └── githubService.js      (fetchCodeSnippet/extractSnippet — GitHub Contents API grounding, Task 12)│   ├── middleware/
+│   │   └── githubService.js      (fetchCodeSnippet/extractSnippet — GitHub Contents API grounding, Task 12)
+│   ├── middleware/
 │   │   ├── authMiddleware.js    (JWT verification, attaches req.user)
-│   │   └── apiKeyMiddleware.js  (API-key verification, attaches req.project — hot ingestion path)
+│   │   ├── apiKeyMiddleware.js  (API-key verification, attaches req.project — hot ingestion path)
+│   │   └── rateLimiter.js       (loginLimiter, ingestLimiter — express-rate-limit)
 │   ├── routes/
 │   │   ├── authRoutes.js     (POST /register, POST /login, GET /me)
 │   │   ├── projectRoutes.js  (POST /, GET /, GET/PATCH/DELETE /:id — all authMiddleware-guarded)
-│   │   └── ingestRoutes.js   (POST / — apiKeyMiddleware-guarded, mounted at /api/events)
+│   │   └── ingestRoutes.js   (POST / — apiKeyMiddleware + ingestLimiter-guarded, mounted at /api/events)
 │   ├── models/
-│   │   ├── Project.js        (ownerId ref User, name, apiKeyHash, githubRepo validated, timestamps)
-│   │   ├── ErrorGroup.js     (projectId + fingerprint compound-unique index — the dedup backbone; firstSeen/lastSeen instead of timestamps)
+│   │   ├── Project.js        (ownerId ref User, name, apiKeyHash unique-indexed, githubRepo validated, timestamps)
+│   │   ├── ErrorGroup.js     (projectId + fingerprint compound-unique index — the dedup backbone; firstSeen/lastSeen instead of timestamps; embedded aiSummary)
+│   │   ├── ErrorEvent.js     (errorGroupId ref, rawStack, env, metadata, receivedAt — one doc per occurrence, indexed for timeline queries)
 │   │   └── User.js           (name, email unique, passwordHash w/ bcrypt hook)
 │   ├── utils/
 │   │   ├── apiKey.js           (generateApiKey, hashApiKey — SHA-256, not bcrypt)
 │   │   ├── generateToken.js    (JWT signing helper)
-│   │   └── stackNormalizer.js  (parseStackFrames, normalizeStack — pure, used by fingerprintService)
+│   │   ├── httpResponse.js     (sendSuccess/sendError — response-shaping only)
+│   │   └── stackNormalizer.js  (parseStackFrames, normalizeStack — pure, used by fingerprintService and Task 14's affectedFile/affectedFunction derivation)
+│   ├── tests/
+│   │   └── errorGroupService.test.js  (recordEvent dedup/retry-once cases; enrichErrorGroup grounded/ungrounded/failure cases, Tasks 13/14)
 │   ├── app.js                 (Express app: middleware, /api/auth + /api/projects + /api/events routes, health check, 404, error stub)
 │   ├── server.js               (bootstrap: connects DB, starts listener, crash guards)
 │   ├── package.json
@@ -72,28 +78,36 @@ don't touch models," which is expected — middleware sits outside the
 route/controller/service chain and legitimately needs its own DB
 lookup (loading the user for `req.user`).
 
-## Request Flow (current, through Milestone 1)
+## Request Flow (current, through Milestone 3)
 
 ```
 Client → app.js middleware chain (helmet → cors → json → morgan)
        → /health route
        → /api/auth/register  → authController.register → authService.register → User (bcrypt hook hashes password)
-       → /api/auth/login     → authController.login    → authService.login    → User.comparePassword
+       → /api/auth/login     → loginLimiter → authController.login → authService.login → User.comparePassword
        → /api/auth/me        → authMiddleware (verifies JWT, loads req.user) → authController.me
-       → /api/projects (POST)                 → authMiddleware → projectController.createProject → projectService.createProject → Project (apiKeyHash persisted, raw key returned once)
+       → /api/projects (POST)                 → authMiddleware → projectController.createProject → projectService.createProject → Project (apiKeyHash persisted unique-indexed, raw key returned once)
        → /api/projects (GET)                  → authMiddleware → projectController.listProjects  → projectService.listProjects  → Project
        → /api/projects/:id (GET/PATCH/DELETE) → authMiddleware → projectController.{getProject,updateProject,deleteProject} → projectService.* → Project (ownership-scoped in the query itself)
-       → /api/events (POST)  → apiKeyMiddleware (verifies API key hash, loads req.project) → ingestController.ingestEvent → validates message/stack, returns 202 (no persistence — Tasks 8/9 add fingerprinting + models)
+       → /api/events (POST)  → apiKeyMiddleware (verifies API key hash, loads req.project) → ingestLimiter
+                              → ingestController.ingestEvent → errorGroupService.recordEvent
+                                  → fingerprintService.generateFingerprint (stackNormalizer under the hood)
+                                  → atomic upsert on ErrorGroup { projectId, fingerprint } (retry-once on 11000)
+                                  → ErrorEvent.create (per-occurrence record)
+                                  → responds 202 { received, projectId, errorGroupId, isNewGroup }
+                                  → (isNewGroup only, fire-and-forget, not awaited) errorGroupService.enrichErrorGroup
+                                      → githubService.fetchCodeSnippet (only if project.githubRepo set)
+                                      → aiService.buildPrompt → aiService.callGemini → aiService.parseAndValidate
+                                      → ErrorGroup.findByIdAndUpdate: aiSummary { rootCause, severity, suggestedFix, confidence, affectedFile, affectedFunction } (or left null on any failure)
        → (no match) 404 handler
        → (thrown error) centralized error handler stub
 ```
 
-`server.js` now connects to MongoDB Atlas (`config/db.js`) before the
-app starts listening, so nothing accepts traffic before Mongo is
-reachable.
+`server.js` connects to MongoDB Atlas (`config/db.js`) before the app
+starts listening, so nothing accepts traffic before Mongo is reachable.
 
-Will be expanded with the full ingestion/dashboard flow diagrams as
-those pieces are built in Milestone 2.
+Will be expanded with the dashboard's read-side flow (project list,
+error group table, detail view) as Milestone 4 lands.
 
 ## Deliberate Non-Choices (don't second-guess these later)
 

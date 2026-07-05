@@ -17,6 +17,7 @@ const projectSchema = new mongoose.Schema(
     apiKeyHash: {
       type: String,
       required: [true, 'apiKeyHash is required'],
+      unique: true,
     },
     githubRepo: {
       type: String,
