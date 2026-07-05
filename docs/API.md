@@ -202,6 +202,56 @@ page will fetch.
 |---|---|---|
 | 404 | Same three cases as `GET /api/projects/:id` | `{ "success": false, "error": "Project not found" }` |
 
+## Error Groups
+
+### `PATCH /api/groups/:id/status`
+
+Requires auth: `Authorization: Bearer <token>` (JWT — dashboard user,
+same as project routes; not the ingestion API key). Added in Task 18.
+
+Ownership is enforced differently from the project routes above:
+`ErrorGroup` doesn't carry `ownerId` directly, so the group is first
+looked up by `:id`, then its owning `Project` is checked via a
+`Project.findOne({ _id, ownerId })` scoped query — the actual
+authorization decision is made by that scoped query, not by comparing
+a fetched project's `ownerId` in application code. See `DECISIONS.md`,
+"Task 18: ownership check for group status updates."
+
+**Request body:**
+```json
+{ "status": "resolved" }
+```
+`status` must be one of `open` / `resolved` / `ignored` (same enum as
+the `ErrorGroup` schema).
+
+**Success (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "group": {
+      "id": "...",
+      "status": "resolved",
+      "statusHistory": [
+        { "status": "resolved", "changedAt": "..." }
+      ]
+    }
+  }
+}
+```
+`statusHistory` is appended to, never overwritten — every PATCH adds
+one entry, it never replaces prior ones (`DATABASE.md`'s locked
+design). This PATCH deliberately never touches `lastSeen` — that
+field's semantics are dedup-specific, unrelated to status edits (see
+`DECISIONS.md`, "ErrorGroup uses firstSeen/lastSeen instead of
+Mongoose timestamps").
+
+**Errors:**
+| Status | Cause | Body |
+|---|---|---|
+| 400 | Missing/invalid `status` | `{ "success": false, "error": "status must be one of: open, resolved, ignored" }` |
+| 404 | Group doesn't exist, its project belongs to another user, or `:id` isn't a valid ObjectId | `{ "success": false, "error": "Error group not found" }` (all three cases deliberately identical, same philosophy as the project 404s) |
+
 ## Ingestion
 
 ### `POST /api/events`
@@ -268,4 +318,3 @@ waits on it.
 Planned per the blueprint (added to this table as each is built):
 
 - `GET /api/groups/:id`
-- `PATCH /api/groups/:id/status`

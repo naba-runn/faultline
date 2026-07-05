@@ -8,6 +8,7 @@ const config = require('./config/env');
 const authRoutes = require('./routes/authRoutes');
 const projectRoutes = require('./routes/projectRoutes');
 const ingestRoutes = require('./routes/ingestRoutes');
+const groupRoutes = require('./routes/groupRoutes');
 
 const app = express();
 
@@ -35,6 +36,7 @@ app.use(morgan(config.isProduction ? 'combined' : 'dev'));
 app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/events', ingestRoutes);
+app.use('/api/groups', groupRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

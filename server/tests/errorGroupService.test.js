@@ -29,10 +29,15 @@ const assert = require('node:assert/strict');
 
 const ErrorGroup = require('../models/ErrorGroup');
 const ErrorEvent = require('../models/ErrorEvent');
+const Project = require('../models/Project');
 const githubService = require('../services/githubService');
 const aiService = require('../services/aiService');
-const { recordEvent, enrichErrorGroup, listErrorGroups } = require('../services/errorGroupService');
-
+const {
+  recordEvent,
+  enrichErrorGroup,
+  listErrorGroups,
+  updateGroupStatus,
+} = require('../services/errorGroupService');
 function fakeObjectId(seed) {
   // Mongoose ObjectIds aren't needed for real here — recordEvent only
   // ever reads _id off whatever upsertErrorGroup/ErrorEvent.create
@@ -498,4 +503,124 @@ test('listErrorGroups: when aiSummary exists, includes only severity and rootCau
     const result = await listErrorGroups('project-1');
     assert.deepEqual(result[0].aiSummary, { severity: 'high', rootCause: 'bad input' });
   });
+});
+
+// --- updateGroupStatus (Task 18) ---
+//
+// Same monkey-patching approach as the rest of this file. ErrorGroup
+// is faked as a plain object with a `.statusHistory` array and a
+// `.save()` spy — close enough to a real Mongoose document for this
+// function's own logic (push-then-save, never $set/overwrite) to run
+// unmodified. Project.findOne is faked separately to exercise the
+// ownership-scoping branch independently of whether the group itself
+// was found.
+
+function withMockedStatusDeps(mocks, fn) {
+  const originalFindById = ErrorGroup.findById;
+  const originalProjectFindOne = Project.findOne;
+
+  ErrorGroup.findById = mocks.findById;
+  Project.findOne = mocks.findOne;
+
+  return fn().finally(() => {
+    ErrorGroup.findById = originalFindById;
+    Project.findOne = originalProjectFindOne;
+  });
+}
+
+test('updateGroupStatus: owned group — pushes a statusHistory entry, saves, and returns the shaped result', async () => {
+  let saveCalled = false;
+  const fakeGroup = {
+    _id: fakeObjectId('owned-group'),
+    projectId: 'project-1',
+    status: 'open',
+    statusHistory: [],
+    save: async () => {
+      saveCalled = true;
+    },
+  };
+
+  await withMockedStatusDeps(
+    {
+      findById: async (id) => {
+        assert.equal(id, fakeObjectId('owned-group'));
+        return fakeGroup;
+      },
+      findOne: async (filter) => {
+        assert.deepEqual(filter, { _id: 'project-1', ownerId: 'user-1' });
+        return { _id: 'project-1', ownerId: 'user-1' };
+      },
+    },
+    async () => {
+      const result = await updateGroupStatus({
+        ownerId: 'user-1',
+        groupId: fakeObjectId('owned-group'),
+        status: 'resolved',
+      });
+
+      assert.equal(saveCalled, true);
+      assert.equal(fakeGroup.status, 'resolved');
+      assert.equal(fakeGroup.statusHistory.length, 1);
+      assert.equal(fakeGroup.statusHistory[0].status, 'resolved');
+      assert.ok(fakeGroup.statusHistory[0].changedAt instanceof Date);
+      assert.equal(result.status, 'resolved');
+      assert.equal(result.statusHistory.length, 1);
+    }
+  );
+});
+
+test('updateGroupStatus: group does not exist — returns null, never queries Project', async () => {
+  let projectQueried = false;
+
+  await withMockedStatusDeps(
+    {
+      findById: async () => null,
+      findOne: async () => {
+        projectQueried = true;
+        return null;
+      },
+    },
+    async () => {
+      const result = await updateGroupStatus({
+        ownerId: 'user-1',
+        groupId: fakeObjectId('missing-group'),
+        status: 'resolved',
+      });
+
+      assert.equal(result, null);
+      assert.equal(projectQueried, false, 'must not query Project when the group itself was not found');
+    }
+  );
+});
+
+test('updateGroupStatus: group exists but belongs to a different owner — returns null, never saves', async () => {
+  let saveCalled = false;
+  const fakeGroup = {
+    _id: fakeObjectId('not-your-group'),
+    projectId: 'project-2',
+    status: 'open',
+    statusHistory: [],
+    save: async () => {
+      saveCalled = true;
+    },
+  };
+
+  await withMockedStatusDeps(
+    {
+      findById: async () => fakeGroup,
+      // Ownership-scoped query correctly finds nothing for this ownerId.
+      findOne: async () => null,
+    },
+    async () => {
+      const result = await updateGroupStatus({
+        ownerId: 'someone-else',
+        groupId: fakeObjectId('not-your-group'),
+        status: 'ignored',
+      });
+
+      assert.equal(result, null);
+      assert.equal(saveCalled, false, 'must not mutate/save a group the caller does not own');
+      assert.equal(fakeGroup.status, 'open', 'status must be untouched on the not-yours path');
+    }
+  );
 });

@@ -12,14 +12,19 @@ const SEVERITY_LABEL = {
     critical: 'Critical',
 };
 
+// Same three values as the server's ErrorGroup status enum
+// (server/models/ErrorGroup.js) — a plain <select>, not a fancier
+// control; polish is Milestone 5's job (Task 23), not this task's.
+const STATUS_OPTIONS = ['open', 'resolved', 'ignored'];
+
 function formatDate(iso) {
     return new Date(iso).toLocaleString();
 }
 
-// Project detail + error group table (Task 17). Deliberately does NOT
-// link each row to a per-group detail page yet — ErrorGroupDetail
-// (AI panel, event list, sparkline) is Task 19, and status changes are
-// Task 18's PATCH /api/groups/:id/status. This page only lists.
+// Project detail + error group table (Task 17), plus status updates
+// (Task 18's PATCH /api/groups/:id/status). Deliberately does NOT link
+// each row to a per-group detail page yet — ErrorGroupDetail (AI panel,
+// event list, sparkline) is Task 19.
 function ProjectDetailPage() {
     const { id } = useParams();
 
@@ -27,6 +32,12 @@ function ProjectDetailPage() {
     const [groups, setGroups] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    // Separate from the page-load `error` above — this is scoped to a
+    // single row's status PATCH failing, not the initial GETs.
+    const [statusError, setStatusError] = useState('');
+    // Tracks which group's PATCH is in flight, so only that row's
+    // <select> disables — not the whole table.
+    const [updatingGroupId, setUpdatingGroupId] = useState(null);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -56,6 +67,28 @@ function ProjectDetailPage() {
         fetchData();
     }, [fetchData]);
 
+    // Optimistic-ish update: apply the new status to local state only
+    // after the PATCH succeeds (not before), so a failed request never
+    // shows a status the server didn't actually record. On failure the
+    // <select> simply re-renders with the still-unchanged `groups`
+    // state — no manual revert needed since we never wrote the
+    // optimistic value in the first place.
+    const handleStatusChange = async (groupId, newStatus) => {
+        setStatusError('');
+        setUpdatingGroupId(groupId);
+        try {
+            const res = await api.patch(`/groups/${groupId}/status`, { status: newStatus });
+            const updated = res.data.data.group;
+            setGroups((prev) =>
+                prev.map((g) => (g.id === groupId ? { ...g, status: updated.status } : g))
+            );
+        } catch (err) {
+            setStatusError(err.response?.data?.error || 'Failed to update status.');
+        } finally {
+            setUpdatingGroupId(null);
+        }
+    };
+
     if (loading) {
         return <p>Loading project...</p>;
     }
@@ -78,6 +111,7 @@ function ProjectDetailPage() {
             {project.githubRepo && <p>Repo: {project.githubRepo}</p>}
 
             <h2>Error groups</h2>
+            {statusError && <p role="alert">{statusError}</p>}
             {groups.length === 0 ? (
                 <p>No errors reported yet for this project.</p>
             ) : (
@@ -95,7 +129,19 @@ function ProjectDetailPage() {
                         {groups.map((group) => (
                             <tr key={group.id}>
                                 <td>{group.message}</td>
-                                <td>{group.status}</td>
+                                <td>
+                                    <select
+                                        value={group.status}
+                                        disabled={updatingGroupId === group.id}
+                                        onChange={(e) => handleStatusChange(group.id, e.target.value)}
+                                    >
+                                        {STATUS_OPTIONS.map((status) => (
+                                            <option key={status} value={status}>
+                                                {status}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </td>
                                 <td>
                                     {group.aiSummary?.severity
                                         ? SEVERITY_LABEL[group.aiSummary.severity] || group.aiSummary.severity

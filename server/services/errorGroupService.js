@@ -1,5 +1,6 @@
 const ErrorGroup = require('../models/ErrorGroup');
 const ErrorEvent = require('../models/ErrorEvent');
+const Project = require('../models/Project');
 const { generateFingerprint } = require('./fingerprintService');
 const { normalizeStack } = require('../utils/stackNormalizer');
 // Required as namespace objects, not destructured — same reasoning as
@@ -192,4 +193,46 @@ async function listErrorGroups(projectId) {
   }));
 }
 
-module.exports = { recordEvent, enrichErrorGroup, listErrorGroups };
+/**
+ * Updates an ErrorGroup's status (Task 18), scoped to the project's
+ * owner, and appends a `statusHistory` entry — never overwrites it
+ * (see DATABASE.md's locked design, DECISIONS.md for the "why").
+ * Deliberately never touches `lastSeen` — that field's semantics are
+ * dedup-specific (bumps only on a duplicate *event*), and a status
+ * change is an unrelated edit (see DECISIONS.md's
+ * "ErrorGroup uses firstSeen/lastSeen instead of Mongoose timestamps").
+ *
+ * Ownership check: `ErrorGroup` doesn't carry `ownerId` directly (its
+ * dedup key is `{ projectId, fingerprint }`, not tied to a user), so
+ * this can't be a single ownership-scoped query on ErrorGroup itself
+ * the way `projectService.getProject` scopes directly on Project.
+ * Instead: fetch the group to learn its `projectId`, then make the
+ * actual authorization decision via a scoped `Project.findOne({ _id,
+ * ownerId })` — the same query shape used everywhere else in this
+ * codebase — rather than fetching the project unscoped and comparing
+ * `ownerId` in application code. See DECISIONS.md, "Task 18:
+ * ownership check for group status updates" for the full reasoning.
+ *
+ * Returns null under the same not-found-or-not-yours collapse used
+ * throughout (group doesn't exist, or its project isn't owned by
+ * `ownerId`) — the caller (controller) maps this to a single 404.
+ */
+async function updateGroupStatus({ ownerId, groupId, status }) {
+  const group = await ErrorGroup.findById(groupId);
+  if (!group) return null;
+
+  const project = await Project.findOne({ _id: group.projectId, ownerId });
+  if (!project) return null;
+
+  group.status = status;
+  group.statusHistory.push({ status, changedAt: new Date() });
+  await group.save();
+
+  return {
+    id: group._id,
+    status: group.status,
+    statusHistory: group.statusHistory,
+  };
+}
+
+module.exports = { recordEvent, enrichErrorGroup, listErrorGroups, updateGroupStatus };

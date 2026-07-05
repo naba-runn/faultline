@@ -1135,6 +1135,71 @@ that timed out, not skipped).
 
 ---
 
+## Task 18: ownership check for group status updates
+
+**Decision:** `PATCH /api/groups/:id/status` (new in `groupController`/
+`groupRoutes`, mounted at `/api/groups`) enforces ownership by first
+fetching the `ErrorGroup` by `:id`, then running a scoped
+`Project.findOne({ _id: group.projectId, ownerId })` query — the same
+`findOne({ _id, ownerId })` shape `projectService.getProject` already
+uses — and treating a `null` result there as not-found-or-not-yours,
+identically to every project route's collapsed 404.
+
+**Why this couldn't be a single scoped query like the project routes:**
+`projectService.getProject` scopes directly on `Project` because
+`ownerId` lives on that same document. `ErrorGroup` has no `ownerId`
+field — its only identity/ownership link is `projectId`, one hop away
+from the user. A single-collection scoped query the way `getProject`
+does it isn't available here without denormalizing `ownerId` onto
+every `ErrorGroup`, which was rejected (see Alternatives).
+
+**Alternatives considered:**
+1. Denormalize `ownerId` onto `ErrorGroup` so `findOneAndUpdate({ _id,
+   ownerId })` could scope and update in one atomic call. Rejected:
+   this is the exact kind of "while I'm in here" schema change
+   `PROJECT_RULES.md` §2 rules out unprompted — it would touch the
+   locked `ErrorGroup` schema and the dedup upsert path (Task 9) for a
+   single new endpoint, and would introduce a second source of truth
+   for ownership that could drift from `Project.ownerId` if a project
+   were ever reassigned.
+2. Fetch the group unscoped, then compare `group.projectId` against a
+   project the caller fetched separately, checking equality in
+   application code. Rejected: this is the literal fetch-then-check
+   anti-pattern `PROJECT_RULES.md` §11 calls out — the authorization
+   decision would live in an `if` statement instead of a database
+   query, which is easier to accidentally omit or get wrong on a
+   future edit.
+3. Two-step lookup where the *second* query (`Project.findOne`) is the
+   one that's ownership-scoped, and its result — not a field
+   comparison — is what the function branches on (chosen).
+
+**Justification:** Option 3 keeps the actual security boundary as a
+database-level scoped query, matching the pattern used everywhere else
+in this codebase, while being honest that a single round-trip isn't
+possible without a schema change nobody asked for. The first query
+(`ErrorGroup.findById`) only ever learns `projectId` — it makes no
+authorization decision itself and nothing is mutated until the second,
+scoped query confirms ownership.
+
+**Shipped:** Task 18 — `errorGroupService.updateGroupStatus` (new),
+`groupController.updateStatus` (new), `groupRoutes.js` (new, mounted at
+`/api/groups` in `app.js`), client: `ProjectDetailPage.jsx`'s status
+column changed from static text to a `<select>` wired to the PATCH,
+with a row-scoped disabled state and a page-level `statusError` for
+failed updates. 3 new unit tests in `errorGroupService.test.js`
+(owned-group happy path incl. `statusHistory` append, group-not-found
+short-circuits before querying `Project`, group-exists-but-not-yours
+never saves) — all 16 server tests pass. Client: `npm run build`
+succeeds (89 modules, no errors). **Manually verified by the user
+against a live local server + Atlas:** two-call PATCH sequence
+(`resolved` then `ignored`) confirmed `statusHistory` accumulates to 2
+entries rather than being overwritten, and `lastSeen` stayed unchanged
+across both; bad-`status` → `400`; nonexistent group id → `404`;
+dashboard `<select>` change survived a full page refresh. Task fully
+closed.
+
+---
+
 ## Shipped Log
 
 Chronological, most-recent-first, entries with no dedicated decision

@@ -47,7 +47,7 @@ approved blueprint. Check off as completed; do not reorder or skip.
 - [x] **Task 15** — React scaffold, AuthContext, axios instance with interceptor
 - [x] **Task 16** — Login/Register pages, ProtectedRoute
 - [x] **Task 17** — Dashboard + ProjectDetail pages (project list, error group table)
-- [ ] **Task 18** — Status update endpoint + UI
+- [x] **Task 18** — Status update endpoint + UI
 
 ## Milestone 5: Detail View & Polish
 

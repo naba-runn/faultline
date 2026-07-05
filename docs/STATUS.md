@@ -11,7 +11,7 @@
 - **Milestone 1 — Backend Foundation:** COMPLETE (4/4 tasks)
 - **Milestone 2 — Projects & Ingestion:** COMPLETE (6/6 tasks)
 - **Milestone 3 — AI Enrichment:** COMPLETE (4/4 tasks)
-- **Milestone 4 — Dashboard Auth & Core Pages:** IN PROGRESS (3/4 tasks)
+- **Milestone 4 — Dashboard Auth & Core Pages:** COMPLETE (4/4 tasks)
 
 Task numbering and full checklist: `TASKS.md`. This section only
 states current position, not a restated description of every task —
@@ -20,64 +20,65 @@ that would duplicate `TASKS.md`.
 ## What's Actively In Progress
 
 Nothing mid-implementation as of this pass. Most recently completed:
-**Task 17 — Dashboard + ProjectDetail pages (project list, error group
-table).**
+**Task 18 — Status update endpoint + UI**, closing out Milestone 4.
 
-**Blocker found and resolved mid-task:** `API.md`'s "Not Yet
-Implemented" list still had `GET /api/projects/:id/groups`, and
-confirmed against the actual server code — no route/controller for it
-existed, only the `ErrorGroup` model and the enrichment service used
-internally by ingestion. Rather than build client pages against a
-non-existent endpoint, stopped and asked; user chose to build the
-endpoint first. Added: `errorGroupService.listErrorGroups(projectId)`
-(shapes each group down for a list view — omits `stackSample`; when
-`aiSummary` exists, includes only `severity`/`rootCause`, not
-`suggestedFix`/`confidence`/`affectedFile`/`affectedFunction`, which
-stay reserved for the not-yet-built `GET /api/groups/:id` that Task
-19's ErrorGroupDetail will use), `projectController.listProjectGroups`
-(reuses `projectService.getProject` for the ownership check, same
-not-found-or-not-yours-collapse-to-404 pattern as every other project
-route), and the `GET /:id/groups` route in `projectRoutes.js`. Full
-reasoning in `DECISIONS.md`'s "Task 17: GET /api/projects/:id/groups
-built mid-task" entry.
+**Server:** `errorGroupService.updateGroupStatus({ ownerId, groupId,
+status })` (new) — fetches the `ErrorGroup` by id, then enforces
+ownership via a scoped `Project.findOne({ _id: group.projectId,
+ownerId })` (not a fetch-then-compare on a fetched project's
+`ownerId`), pushes a `statusHistory` entry, and saves. Never touches
+`lastSeen` (dedup-specific field, unrelated to a status edit).
+`groupController.updateStatus` (new) validates `status` is one of
+`open`/`resolved`/`ignored` before calling the service, and collapses
+group-not-found / not-yours / malformed-`:id` into the same 404 used
+everywhere else. `groupRoutes.js` (new) mounts
+`PATCH /api/groups/:id/status` under `/api/groups` in `app.js`, behind
+the same JWT `authMiddleware` as project routes. Full reasoning for the
+ownership-check design (and the two alternatives rejected) is in
+`DECISIONS.md`'s "Task 18: ownership check for group status updates."
 
-**Client:** `src/pages/DashboardPage.jsx` now lists projects
-(`GET /api/projects`) and has a create-project form
-(`POST /api/projects`), showing the one-time raw API key on success —
-this overwrote Task 16's placeholder dashboard, called out per §5.
-`src/pages/ProjectDetailPage.jsx` (new) shows project info plus the
-error group table via the two GETs above. `App.jsx` gained a
-`/projects/:id` protected route. List view only — no drill-into-one-
-group page or status changes (Tasks 18-19 respectively).
+**Client:** `src/pages/ProjectDetailPage.jsx`'s status column changed
+from static text to a `<select>` (`open`/`resolved`/`ignored`) wired to
+the new PATCH. Only the row being changed disables during its request
+(`updatingGroupId`); a page-level `statusError` surfaces a failed PATCH
+without touching the initial-load `error` state. Local `groups` state
+is only updated after the PATCH succeeds — never optimistically before
+the response — so a failed request can't leave the UI showing a status
+the server didn't actually record.
 
 **Verified this pass:**
-- Server: `npm test` — all 13 tests pass, including 3 new
-  `listErrorGroups` unit tests (filter/sort correctness, list-shaping,
-  aiSummary field-trimming), same monkey-patched-Mongoose-model
-  approach as the file's existing tests (no live Mongo in this
-  sandbox).
+- Server: `npm test` — all 16 tests pass, including 3 new
+  `updateGroupStatus` unit tests (owned-group happy path with
+  `statusHistory` append, group-not-found short-circuits before
+  querying `Project`, group-exists-but-not-yours never saves) — same
+  monkey-patched-Mongoose-model approach as the file's existing tests
+  (no live Mongo in this sandbox).
+- Server: `app.js` loads without throwing with `groupRoutes` mounted
+  (confirms the new route wiring doesn't break app construction).
 - Client: `npm run build` succeeds (89 modules, no errors).
 
-**Not verified:** any live behavior against a real running server +
-Atlas — confirmed via a direct connection attempt that this sandbox
-has no network path to Atlas (times out; only npm/GitHub registries
-are allow-listed), so this is a hard sandbox limitation, not
-something skipped. Unexercised in-session: the actual HTTP round-trip
-for `GET /api/projects/:id/groups` end-to-end, the Dashboard's create-
-project flow displaying a real API key, and the ProjectDetail table
-rendering real error groups (including the `aiSummary` severity
-column against groups that do vs. don't have one yet). See this
-task's manual test instructions for what to run locally.
+**Manually verified by the user against a live local server + Atlas,
+this pass:** the two-call PATCH sequence (`resolved` then `ignored` on
+the same group) — `statusHistory` accumulated to 2 entries rather than
+being overwritten, and `lastSeen` stayed unchanged across both calls;
+bad `status` value correctly returned `400`; a nonexistent group id
+correctly returned `404`; the dashboard `<select>` persisted a status
+change across a full page refresh, confirming it round-trips through
+the server rather than only updating local state. Task 18 is fully
+closed — no outstanding verification owed for this task.
 
-Before this: Task 16 — Login/Register pages, `ProtectedRoute`
-(manually verified working end-to-end by the user against a live
-local server).
+Before this: Task 17 — Dashboard + ProjectDetail pages (project list,
+error group table), including the mid-task addition of
+`GET /api/projects/:id/groups` (manually verified working end-to-end
+by the user against a live local server, per the prior pass).
 
-Next up: **Task 18** — Status update endpoint + UI. Not started.
+Next up: **Task 19** — ErrorGroupDetail page (AI panel as checklist,
+event list, sparkline). Not started. This is the first task in
+Milestone 5.
 
 ## Constitution Amendments
 
-- **This pass** — `PROJECT_RULES.md` §4/§8 amended at the user's
+- **Prior pass** — `PROJECT_RULES.md` §4/§8 amended at the user's
   explicit request: every session must now hand off (a) complete
   final contents of every changed file (not a diff/patch — the
   implementation sandbox is a separate filesystem from the user's real
@@ -85,7 +86,7 @@ Next up: **Task 18** — Status update endpoint + UI. Not started.
   bounded section changed, and (b) detailed, copy-pasteable manual
   test instructions (exact commands, exact pass/fail signal), with
   honest disclosure when a test genuinely couldn't be run in-session.
-- **This pass** — `PROJECT_RULES.md` §4 further amended: before
+- **Prior pass** — `PROJECT_RULES.md` §4 further amended: before
   starting implementation on a subtask, state a recommended effort
   level and whether extended thinking should be on, with a one-line
   reason. A recommendation for the user to set, not something Claude
@@ -104,17 +105,11 @@ Next up: **Task 18** — Status update endpoint + UI. Not started.
   to stack-trace-only grounding, never a hard failure (see
   `DECISIONS.md`, "githubService: snippet windowing + optional
   GITHUB_TOKEN").
-- **Git state confirmed clean.** Verified locally via `git log` /
-  `git status`: Tasks 9.2/9.3/10/11/12 plus this pass's changes are
-  all committed on `refactor-v2` (tip `3f4c45d "Major refactor"`),
-  branch is up to date with `origin/refactor-v2`, working tree clean.
-- **Manual re-verification of this pass's changes is still owed.**
-  Everything in this pass was implemented and unit-tested where
-  stated, but the live-server manual checks listed in this pass's
-  summary (rate limiter thresholds, `apiKeyMiddleware`'s 5 cases
-  post-refactor, response-shape byte-for-byte diffing, the new Mongo
-  index) have not been run against a live Atlas cluster by the user
-  yet — do that before marking this pass fully closed.
+- **Manual re-verification of the previous (Task 17) pass's changes is
+  still owed**, carried forward unresolved: rate limiter thresholds,
+  `apiKeyMiddleware`'s 5 cases post-refactor, response-shape
+  byte-for-byte diffing, and the new Mongo index have not been run
+  against a live Atlas cluster by the user yet either.
 
 ## Currently-Relevant Locked-In Decisions
 
@@ -128,6 +123,8 @@ Pointers only — see `DECISIONS.md` for full reasoning:
 - Raw fetched GitHub source snippets are never persisted ("githubService: snippet windowing + optional GITHUB_TOKEN").
 - `apiKeyMiddleware`'s inert `timingSafeEqual` check was removed this pass — the hash-indexed `findOne` lookup is the actual security boundary ("apiKeyMiddleware: removal of inert timingSafeEqual check").
 - The response-shaping helper (`sendSuccess`/`sendError`) added this pass is explicitly not the Task 20 `AppError`/`catchAsync` refactor ("`httpResponse` helper: response-shaping only, not Task 20").
+- `PATCH /api/groups/:id/status` enforces ownership via a scoped `Project.findOne({ _id, ownerId })` after looking up the group, not a fetch-then-compare — `ErrorGroup` has no `ownerId` field to scope on directly ("Task 18: ownership check for group status updates").
+- `statusHistory` is appended to, never overwritten, and a status PATCH never bumps `lastSeen` (dedup-specific semantics stay unrelated to status edits — see "ErrorGroup uses firstSeen/lastSeen instead of Mongoose timestamps").
 
 ## Where Things Live
 
@@ -135,4 +132,4 @@ Pointers only — see `DECISIONS.md` for full reasoning:
   review doc is kept) — treat as final, do not redesign.
 - Living docs: `/docs`
 - Server code: `/server`
-- Client code: `/client` (Vite + React scaffold as of Task 15; no real UI pages yet — Task 16)
+- Client code: `/client` (Vite + React scaffold as of Task 15; real UI pages — Login/Register/Dashboard/ProjectDetail — since Tasks 16-18)
