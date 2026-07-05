@@ -3,12 +3,12 @@ import LoginPage from './pages/LoginPage.jsx';
 import RegisterPage from './pages/RegisterPage.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
 import ProjectDetailPage from './pages/ProjectDetailPage.jsx';
+import GroupDetailPage from './pages/GroupDetailPage.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 
-// Task 17 adds the real Dashboard (project list + create form) and
+// Task 17 added the real Dashboard (project list + create form) and
 // ProjectDetail (error group table), replacing Task 16's Dashboard
-// placeholder. ErrorGroupDetail (a per-group page) is Task 19 — not
-// added here.
+// placeholder. Task 19 adds ErrorGroupDetail (a per-group page) below.
 function App() {
     return (
         <BrowserRouter>
@@ -28,6 +28,14 @@ function App() {
                     element={
                         <ProtectedRoute>
                             <ProjectDetailPage />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/groups/:id"
+                    element={
+                        <ProtectedRoute>
+                            <GroupDetailPage />
                         </ProtectedRoute>
                     }
                 />

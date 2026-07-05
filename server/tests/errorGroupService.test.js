@@ -37,6 +37,7 @@ const {
   enrichErrorGroup,
   listErrorGroups,
   updateGroupStatus,
+  getGroupDetail,
 } = require('../services/errorGroupService');
 function fakeObjectId(seed) {
   // Mongoose ObjectIds aren't needed for real here — recordEvent only
@@ -621,6 +622,168 @@ test('updateGroupStatus: group exists but belongs to a different owner — retur
       assert.equal(result, null);
       assert.equal(saveCalled, false, 'must not mutate/save a group the caller does not own');
       assert.equal(fakeGroup.status, 'open', 'status must be untouched on the not-yours path');
+    }
+  );
+});
+
+// --- getGroupDetail (Task 19) ---
+//
+// Same two-step ownership pattern as updateGroupStatus, plus a third
+// dependency (ErrorEvent.find) that's only ever reached once ownership
+// is confirmed. ErrorEvent.find is faked as a chainable
+// { sort, limit } object, matching how the real Mongoose Query is used
+// in getGroupDetail (find().sort().limit()) — not a full Query
+// implementation, just enough surface for this call shape.
+
+function withMockedDetailDeps(mocks, fn) {
+  const originalFindById = ErrorGroup.findById;
+  const originalProjectFindOne = Project.findOne;
+  const originalEventFind = ErrorEvent.find;
+
+  ErrorGroup.findById = mocks.findById;
+  Project.findOne = mocks.findOne;
+  ErrorEvent.find = mocks.find;
+
+  return fn().finally(() => {
+    ErrorGroup.findById = originalFindById;
+    Project.findOne = originalProjectFindOne;
+    ErrorEvent.find = originalEventFind;
+  });
+}
+
+test('getGroupDetail: owned group — returns full group shape (incl. projectId + full aiSummary) and shaped, sorted/limited events', async () => {
+  let sortArg = null;
+  let limitArg = null;
+  const fakeGroup = {
+    _id: fakeObjectId('detail-group'),
+    projectId: 'project-1',
+    message: 'TypeError: x is not a function',
+    stackSample: 'at foo (/app/index.js:1:1)',
+    status: 'open',
+    statusHistory: [{ status: 'open', changedAt: new Date('2026-01-01') }],
+    aiSummary: {
+      rootCause: 'x is undefined',
+      severity: 'high',
+      suggestedFix: ['Add a null check', 'Add a regression test'],
+      confidence: 0.8,
+      affectedFile: 'index.js',
+      affectedFunction: 'foo',
+    },
+    count: 3,
+    firstSeen: new Date('2026-01-01'),
+    lastSeen: new Date('2026-01-03'),
+  };
+  const fakeEvents = [
+    { _id: fakeObjectId('event-2'), receivedAt: new Date('2026-01-03'), env: 'production', rawStack: 'irrelevant' },
+    { _id: fakeObjectId('event-1'), receivedAt: new Date('2026-01-01'), env: null, rawStack: 'irrelevant' },
+  ];
+
+  await withMockedDetailDeps(
+    {
+      findById: async (id) => {
+        assert.equal(id, fakeObjectId('detail-group'));
+        return fakeGroup;
+      },
+      findOne: async (filter) => {
+        assert.deepEqual(filter, { _id: 'project-1', ownerId: 'user-1' });
+        return { _id: 'project-1', ownerId: 'user-1' };
+      },
+      find: (filter) => {
+        assert.deepEqual(filter, { errorGroupId: fakeObjectId('detail-group') });
+        return {
+          sort: (arg) => {
+            sortArg = arg;
+            return {
+              limit: (arg2) => {
+                limitArg = arg2;
+                return Promise.resolve(fakeEvents);
+              },
+            };
+          },
+        };
+      },
+    },
+    async () => {
+      const result = await getGroupDetail({
+        ownerId: 'user-1',
+        groupId: fakeObjectId('detail-group'),
+      });
+
+      assert.deepEqual(sortArg, { receivedAt: -1 });
+      assert.equal(limitArg, 50);
+
+      assert.equal(result.group.id, fakeObjectId('detail-group'));
+      assert.equal(result.group.projectId, 'project-1');
+      assert.equal(result.group.stackSample, fakeGroup.stackSample);
+      assert.equal(result.group.statusHistory.length, 1);
+      // Full aiSummary — unlike listErrorGroups, nothing trimmed.
+      assert.equal(result.group.aiSummary.suggestedFix.length, 2);
+      assert.equal(result.group.aiSummary.confidence, 0.8);
+      assert.equal(result.group.aiSummary.affectedFile, 'index.js');
+      assert.equal(result.group.count, 3);
+
+      // Events shaped down to id/receivedAt/env — rawStack not exposed.
+      assert.equal(result.events.length, 2);
+      assert.equal(result.events[0].id, fakeObjectId('event-2'));
+      assert.equal(result.events[0].env, 'production');
+      assert.equal(result.events[0].rawStack, undefined);
+    }
+  );
+});
+
+test('getGroupDetail: group does not exist — returns null, never queries Project or ErrorEvent', async () => {
+  let projectQueried = false;
+  let eventsQueried = false;
+
+  await withMockedDetailDeps(
+    {
+      findById: async () => null,
+      findOne: async () => {
+        projectQueried = true;
+        return null;
+      },
+      find: () => {
+        eventsQueried = true;
+        return { sort: () => ({ limit: () => Promise.resolve([]) }) };
+      },
+    },
+    async () => {
+      const result = await getGroupDetail({
+        ownerId: 'user-1',
+        groupId: fakeObjectId('missing-group'),
+      });
+
+      assert.equal(result, null);
+      assert.equal(projectQueried, false, 'must not query Project when the group itself was not found');
+      assert.equal(eventsQueried, false, 'must not query ErrorEvent when the group itself was not found');
+    }
+  );
+});
+
+test('getGroupDetail: group exists but belongs to a different owner — returns null, never queries ErrorEvent', async () => {
+  let eventsQueried = false;
+  const fakeGroup = {
+    _id: fakeObjectId('not-your-group'),
+    projectId: 'project-2',
+  };
+
+  await withMockedDetailDeps(
+    {
+      findById: async () => fakeGroup,
+      findOne: async () => null,
+      find: () => {
+        eventsQueried = true;
+        return { sort: () => ({ limit: () => Promise.resolve([]) }) };
+      },
+    },
+    async () => {
+      const result = await getGroupDetail({
+        ownerId: 'someone-else',
+        groupId: fakeObjectId('not-your-group'),
+      });
+
+      assert.equal(result, null);
+      assert.equal(eventsQueried, false, 'must not query ErrorEvent for a group the caller does not own');
     }
   );
 });

@@ -174,8 +174,8 @@ async function enrichErrorGroup({ errorGroup, project, message, stack }) {
  * same reasoning as projectService's shaping (never return raw
  * Mongoose docs) — stackSample is deliberately omitted here since the
  * table view (Task 17) doesn't need it; the full document is what
- * Task 19's ErrorGroupDetail will fetch via the (not yet built)
- * GET /api/groups/:id.
+ * Task 19's ErrorGroupDetail fetches via getGroupDetail/
+ * GET /api/groups/:id, below.
  */
 async function listErrorGroups(projectId) {
   const groups = await ErrorGroup.find({ projectId }).sort({ lastSeen: -1 });
@@ -235,4 +235,76 @@ async function updateGroupStatus({ ownerId, groupId, status }) {
   };
 }
 
-module.exports = { recordEvent, enrichErrorGroup, listErrorGroups, updateGroupStatus };
+// Task 19: bound on how many recent ErrorEvents are fetched for the
+// ErrorGroupDetail page's event list + sparkline. This is a fixed
+// recent-window cap, not real pagination (Task 22's cursor pagination
+// covers the groups list only, never events) — it matches the
+// existing { errorGroupId: 1, receivedAt: -1 } index's "recent events
+// per group" access pattern. If a group has more occurrences than
+// this, older ones simply aren't shown; there's no UI affordance to
+// page further back yet. See DECISIONS.md, "Task 19: GET
+// /api/groups/:id returns group + events combined."
+const RECENT_EVENTS_LIMIT = 50;
+
+/**
+ * Fetches the full ErrorGroup document plus its most recent
+ * ErrorEvents, for Task 19's ErrorGroupDetail page. Ownership is
+ * enforced with the identical two-step pattern as
+ * updateGroupStatus — fetch the group to learn its projectId, then a
+ * scoped Project.findOne({ _id, ownerId }) — see that function's doc
+ * comment and DECISIONS.md's "Task 18" entry for the full reasoning;
+ * not re-derived here.
+ *
+ * Unlike listErrorGroups' deliberately trimmed shape (severity +
+ * rootCause only), this returns the FULL aiSummary — this is the one
+ * place in the app that needs suggestedFix/confidence/affectedFile/
+ * affectedFunction (see DECISIONS.md's "Task 17" entry, which reserved
+ * those fields for this endpoint). projectId is included so the
+ * client can link back to the owning project without a second GET.
+ *
+ * A single combined { group, events } response, not two separate
+ * endpoints — see DECISIONS.md, "Task 19" for why this differs from
+ * the Project/its-groups split.
+ *
+ * Returns null under the same not-found-or-not-yours collapse used
+ * throughout when the group doesn't exist or isn't owned by ownerId.
+ */
+async function getGroupDetail({ ownerId, groupId }) {
+  const group = await ErrorGroup.findById(groupId);
+  if (!group) return null;
+
+  const project = await Project.findOne({ _id: group.projectId, ownerId });
+  if (!project) return null;
+
+  const events = await ErrorEvent.find({ errorGroupId: group._id })
+    .sort({ receivedAt: -1 })
+    .limit(RECENT_EVENTS_LIMIT);
+
+  return {
+    group: {
+      id: group._id,
+      projectId: group.projectId,
+      message: group.message,
+      stackSample: group.stackSample,
+      status: group.status,
+      statusHistory: group.statusHistory,
+      aiSummary: group.aiSummary,
+      count: group.count,
+      firstSeen: group.firstSeen,
+      lastSeen: group.lastSeen,
+    },
+    events: events.map((event) => ({
+      id: event._id,
+      receivedAt: event.receivedAt,
+      env: event.env,
+    })),
+  };
+}
+
+module.exports = {
+  recordEvent,
+  enrichErrorGroup,
+  listErrorGroups,
+  updateGroupStatus,
+  getGroupDetail,
+};

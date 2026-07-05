@@ -10,6 +10,7 @@ const router = express.Router();
 // hashing" entry for the deliberate API-key-vs-JWT split.
 router.use(authMiddleware);
 
+router.get('/:id', groupController.getGroupDetail);
 router.patch('/:id/status', groupController.updateStatus);
 
 module.exports = router;

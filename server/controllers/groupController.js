@@ -37,4 +37,27 @@ async function updateStatus(req, res) {
     }
 }
 
-module.exports = { updateStatus };
+async function getGroupDetail(req, res) {
+    try {
+        const result = await errorGroupService.getGroupDetail({
+            ownerId: req.user._id,
+            groupId: req.params.id,
+        });
+
+        if (!result) {
+            return sendError(res, 404, 'Error group not found');
+        }
+
+        return sendSuccess(res, 200, result);
+    } catch (err) {
+        // Malformed :id (not a valid ObjectId) — same not-found collapse
+        // as every other resource route in this codebase.
+        if (err.name === 'CastError') {
+            return sendError(res, 404, 'Error group not found');
+        }
+        const statusCode = err.statusCode || 500;
+        return sendError(res, statusCode, err.message || 'Internal Server Error');
+    }
+}
+
+module.exports = { updateStatus, getGroupDetail };

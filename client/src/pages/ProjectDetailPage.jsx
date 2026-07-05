@@ -22,9 +22,9 @@ function formatDate(iso) {
 }
 
 // Project detail + error group table (Task 17), plus status updates
-// (Task 18's PATCH /api/groups/:id/status). Deliberately does NOT link
-// each row to a per-group detail page yet — ErrorGroupDetail (AI panel,
-// event list, sparkline) is Task 19.
+// (Task 18's PATCH /api/groups/:id/status). Task 19 links each row's
+// message to the new per-group ErrorGroupDetail page (AI panel, event
+// list, sparkline) at /groups/:id.
 function ProjectDetailPage() {
     const { id } = useParams();
 
@@ -128,7 +128,9 @@ function ProjectDetailPage() {
                     <tbody>
                         {groups.map((group) => (
                             <tr key={group.id}>
-                                <td>{group.message}</td>
+                                <td>
+                                    <Link to={`/groups/${group.id}`}>{group.message}</Link>
+                                </td>
                                 <td>
                                     <select
                                         value={group.status}
