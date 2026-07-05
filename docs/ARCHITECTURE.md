@@ -4,7 +4,12 @@
 
 ```
 faultline/
-├── client/                 (placeholder — scaffolded in Task 15)
+├── client/                 (Vite + React scaffold, Task 15)
+│   ├── src/
+│   │   ├── api/axios.js         (shared axios instance — request interceptor attaches JWT, response interceptor clears it on 401)
+│   │   ├── context/AuthContext.jsx (user/token/loading state, login/register/logout, bootstraps via GET /api/auth/me)
+│   │   ├── App.jsx              (placeholder root — no real UI yet, Task 16)
+│   │   └── main.jsx
 │   └── README.md
 ├── server/
 │   ├── config/

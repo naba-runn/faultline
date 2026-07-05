@@ -11,6 +11,7 @@
 - **Milestone 1 — Backend Foundation:** COMPLETE (4/4 tasks)
 - **Milestone 2 — Projects & Ingestion:** COMPLETE (6/6 tasks)
 - **Milestone 3 — AI Enrichment:** COMPLETE (4/4 tasks)
+- **Milestone 4 — Dashboard Auth & Core Pages:** IN PROGRESS (1/4 tasks)
 
 Task numbering and full checklist: `TASKS.md`. This section only
 states current position, not a restated description of every task —
@@ -19,37 +20,37 @@ that would duplicate `TASKS.md`.
 ## What's Actively In Progress
 
 Nothing mid-implementation as of this pass. Most recently completed:
-**a full audit of Tasks 1-14**, per `PROJECT_RULES.md` §13's every-10
-cadence (already overdue). Core logic — auth, projects, ingestion,
-dedup, AI enrichment — all confirmed correct against the actual code,
-no functional bugs found there. Found and fixed one real code gap
+**Task 15 — React scaffold, `AuthContext`, axios instance with
+interceptor.** `/client` is now a Vite + React app with:
+`src/api/axios.js` (shared instance; request interceptor attaches the
+JWT from `localStorage`, response interceptor clears it on any `401`)
+and `src/context/AuthContext.jsx` (`AuthProvider`/`useAuth()` —
+`user`/`token`/`loading`/`isAuthenticated`, `login`/`register`/
+`logout`, bootstraps by calling `GET /api/auth/me` on mount if a token
+is already stored). `src/App.jsx` is a deliberate placeholder proving
+the wiring, not real UI — that's Task 16.
+
+**Verified this pass:** `npm install` + `npm run build` both succeed
+in the sandbox (Vite production build, 80 modules, no errors) —
+confirms the scaffold is structurally sound (imports, JSX, context
+usage all resolve). **Not verified:** any live behavior against the
+actual running Express API — no server process in this sandbox, so
+the `GET /api/auth/me` bootstrap call, the request interceptor's
+header injection, and the response interceptor's 401-clears-token path
+are all unexercised against a real backend. See this task's manual
+test instructions for what to run locally to close that gap.
+
+Before this: **a full audit of Tasks 1-14**, per `PROJECT_RULES.md`
+§13's every-10 cadence. Found and fixed one real code gap
 (`Project.apiKeyHash` had no index — added `unique: true`) and six
-documentation-drift items (`.env.example` missing `GITHUB_TOKEN`,
-`API.md`'s ingestion section describing the pre-Task-13 world,
-`ARCHITECTURE.md`'s folder tree and Request Flow section stuck at
-Milestone 1, `DATABASE.md`'s stale header + a broken leftover section,
-and a stray garbled clause on `TASKS.md`'s Task 15 line that an
-earlier pass had incorrectly claimed was already removed). Full
-findings and fixes logged in `DECISIONS.md`'s Shipped Log, "Audit
-session (Tasks 1-14)" entry.
+documentation-drift items. Full findings logged in `DECISIONS.md`'s
+Shipped Log, "Audit session (Tasks 1-14)" entry. That pass's own
+"not re-run" caveat (`npm test`, live server checks against Atlas)
+is unrelated to Task 15 and still stands on its own — see Known Open
+Issues below.
 
-**Not re-run:** `npm test` and any live server checks — this audit was
-static (code + docs cross-referenced by reading, not executing), same
-sandbox limitation as every prior pass (no `node_modules`, no
-network). Run `npm test` locally once after pulling in the
-`apiKeyHash` schema change — building a unique index against existing
-Atlas data is the one part of this pass worth confirming succeeds
-cleanly (should be a non-issue: 256-bit random keys make a real
-collision astronomically unlikely).
-
-Milestone 3 (AI Enrichment) is fully complete (4/4). Next audit due
-per cadence after Task 24 — the last task on the roadmap.
-
-Before this: Task 14 — derived confidence score +
-affectedFile/affectedFunction fields.
-
-Next up: **Task 15** — React scaffold, `AuthContext`, axios instance
-with interceptor. Not started.
+Next up: **Task 16** — Login/Register pages, `ProtectedRoute`. Not
+started.
 
 ## Constitution Amendments
 
@@ -111,4 +112,4 @@ Pointers only — see `DECISIONS.md` for full reasoning:
   review doc is kept) — treat as final, do not redesign.
 - Living docs: `/docs`
 - Server code: `/server`
-- Client code: `/client` (not yet scaffolded — Task 15)
+- Client code: `/client` (Vite + React scaffold as of Task 15; no real UI pages yet — Task 16)
