@@ -1,21 +1,18 @@
 const User = require('../models/User');
 const generateToken = require('../utils/generateToken');
+const AppError = require('../utils/AppError');
 
 async function login({ email, password }) {
   const user = await User.findOne({ email });
 
   if (!user) {
-    const err = new Error('Invalid email or password');
-    err.statusCode = 401;
-    throw err;
+    throw new AppError('Invalid email or password', 401);
   }
 
   const isMatch = await user.comparePassword(password);
 
   if (!isMatch) {
-    const err = new Error('Invalid email or password');
-    err.statusCode = 401;
-    throw err;
+    throw new AppError('Invalid email or password', 401);
   }
 
   const token = generateToken(user._id);
@@ -34,9 +31,10 @@ async function login({ email, password }) {
 
 
 /**
- * Registers a new user. Pure business logic — no req/res. Throws a
- * plain Error with a .statusCode the controller knows how to map;
- * this is intentionally simple until Task 20 introduces AppError.
+ * Registers a new user. Pure business logic — no req/res. Throws an
+ * AppError for the one anticipated failure mode (duplicate email);
+ * anything else (e.g. a Mongoose ValidationError from the schema)
+ * propagates as-is for the central error middleware to shape (Task 20).
  */
 async function register({ name, email, password }) {
   let user;
@@ -47,9 +45,7 @@ async function register({ name, email, password }) {
     user = await User.create({ name, email, passwordHash: password });
   } catch (err) {
     if (err.code === 11000) {
-      const dupError = new Error('Email is already registered');
-      dupError.statusCode = 409;
-      throw dupError;
+      throw new AppError('Email is already registered', 409);
     }
     throw err;
   }

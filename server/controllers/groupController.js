@@ -1,5 +1,7 @@
 const errorGroupService = require('../services/errorGroupService');
 const { sendSuccess, sendError } = require('../utils/httpResponse');
+const catchAsync = require('../utils/catchAsync');
+const AppError = require('../utils/AppError');
 
 // Same three values as the ErrorGroup schema's `status` enum
 // (server/models/ErrorGroup.js) — kept in sync manually since there's
@@ -7,57 +9,62 @@ const { sendSuccess, sendError } = require('../utils/httpResponse');
 // used in exactly two places; see PROJECT_RULES.md §11).
 const VALID_STATUSES = ['open', 'resolved', 'ignored'];
 
-async function updateStatus(req, res) {
+// catchAsync forwards any rejection to the central error middleware —
+// see middleware/errorMiddleware.js. A malformed :id surfaces as a
+// Mongoose CastError; that's caught locally (not centrally) so the
+// resource-specific "Error group not found" message is preserved —
+// only the controller layer knows which resource name to use, so this
+// one piece of translation stays here rather than moving to the
+// generic central handler (which would otherwise fall back to a
+// generic "Resource not found").
+
+const updateStatus = catchAsync(async (req, res) => {
+    const { status } = req.body;
+
+    if (!status || !VALID_STATUSES.includes(status)) {
+        return sendError(res, 400, `status must be one of: ${VALID_STATUSES.join(', ')}`);
+    }
+
+    let group;
     try {
-        const { status } = req.body;
-
-        if (!status || !VALID_STATUSES.includes(status)) {
-            return sendError(res, 400, `status must be one of: ${VALID_STATUSES.join(', ')}`);
-        }
-
-        const group = await errorGroupService.updateGroupStatus({
+        group = await errorGroupService.updateGroupStatus({
             ownerId: req.user._id,
             groupId: req.params.id,
             status,
         });
-
-        if (!group) {
-            return sendError(res, 404, 'Error group not found');
-        }
-
-        return sendSuccess(res, 200, { group });
     } catch (err) {
-        // Malformed :id (not a valid ObjectId) — same not-found collapse
-        // as every other resource route in this codebase.
         if (err.name === 'CastError') {
-            return sendError(res, 404, 'Error group not found');
+            throw new AppError('Error group not found', 404);
         }
-        const statusCode = err.statusCode || 500;
-        return sendError(res, statusCode, err.message || 'Internal Server Error');
+        throw err;
     }
-}
 
-async function getGroupDetail(req, res) {
+    if (!group) {
+        return sendError(res, 404, 'Error group not found');
+    }
+
+    return sendSuccess(res, 200, { group });
+});
+
+const getGroupDetail = catchAsync(async (req, res) => {
+    let result;
     try {
-        const result = await errorGroupService.getGroupDetail({
+        result = await errorGroupService.getGroupDetail({
             ownerId: req.user._id,
             groupId: req.params.id,
         });
-
-        if (!result) {
-            return sendError(res, 404, 'Error group not found');
-        }
-
-        return sendSuccess(res, 200, result);
     } catch (err) {
-        // Malformed :id (not a valid ObjectId) — same not-found collapse
-        // as every other resource route in this codebase.
         if (err.name === 'CastError') {
-            return sendError(res, 404, 'Error group not found');
+            throw new AppError('Error group not found', 404);
         }
-        const statusCode = err.statusCode || 500;
-        return sendError(res, statusCode, err.message || 'Internal Server Error');
+        throw err;
     }
-}
+
+    if (!result) {
+        return sendError(res, 404, 'Error group not found');
+    }
+
+    return sendSuccess(res, 200, result);
+});
 
 module.exports = { updateStatus, getGroupDetail };
