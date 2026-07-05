@@ -11,7 +11,7 @@
 - **Milestone 1 — Backend Foundation:** COMPLETE (4/4 tasks)
 - **Milestone 2 — Projects & Ingestion:** COMPLETE (6/6 tasks)
 - **Milestone 3 — AI Enrichment:** COMPLETE (4/4 tasks)
-- **Milestone 4 — Dashboard Auth & Core Pages:** IN PROGRESS (1/4 tasks)
+- **Milestone 4 — Dashboard Auth & Core Pages:** IN PROGRESS (2/4 tasks)
 
 Task numbering and full checklist: `TASKS.md`. This section only
 states current position, not a restated description of every task —
@@ -20,37 +20,37 @@ that would duplicate `TASKS.md`.
 ## What's Actively In Progress
 
 Nothing mid-implementation as of this pass. Most recently completed:
-**Task 15 — React scaffold, `AuthContext`, axios instance with
-interceptor.** `/client` is now a Vite + React app with:
-`src/api/axios.js` (shared instance; request interceptor attaches the
-JWT from `localStorage`, response interceptor clears it on any `401`)
-and `src/context/AuthContext.jsx` (`AuthProvider`/`useAuth()` —
-`user`/`token`/`loading`/`isAuthenticated`, `login`/`register`/
-`logout`, bootstraps by calling `GET /api/auth/me` on mount if a token
-is already stored). `src/App.jsx` is a deliberate placeholder proving
-the wiring, not real UI — that's Task 16.
+**Task 16 — Login/Register pages, `ProtectedRoute`.** Added
+`react-router-dom` (first introduced this task — deliberately not
+added in Task 15, since it wasn't needed until real routing was).
+`src/App.jsx` now defines routes for `/login`, `/register`, and a
+`/dashboard` gated by the new `src/components/ProtectedRoute.jsx`
+(redirects to `/login` unless `AuthContext`'s `isAuthenticated` is
+true; shows a loading state instead of bouncing a logged-in user while
+the Task 15 bootstrap check is in flight). `src/pages/LoginPage.jsx`
+and `RegisterPage.jsx` are forms wired to `AuthContext`'s existing
+`login`/`register` methods, surfacing the server's `error` string on
+failure per `API.md`'s auth error tables. `src/pages/DashboardPage.jsx`
+is a placeholder behind the guard (real content in Task 17) — Task
+15's old wiring-check `App.jsx` was overwritten by this task's real
+routing, called out explicitly per §5.
 
 **Verified this pass:** `npm install` + `npm run build` both succeed
-in the sandbox (Vite production build, 80 modules, no errors) —
-confirms the scaffold is structurally sound (imports, JSX, context
-usage all resolve). **Not verified:** any live behavior against the
-actual running Express API — no server process in this sandbox, so
-the `GET /api/auth/me` bootstrap call, the request interceptor's
-header injection, and the response interceptor's 401-clears-token path
-are all unexercised against a real backend. See this task's manual
+in the sandbox (88 modules, no errors). **Not verified:** any live
+behavior against the running Express API — no server process in this
+sandbox. In particular, unexercised in-session: the login/register
+forms' actual round-trip to `/api/auth/login` and `/api/auth/register`,
+`ProtectedRoute`'s redirect behavior in a real browser session, and the
+logout button's effect on subsequent requests. See this task's manual
 test instructions for what to run locally to close that gap.
 
-Before this: **a full audit of Tasks 1-14**, per `PROJECT_RULES.md`
-§13's every-10 cadence. Found and fixed one real code gap
-(`Project.apiKeyHash` had no index — added `unique: true`) and six
-documentation-drift items. Full findings logged in `DECISIONS.md`'s
-Shipped Log, "Audit session (Tasks 1-14)" entry. That pass's own
-"not re-run" caveat (`npm test`, live server checks against Atlas)
-is unrelated to Task 15 and still stands on its own — see Known Open
-Issues below.
+Before this: Task 15 — React scaffold, `AuthContext`, axios instance
+with interceptor (manually verified working end-to-end by the user
+against a live local server, after resolving a port mismatch — client
+defaulted to `:5000`, actual server was on `:5050`).
 
-Next up: **Task 16** — Login/Register pages, `ProtectedRoute`. Not
-started.
+Next up: **Task 17** — Dashboard + ProjectDetail pages (project list,
+error group table). Not started.
 
 ## Constitution Amendments
 

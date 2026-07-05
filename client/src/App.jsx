@@ -1,25 +1,30 @@
-import { useAuth } from './context/AuthContext.jsx';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import LoginPage from './pages/LoginPage.jsx';
+import RegisterPage from './pages/RegisterPage.jsx';
+import DashboardPage from './pages/DashboardPage.jsx';
+import ProtectedRoute from './components/ProtectedRoute.jsx';
 
-// Placeholder root component for Task 15. Only exists to prove
-// AuthContext + the axios instance are wired correctly end-to-end
-// (the /api/auth/me bootstrap check on mount). Login/Register pages
-// and ProtectedRoute land in Task 16 — this is deliberately not a
-// real UI yet.
+// Root now carries real routing (Task 16), replacing Task 15's
+// wiring-check placeholder. Dashboard is still a placeholder itself —
+// the real project list / error group table lands in Task 17.
 function App() {
-    const { user, loading, isAuthenticated } = useAuth();
-
-    if (loading) {
-        return <p>Checking auth status...</p>;
-    }
-
     return (
-        <div>
-            <h1>Faultline</h1>
-            <p>
-                Auth scaffold check — isAuthenticated: {String(isAuthenticated)}
-                {user ? ` (logged in as ${user.name})` : ' (no session)'}
-            </p>
-        </div>
+        <BrowserRouter>
+            <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/register" element={<RegisterPage />} />
+                <Route
+                    path="/dashboard"
+                    element={
+                        <ProtectedRoute>
+                            <DashboardPage />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
+        </BrowserRouter>
     );
 }
 

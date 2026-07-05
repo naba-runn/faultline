@@ -1,7 +1,8 @@
 # Faultline Client
 
-React + Vite scaffold (Task 15). No real UI yet — that starts at Task
-16 (Login/Register pages, `ProtectedRoute`).
+React + Vite. Auth scaffold (Task 15) plus Login/Register/
+`ProtectedRoute` (Task 16). Dashboard is still a placeholder — the
+real project list / error group table lands in Task 17.
 
 ## Setup
 
@@ -23,5 +24,14 @@ npm run dev            # starts on :5173, matching server/.env.example's CLIENT_
   `login`/`register`/`logout`. On mount, if a token is already in
   `localStorage`, calls `GET /api/auth/me` to validate it and load the
   user before rendering real content.
-- `src/App.jsx` — placeholder that only proves the wiring above works
-  end-to-end. Replaced with real pages in Task 16.
+- `src/components/ProtectedRoute.jsx` — redirects to `/login` unless
+  `isAuthenticated`; shows a loading state while the Task 15 bootstrap
+  check is in flight rather than bouncing a logged-in user on refresh.
+- `src/pages/LoginPage.jsx` / `RegisterPage.jsx` — forms wired to
+  `AuthContext`'s `login`/`register`; surface the server's `error`
+  message on failure (see `docs/API.md`'s auth error tables).
+- `src/pages/DashboardPage.jsx` — placeholder behind `ProtectedRoute`,
+  replaced with the real dashboard in Task 17.
+- `src/App.jsx` — `react-router-dom` routes: `/login`, `/register`,
+  `/dashboard` (protected); anything else redirects to `/dashboard`
+  (which itself redirects to `/login` if not authenticated).

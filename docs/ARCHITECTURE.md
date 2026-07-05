@@ -4,11 +4,15 @@
 
 ```
 faultline/
-├── client/                 (Vite + React scaffold, Task 15)
+├── client/                 (Vite + React, Tasks 15-16)
 │   ├── src/
-│   │   ├── api/axios.js         (shared axios instance — request interceptor attaches JWT, response interceptor clears it on 401)
-│   │   ├── context/AuthContext.jsx (user/token/loading state, login/register/logout, bootstraps via GET /api/auth/me)
-│   │   ├── App.jsx              (placeholder root — no real UI yet, Task 16)
+│   │   ├── api/axios.js              (shared axios instance — request interceptor attaches JWT, response interceptor clears it on 401)
+│   │   ├── context/AuthContext.jsx   (user/token/loading state, login/register/logout, bootstraps via GET /api/auth/me)
+│   │   ├── components/ProtectedRoute.jsx (gates a route on AuthContext's isAuthenticated; redirects to /login)
+│   │   ├── pages/LoginPage.jsx       (email/password form → AuthContext.login)
+│   │   ├── pages/RegisterPage.jsx    (name/email/password form → AuthContext.register)
+│   │   ├── pages/DashboardPage.jsx   (placeholder behind ProtectedRoute — real project list/error table in Task 17)
+│   │   ├── App.jsx                  (react-router-dom routes: /login, /register, /dashboard)
 │   │   └── main.jsx
 │   └── README.md
 ├── server/
