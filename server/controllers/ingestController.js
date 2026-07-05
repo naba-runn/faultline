@@ -3,6 +3,17 @@ const { sendSuccess, sendError } = require('../utils/httpResponse');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/AppError');
 
+// Field-level payload caps (Task 21). Separate concern from the
+// global express.json({ limit: '100kb' }) body cap in app.js — that
+// bounds the whole request; these bound the two fields that would
+// otherwise persist unbounded into ErrorGroup.stackSample /
+// ErrorEvent.rawStack. env/metadata are deliberately left out of this
+// task — their lack of validation is an existing, separate decision
+// (accept-but-ignore, forward-compatible — see DECISIONS.md), not
+// something Task 21 reopens.
+const MAX_MESSAGE_LENGTH = 1000;
+const MAX_STACK_LENGTH = 10000;
+
 /**
  * Ingestion endpoint. Validates, fingerprints, atomically upserts the
  * owning ErrorGroup (dedup), and records the individual ErrorEvent. On
@@ -21,6 +32,22 @@ const ingestEvent = catchAsync(async (req, res) => {
 
   if (!stack || typeof stack !== 'string') {
     return sendError(res, 400, 'stack is required and must be a string');
+  }
+
+  if (message.length > MAX_MESSAGE_LENGTH) {
+    return sendError(
+      res,
+      400,
+      `message must not exceed ${MAX_MESSAGE_LENGTH} characters`
+    );
+  }
+
+  if (stack.length > MAX_STACK_LENGTH) {
+    return sendError(
+      res,
+      400,
+      `stack must not exceed ${MAX_STACK_LENGTH} characters`
+    );
   }
 
   // req.project comes from apiKeyMiddleware — the event belongs to

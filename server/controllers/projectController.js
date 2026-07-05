@@ -150,9 +150,23 @@ const listProjectGroups = catchAsync(async (req, res) => {
     return sendError(res, 404, 'Project not found');
   }
 
-  const groups = await errorGroupService.listErrorGroups(req.params.id);
+  let result;
+  try {
+    result = await errorGroupService.listErrorGroups(req.params.id, {
+      limit: req.query.limit,
+      cursor: req.query.cursor,
+    });
+  } catch (err) {
+    if (err.message === 'INVALID_CURSOR') {
+      return sendError(res, 400, 'cursor is invalid or malformed');
+    }
+    if (err.message === 'INVALID_LIMIT') {
+      return sendError(res, 400, 'limit must be a positive integer');
+    }
+    throw err;
+  }
 
-  return sendSuccess(res, 200, { groups });
+  return sendSuccess(res, 200, result);
 });
 
 module.exports = {

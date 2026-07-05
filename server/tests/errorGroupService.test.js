@@ -424,32 +424,42 @@ function withMockedFind(groups, fn) {
   const originalFind = ErrorGroup.find;
   let capturedFilter = null;
   let capturedSort = null;
+  let capturedLimit = null;
 
   ErrorGroup.find = (filter) => {
     capturedFilter = filter;
     return {
       sort: (sortArg) => {
         capturedSort = sortArg;
-        return Promise.resolve(groups);
+        return {
+          limit: (limitArg) => {
+            capturedLimit = limitArg;
+            return Promise.resolve(groups);
+          },
+        };
       },
     };
   };
 
-  return fn(() => ({ filter: capturedFilter, sort: capturedSort })).finally(() => {
-    ErrorGroup.find = originalFind;
-  });
+  return fn(() => ({ filter: capturedFilter, sort: capturedSort, limit: capturedLimit })).finally(
+    () => {
+      ErrorGroup.find = originalFind;
+    }
+  );
 }
 
-test('listErrorGroups: filters by projectId and sorts by lastSeen descending', async () => {
+test('listErrorGroups: filters by projectId (no cursor), sorts by lastSeen+_id descending, requests pageSize+1', async () => {
   await withMockedFind([], async (getCaptured) => {
     await listErrorGroups('project-42');
-    const { filter, sort } = getCaptured();
+    const { filter, sort, limit } = getCaptured();
     assert.deepEqual(filter, { projectId: 'project-42' });
-    assert.deepEqual(sort, { lastSeen: -1 });
+    assert.deepEqual(sort, { lastSeen: -1, _id: -1 });
+    // Default page size is 20 (DEFAULT_PAGE_SIZE) — +1 to detect a next page.
+    assert.equal(limit, 21);
   });
 });
 
-test('listErrorGroups: shapes each group, omitting stackSample, and nulls aiSummary when absent', async () => {
+test('listErrorGroups: shapes each group, omitting stackSample, nulls aiSummary when absent, and returns nextCursor: null when under a page', async () => {
   const fakeGroups = [
     {
       _id: fakeObjectId('group-a'),
@@ -465,8 +475,8 @@ test('listErrorGroups: shapes each group, omitting stackSample, and nulls aiSumm
 
   await withMockedFind(fakeGroups, async () => {
     const result = await listErrorGroups('project-1');
-    assert.equal(result.length, 1);
-    assert.deepEqual(result[0], {
+    assert.equal(result.groups.length, 1);
+    assert.deepEqual(result.groups[0], {
       id: fakeObjectId('group-a'),
       message: 'TypeError: x',
       status: 'open',
@@ -475,7 +485,8 @@ test('listErrorGroups: shapes each group, omitting stackSample, and nulls aiSumm
       lastSeen: new Date('2026-01-05'),
       aiSummary: null,
     });
-    assert.equal('stackSample' in result[0], false);
+    assert.equal('stackSample' in result.groups[0], false);
+    assert.equal(result.nextCursor, null);
   });
 });
 
@@ -502,7 +513,61 @@ test('listErrorGroups: when aiSummary exists, includes only severity and rootCau
 
   await withMockedFind(fakeGroups, async () => {
     const result = await listErrorGroups('project-1');
-    assert.deepEqual(result[0].aiSummary, { severity: 'high', rootCause: 'bad input' });
+    assert.deepEqual(result.groups[0].aiSummary, { severity: 'high', rootCause: 'bad input' });
+  });
+});
+
+test('listErrorGroups: when more rows exist than the page size, returns nextCursor and trims the extra row', async () => {
+  // pageSize 1 -> service requests 2, gets 2 back -> hasMore true,
+  // only the first is returned, cursor is built off that first (last
+  // *returned*) row.
+  const fakeGroups = [
+    {
+      _id: fakeObjectId('newer'),
+      message: 'first page row',
+      status: 'open',
+      count: 1,
+      firstSeen: new Date('2026-03-02'),
+      lastSeen: new Date('2026-03-02'),
+      aiSummary: null,
+    },
+    {
+      _id: fakeObjectId('older'),
+      message: 'would be next page',
+      status: 'open',
+      count: 1,
+      firstSeen: new Date('2026-03-01'),
+      lastSeen: new Date('2026-03-01'),
+      aiSummary: null,
+    },
+  ];
+
+  await withMockedFind(fakeGroups, async () => {
+    const result = await listErrorGroups('project-1', { limit: 1 });
+    assert.equal(result.groups.length, 1);
+    assert.equal(result.groups[0].id, fakeObjectId('newer'));
+    assert.notEqual(result.nextCursor, null);
+
+    const decoded = JSON.parse(Buffer.from(result.nextCursor, 'base64').toString('utf8'));
+    assert.equal(decoded.id, fakeObjectId('newer'));
+    assert.equal(decoded.lastSeen, new Date('2026-03-02').toISOString());
+  });
+});
+
+test('listErrorGroups: rejects a non-integer/zero/negative limit with INVALID_LIMIT', async () => {
+  await withMockedFind([], async () => {
+    await assert.rejects(() => listErrorGroups('project-1', { limit: 0 }), /INVALID_LIMIT/);
+    await assert.rejects(() => listErrorGroups('project-1', { limit: -5 }), /INVALID_LIMIT/);
+    await assert.rejects(() => listErrorGroups('project-1', { limit: 'abc' }), /INVALID_LIMIT/);
+  });
+});
+
+test('listErrorGroups: rejects a malformed cursor with INVALID_CURSOR', async () => {
+  await withMockedFind([], async () => {
+    await assert.rejects(
+      () => listErrorGroups('project-1', { cursor: 'not-valid-base64-json' }),
+      /INVALID_CURSOR/
+    );
   });
 });
 

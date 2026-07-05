@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const ErrorGroup = require('../models/ErrorGroup');
 const ErrorEvent = require('../models/ErrorEvent');
 const Project = require('../models/Project');
@@ -165,32 +166,117 @@ async function enrichErrorGroup({ errorGroup, project, message, stack }) {
   }
 }
 
-/**
- * Lists all ErrorGroups for a project, most recently seen first.
- * Ownership is NOT checked here — the caller (controller) is
- * responsible for verifying the requesting user owns the project
- * first (via projectService.getProject), same separation of concerns
- * projectController already uses. Shaped to a plain object per group,
- * same reasoning as projectService's shaping (never return raw
- * Mongoose docs) — stackSample is deliberately omitted here since the
- * table view (Task 17) doesn't need it; the full document is what
- * Task 19's ErrorGroupDetail fetches via getGroupDetail/
- * GET /api/groups/:id, below.
- */
-async function listErrorGroups(projectId) {
-  const groups = await ErrorGroup.find({ projectId }).sort({ lastSeen: -1 });
+// Task 22 pagination defaults/caps. DEFAULT_PAGE_SIZE is what applies
+// when the caller passes no `limit` at all — see the Known Open
+// Issues note in STATUS.md: the current frontend doesn't send
+// cursor/limit or read nextCursor back, so any project with more than
+// DEFAULT_PAGE_SIZE groups will only surface the first page in the UI
+// until the client is updated to paginate. That's a real, currently-
+// open consequence of this task being backend-only, not an oversight.
+const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 100;
 
-  return groups.map((group) => ({
-    id: group._id,
-    message: group.message,
-    status: group.status,
-    count: group.count,
-    firstSeen: group.firstSeen,
-    lastSeen: group.lastSeen,
-    aiSummary: group.aiSummary
-      ? { severity: group.aiSummary.severity, rootCause: group.aiSummary.rootCause }
-      : null,
-  }));
+/**
+ * Encodes a cursor from a group's sort-key fields. Opaque to the
+ * caller by design (base64 JSON) — callers must treat it as a token,
+ * not construct or inspect one themselves.
+ */
+function encodeCursor(group) {
+  return Buffer.from(
+    JSON.stringify({ lastSeen: group.lastSeen.toISOString(), id: String(group._id) })
+  ).toString('base64');
+}
+
+/**
+ * Decodes and shape-validates a cursor token. Throws a plain Error
+ * (not AppError — this is a service, which never touches req/res per
+ * PROJECT_RULES.md §5) with a recognizable message the controller
+ * translates into a 400.
+ */
+function decodeCursor(cursor) {
+  let parsed;
+  try {
+    parsed = JSON.parse(Buffer.from(cursor, 'base64').toString('utf8'));
+  } catch (err) {
+    throw new Error('INVALID_CURSOR');
+  }
+
+  const lastSeen = new Date(parsed && parsed.lastSeen);
+  if (!parsed || Number.isNaN(lastSeen.getTime()) || typeof parsed.id !== 'string') {
+    throw new Error('INVALID_CURSOR');
+  }
+
+  return { lastSeen, id: parsed.id };
+}
+
+/**
+ * Lists ErrorGroups for a project, most recently seen first, cursor-
+ * paginated (Task 22). Ownership is NOT checked here — the caller
+ * (controller) is responsible for verifying the requesting user owns
+ * the project first (via projectService.getProject), same separation
+ * of concerns projectController already uses. Shaped to a plain
+ * object per group, same reasoning as projectService's shaping (never
+ * return raw Mongoose docs) — stackSample is deliberately omitted
+ * here since the table view (Task 17) doesn't need it; the full
+ * document is what Task 19's ErrorGroupDetail fetches via
+ * getGroupDetail/GET /api/groups/:id, below.
+ *
+ * Sorted on { lastSeen: -1, _id: -1 }, not lastSeen alone — two groups
+ * can legitimately share the same lastSeen millisecond (e.g. two
+ * distinct errors deduped/updated in the same upsert batch), and a
+ * cursor built on a non-unique sort key can skip or repeat rows across
+ * pages. `_id` is guaranteed unique and monotonically ordered by
+ * insertion, so it's a correct tie-breaker.
+ */
+async function listErrorGroups(projectId, { limit, cursor } = {}) {
+  let pageSize = DEFAULT_PAGE_SIZE;
+  if (limit !== undefined) {
+    const parsedLimit = Number(limit);
+    if (!Number.isInteger(parsedLimit) || parsedLimit < 1) {
+      throw new Error('INVALID_LIMIT');
+    }
+    pageSize = Math.min(parsedLimit, MAX_PAGE_SIZE);
+  }
+
+  const filter = { projectId };
+
+  if (cursor !== undefined) {
+    const { lastSeen, id } = decodeCursor(cursor);
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new Error('INVALID_CURSOR');
+    }
+    // Strictly-less-than on the compound key, matching the -1/-1 sort
+    // order: everything "after" the cursor in that same descending
+    // order.
+    filter.$or = [
+      { lastSeen: { $lt: lastSeen } },
+      { lastSeen: lastSeen, _id: { $lt: id } },
+    ];
+  }
+
+  // Fetch one extra row to detect "is there a next page" without a
+  // separate count query.
+  const groups = await ErrorGroup.find(filter)
+    .sort({ lastSeen: -1, _id: -1 })
+    .limit(pageSize + 1);
+
+  const hasMore = groups.length > pageSize;
+  const page = hasMore ? groups.slice(0, pageSize) : groups;
+
+  return {
+    groups: page.map((group) => ({
+      id: group._id,
+      message: group.message,
+      status: group.status,
+      count: group.count,
+      firstSeen: group.firstSeen,
+      lastSeen: group.lastSeen,
+      aiSummary: group.aiSummary
+        ? { severity: group.aiSummary.severity, rootCause: group.aiSummary.rootCause }
+        : null,
+    })),
+    nextCursor: hasMore ? encodeCursor(page[page.length - 1]) : null,
+  };
 }
 
 /**
