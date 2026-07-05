@@ -1,4 +1,5 @@
 const projectService = require('../services/projectService');
+const errorGroupService = require('../services/errorGroupService');
 const { sendSuccess, sendError } = require('../utils/httpResponse');
 
 async function createProject(req, res) {
@@ -122,10 +123,38 @@ async function listProjects(req, res) {
   }
 }
 
+async function listProjectGroups(req, res) {
+  try {
+    // Ownership check first, same pattern as getProject/updateProject/
+    // deleteProject: not-found and not-yours collapse to the same 404
+    // (see DECISIONS.md) — reusing getProject here rather than
+    // duplicating that Project.findOne({ _id, ownerId }) query.
+    const project = await projectService.getProject({
+      ownerId: req.user._id,
+      projectId: req.params.id,
+    });
+
+    if (!project) {
+      return sendError(res, 404, 'Project not found');
+    }
+
+    const groups = await errorGroupService.listErrorGroups(req.params.id);
+
+    return sendSuccess(res, 200, { groups });
+  } catch (err) {
+    if (err.name === 'CastError') {
+      return sendError(res, 404, 'Project not found');
+    }
+    const statusCode = err.statusCode || 500;
+    return sendError(res, statusCode, err.message || 'Internal Server Error');
+  }
+}
+
 module.exports = {
   createProject,
   listProjects,
   getProject,
   updateProject,
   deleteProject,
+  listProjectGroups,
 };

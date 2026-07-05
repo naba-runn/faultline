@@ -11,7 +11,7 @@
 - **Milestone 1 — Backend Foundation:** COMPLETE (4/4 tasks)
 - **Milestone 2 — Projects & Ingestion:** COMPLETE (6/6 tasks)
 - **Milestone 3 — AI Enrichment:** COMPLETE (4/4 tasks)
-- **Milestone 4 — Dashboard Auth & Core Pages:** IN PROGRESS (2/4 tasks)
+- **Milestone 4 — Dashboard Auth & Core Pages:** IN PROGRESS (3/4 tasks)
 
 Task numbering and full checklist: `TASKS.md`. This section only
 states current position, not a restated description of every task —
@@ -20,37 +20,60 @@ that would duplicate `TASKS.md`.
 ## What's Actively In Progress
 
 Nothing mid-implementation as of this pass. Most recently completed:
-**Task 16 — Login/Register pages, `ProtectedRoute`.** Added
-`react-router-dom` (first introduced this task — deliberately not
-added in Task 15, since it wasn't needed until real routing was).
-`src/App.jsx` now defines routes for `/login`, `/register`, and a
-`/dashboard` gated by the new `src/components/ProtectedRoute.jsx`
-(redirects to `/login` unless `AuthContext`'s `isAuthenticated` is
-true; shows a loading state instead of bouncing a logged-in user while
-the Task 15 bootstrap check is in flight). `src/pages/LoginPage.jsx`
-and `RegisterPage.jsx` are forms wired to `AuthContext`'s existing
-`login`/`register` methods, surfacing the server's `error` string on
-failure per `API.md`'s auth error tables. `src/pages/DashboardPage.jsx`
-is a placeholder behind the guard (real content in Task 17) — Task
-15's old wiring-check `App.jsx` was overwritten by this task's real
-routing, called out explicitly per §5.
+**Task 17 — Dashboard + ProjectDetail pages (project list, error group
+table).**
 
-**Verified this pass:** `npm install` + `npm run build` both succeed
-in the sandbox (88 modules, no errors). **Not verified:** any live
-behavior against the running Express API — no server process in this
-sandbox. In particular, unexercised in-session: the login/register
-forms' actual round-trip to `/api/auth/login` and `/api/auth/register`,
-`ProtectedRoute`'s redirect behavior in a real browser session, and the
-logout button's effect on subsequent requests. See this task's manual
-test instructions for what to run locally to close that gap.
+**Blocker found and resolved mid-task:** `API.md`'s "Not Yet
+Implemented" list still had `GET /api/projects/:id/groups`, and
+confirmed against the actual server code — no route/controller for it
+existed, only the `ErrorGroup` model and the enrichment service used
+internally by ingestion. Rather than build client pages against a
+non-existent endpoint, stopped and asked; user chose to build the
+endpoint first. Added: `errorGroupService.listErrorGroups(projectId)`
+(shapes each group down for a list view — omits `stackSample`; when
+`aiSummary` exists, includes only `severity`/`rootCause`, not
+`suggestedFix`/`confidence`/`affectedFile`/`affectedFunction`, which
+stay reserved for the not-yet-built `GET /api/groups/:id` that Task
+19's ErrorGroupDetail will use), `projectController.listProjectGroups`
+(reuses `projectService.getProject` for the ownership check, same
+not-found-or-not-yours-collapse-to-404 pattern as every other project
+route), and the `GET /:id/groups` route in `projectRoutes.js`. Full
+reasoning in `DECISIONS.md`'s "Task 17: GET /api/projects/:id/groups
+built mid-task" entry.
 
-Before this: Task 15 — React scaffold, `AuthContext`, axios instance
-with interceptor (manually verified working end-to-end by the user
-against a live local server, after resolving a port mismatch — client
-defaulted to `:5000`, actual server was on `:5050`).
+**Client:** `src/pages/DashboardPage.jsx` now lists projects
+(`GET /api/projects`) and has a create-project form
+(`POST /api/projects`), showing the one-time raw API key on success —
+this overwrote Task 16's placeholder dashboard, called out per §5.
+`src/pages/ProjectDetailPage.jsx` (new) shows project info plus the
+error group table via the two GETs above. `App.jsx` gained a
+`/projects/:id` protected route. List view only — no drill-into-one-
+group page or status changes (Tasks 18-19 respectively).
 
-Next up: **Task 17** — Dashboard + ProjectDetail pages (project list,
-error group table). Not started.
+**Verified this pass:**
+- Server: `npm test` — all 13 tests pass, including 3 new
+  `listErrorGroups` unit tests (filter/sort correctness, list-shaping,
+  aiSummary field-trimming), same monkey-patched-Mongoose-model
+  approach as the file's existing tests (no live Mongo in this
+  sandbox).
+- Client: `npm run build` succeeds (89 modules, no errors).
+
+**Not verified:** any live behavior against a real running server +
+Atlas — confirmed via a direct connection attempt that this sandbox
+has no network path to Atlas (times out; only npm/GitHub registries
+are allow-listed), so this is a hard sandbox limitation, not
+something skipped. Unexercised in-session: the actual HTTP round-trip
+for `GET /api/projects/:id/groups` end-to-end, the Dashboard's create-
+project flow displaying a real API key, and the ProjectDetail table
+rendering real error groups (including the `aiSummary` severity
+column against groups that do vs. don't have one yet). See this
+task's manual test instructions for what to run locally.
+
+Before this: Task 16 — Login/Register pages, `ProtectedRoute`
+(manually verified working end-to-end by the user against a live
+local server).
+
+Next up: **Task 18** — Status update endpoint + UI. Not started.
 
 ## Constitution Amendments
 

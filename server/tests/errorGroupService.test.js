@@ -31,7 +31,7 @@ const ErrorGroup = require('../models/ErrorGroup');
 const ErrorEvent = require('../models/ErrorEvent');
 const githubService = require('../services/githubService');
 const aiService = require('../services/aiService');
-const { recordEvent, enrichErrorGroup } = require('../services/errorGroupService');
+const { recordEvent, enrichErrorGroup, listErrorGroups } = require('../services/errorGroupService');
 
 function fakeObjectId(seed) {
   // Mongoose ObjectIds aren't needed for real here — recordEvent only
@@ -404,4 +404,98 @@ test('recordEvent: message/stackSample only ever go through $setOnInsert, never 
       });
     }
   );
+});
+
+// --- listErrorGroups (Task 17) ---
+//
+// Same monkey-patching approach as above (no live Mongo in this
+// environment). ErrorGroup.find(...).sort(...) is chained, so the fake
+// returns an object exposing a .sort() method rather than a bare array
+// — matching the real Mongoose Query chain shape closely enough for
+// this function's own logic (the .map() shaping) to run unmodified.
+
+function withMockedFind(groups, fn) {
+  const originalFind = ErrorGroup.find;
+  let capturedFilter = null;
+  let capturedSort = null;
+
+  ErrorGroup.find = (filter) => {
+    capturedFilter = filter;
+    return {
+      sort: (sortArg) => {
+        capturedSort = sortArg;
+        return Promise.resolve(groups);
+      },
+    };
+  };
+
+  return fn(() => ({ filter: capturedFilter, sort: capturedSort })).finally(() => {
+    ErrorGroup.find = originalFind;
+  });
+}
+
+test('listErrorGroups: filters by projectId and sorts by lastSeen descending', async () => {
+  await withMockedFind([], async (getCaptured) => {
+    await listErrorGroups('project-42');
+    const { filter, sort } = getCaptured();
+    assert.deepEqual(filter, { projectId: 'project-42' });
+    assert.deepEqual(sort, { lastSeen: -1 });
+  });
+});
+
+test('listErrorGroups: shapes each group, omitting stackSample, and nulls aiSummary when absent', async () => {
+  const fakeGroups = [
+    {
+      _id: fakeObjectId('group-a'),
+      message: 'TypeError: x',
+      stackSample: 'should not appear in output',
+      status: 'open',
+      count: 3,
+      firstSeen: new Date('2026-01-01'),
+      lastSeen: new Date('2026-01-05'),
+      aiSummary: null,
+    },
+  ];
+
+  await withMockedFind(fakeGroups, async () => {
+    const result = await listErrorGroups('project-1');
+    assert.equal(result.length, 1);
+    assert.deepEqual(result[0], {
+      id: fakeObjectId('group-a'),
+      message: 'TypeError: x',
+      status: 'open',
+      count: 3,
+      firstSeen: new Date('2026-01-01'),
+      lastSeen: new Date('2026-01-05'),
+      aiSummary: null,
+    });
+    assert.equal('stackSample' in result[0], false);
+  });
+});
+
+test('listErrorGroups: when aiSummary exists, includes only severity and rootCause (not suggestedFix/confidence/affected*)', async () => {
+  const fakeGroups = [
+    {
+      _id: fakeObjectId('group-b'),
+      message: 'RangeError: y',
+      stackSample: 'irrelevant',
+      status: 'resolved',
+      count: 1,
+      firstSeen: new Date('2026-02-01'),
+      lastSeen: new Date('2026-02-01'),
+      aiSummary: {
+        rootCause: 'bad input',
+        severity: 'high',
+        suggestedFix: ['fix it'],
+        confidence: 0.8,
+        affectedFile: 'foo.js',
+        affectedFunction: 'foo',
+      },
+    },
+  ];
+
+  await withMockedFind(fakeGroups, async () => {
+    const result = await listErrorGroups('project-1');
+    assert.deepEqual(result[0].aiSummary, { severity: 'high', rootCause: 'bad input' });
+  });
 });

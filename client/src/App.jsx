@@ -2,11 +2,13 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from './pages/LoginPage.jsx';
 import RegisterPage from './pages/RegisterPage.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
+import ProjectDetailPage from './pages/ProjectDetailPage.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 
-// Root now carries real routing (Task 16), replacing Task 15's
-// wiring-check placeholder. Dashboard is still a placeholder itself —
-// the real project list / error group table lands in Task 17.
+// Task 17 adds the real Dashboard (project list + create form) and
+// ProjectDetail (error group table), replacing Task 16's Dashboard
+// placeholder. ErrorGroupDetail (a per-group page) is Task 19 — not
+// added here.
 function App() {
     return (
         <BrowserRouter>
@@ -18,6 +20,14 @@ function App() {
                     element={
                         <ProtectedRoute>
                             <DashboardPage />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/projects/:id"
+                    element={
+                        <ProtectedRoute>
+                            <ProjectDetailPage />
                         </ProtectedRoute>
                     }
                 />

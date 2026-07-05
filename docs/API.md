@@ -160,6 +160,48 @@ Requires auth: `Authorization: Bearer <token>`.
 |---|---|---|
 | 404 | Same three cases as GET | `{ "success": false, "error": "Project not found" }` |
 
+### `GET /api/projects/:id/groups`
+
+Requires auth: `Authorization: Bearer <token>`. Added in Task 17
+(originally listed under Not Yet Implemented; built when Task 17's
+client-side error group table turned out to need it).
+
+Ownership checked the same way as `GET /api/projects/:id` — reuses
+`projectService.getProject`, so the three not-found-or-not-yours cases
+collapse into the same 404 as every other project route.
+
+**Success (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "groups": [
+      {
+        "id": "...",
+        "message": "...",
+        "status": "open",
+        "count": 3,
+        "firstSeen": "...",
+        "lastSeen": "...",
+        "aiSummary": { "severity": "high", "rootCause": "..." }
+      }
+    ]
+  }
+}
+```
+Sorted by `lastSeen` descending (most recently seen first). Each group
+is deliberately shaped down for a list view: `stackSample` is omitted,
+and `aiSummary` — when present — includes only `severity` and
+`rootCause`, not `suggestedFix`/`confidence`/`affectedFile`/
+`affectedFunction`. The full `ErrorGroup` document (via the still-not-
+yet-built `GET /api/groups/:id`) is what Task 19's ErrorGroupDetail
+page will fetch.
+
+**Errors:**
+| Status | Cause | Body |
+|---|---|---|
+| 404 | Same three cases as `GET /api/projects/:id` | `{ "success": false, "error": "Project not found" }` |
+
 ## Ingestion
 
 ### `POST /api/events`
@@ -225,6 +267,5 @@ waits on it.
 
 Planned per the blueprint (added to this table as each is built):
 
-- `GET /api/projects/:id/groups`
 - `GET /api/groups/:id`
 - `PATCH /api/groups/:id/status`

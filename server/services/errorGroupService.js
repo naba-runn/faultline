@@ -164,4 +164,32 @@ async function enrichErrorGroup({ errorGroup, project, message, stack }) {
   }
 }
 
-module.exports = { recordEvent, enrichErrorGroup };
+/**
+ * Lists all ErrorGroups for a project, most recently seen first.
+ * Ownership is NOT checked here — the caller (controller) is
+ * responsible for verifying the requesting user owns the project
+ * first (via projectService.getProject), same separation of concerns
+ * projectController already uses. Shaped to a plain object per group,
+ * same reasoning as projectService's shaping (never return raw
+ * Mongoose docs) — stackSample is deliberately omitted here since the
+ * table view (Task 17) doesn't need it; the full document is what
+ * Task 19's ErrorGroupDetail will fetch via the (not yet built)
+ * GET /api/groups/:id.
+ */
+async function listErrorGroups(projectId) {
+  const groups = await ErrorGroup.find({ projectId }).sort({ lastSeen: -1 });
+
+  return groups.map((group) => ({
+    id: group._id,
+    message: group.message,
+    status: group.status,
+    count: group.count,
+    firstSeen: group.firstSeen,
+    lastSeen: group.lastSeen,
+    aiSummary: group.aiSummary
+      ? { severity: group.aiSummary.severity, rootCause: group.aiSummary.rootCause }
+      : null,
+  }));
+}
+
+module.exports = { recordEvent, enrichErrorGroup, listErrorGroups };

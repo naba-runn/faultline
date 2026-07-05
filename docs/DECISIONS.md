@@ -1079,6 +1079,62 @@ index added to `server/models/ErrorEvent.js`.
 
 ---
 
+## Task 17: `GET /api/projects/:id/groups` built mid-task, not deferred
+
+**Decision:** Task 17 ("Dashboard + ProjectDetail pages, project
+list, error group table") turned out to depend on an endpoint —
+`GET /api/projects/:id/groups` — that `API.md`'s "Not Yet Implemented"
+list correctly flagged as absent, and that was confirmed absent in the
+actual server code (only the `ErrorGroup` model and the internal
+enrichment service existed; no route/controller). Rather than silently
+inventing a client-side shape against a nonexistent endpoint, or
+quietly narrowing Task 17's scope to skip the error group table, this
+was flagged to the user as a blocker before any client code was
+written. Chosen path: build the endpoint now, as part of this task,
+then continue with the originally planned client pages.
+
+**Alternatives considered:**
+1. Ship only the Dashboard (project list) this task, defer
+   ProjectDetail/error table to a follow-up once the endpoint exists.
+2. Ask the user how to proceed (chosen).
+
+**Justification:** Task 17's own title bundles both pages as one
+deliverable; splitting it would leave a half-finished task checked off
+and create an implicit new task nobody put on the roadmap. The
+endpoint itself is small (list + shape, mirroring
+`projectService.listProjects`'s existing pattern exactly) and the
+ownership-check logic already existed via `projectService.getProject`
+— reusing it kept this from becoming a bigger change than the task
+warranted. This is the same "stop and ask rather than guess" instinct
+`PROJECT_RULES.md` already calls for when documentation and code
+disagree; here it was documentation (accurately) flagging code that
+didn't exist yet, which is a normal, expected state for the
+"Not Yet Implemented" section to describe — not itself a sign of
+drift.
+
+**List-shaping decision:** `errorGroupService.listErrorGroups`
+returns `stackSample` omitted and, when `aiSummary` exists, only
+`severity` + `rootCause` — not `suggestedFix`/`confidence`/
+`affectedFile`/`affectedFunction`. This mirrors `projectService`'s
+existing shaping philosophy (never return more than a given view
+needs) and reserves the full `aiSummary` for Task 19's
+ErrorGroupDetail page via the still-not-yet-built
+`GET /api/groups/:id` — so that endpoint has a reason to exist rather
+than being redundant with this one.
+
+**Shipped:** This pass — `errorGroupService.listErrorGroups(projectId)`
+(new), `projectController.listProjectGroups` (new, reuses
+`projectService.getProject` for the ownership check), `GET /:id/groups`
+route added to `projectRoutes.js`, `API.md` updated (moved from Not Yet
+Implemented to a full endpoint entry), 3 new unit tests in
+`errorGroupService.test.js` (filter/sort correctness, list-shaping,
+aiSummary field-trimming) — all 13 server tests pass. Not verified:
+live behavior against a real Atlas-backed server (no network path to
+Atlas from the sandbox — confirmed via a direct connection attempt
+that timed out, not skipped).
+
+---
+
 ## Shipped Log
 
 Chronological, most-recent-first, entries with no dedicated decision

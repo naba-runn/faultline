@@ -1,8 +1,9 @@
 # Faultline Client
 
-React + Vite. Auth scaffold (Task 15) plus Login/Register/
-`ProtectedRoute` (Task 16). Dashboard is still a placeholder — the
-real project list / error group table lands in Task 17.
+React + Vite. Auth scaffold (Task 15), Login/Register/`ProtectedRoute`
+(Task 16), and the real Dashboard + ProjectDetail pages (Task 17).
+ErrorGroupDetail (per-group AI panel, event list, sparkline) and
+status-change UI are Tasks 18-19.
 
 ## Setup
 
@@ -30,8 +31,15 @@ npm run dev            # starts on :5173, matching server/.env.example's CLIENT_
 - `src/pages/LoginPage.jsx` / `RegisterPage.jsx` — forms wired to
   `AuthContext`'s `login`/`register`; surface the server's `error`
   message on failure (see `docs/API.md`'s auth error tables).
-- `src/pages/DashboardPage.jsx` — placeholder behind `ProtectedRoute`,
-  replaced with the real dashboard in Task 17.
+- `src/pages/DashboardPage.jsx` — lists the user's projects
+  (`GET /api/projects`) and lets them create a new one
+  (`POST /api/projects`), surfacing the one-time-only raw API key on
+  success.
+- `src/pages/ProjectDetailPage.jsx` — shows project info and its error
+  group table (`GET /api/projects/:id` + the Task-17-added
+  `GET /api/projects/:id/groups`). List view only — no drill-into-one-
+  group detail page or status changes yet (Tasks 18-19).
 - `src/App.jsx` — `react-router-dom` routes: `/login`, `/register`,
-  `/dashboard` (protected); anything else redirects to `/dashboard`
-  (which itself redirects to `/login` if not authenticated).
+  `/dashboard` and `/projects/:id` (both protected); anything else
+  redirects to `/dashboard` (which itself redirects to `/login` if not
+  authenticated).

@@ -4,15 +4,16 @@
 
 ```
 faultline/
-├── client/                 (Vite + React, Tasks 15-16)
+├── client/                 (Vite + React, Tasks 15-17)
 │   ├── src/
 │   │   ├── api/axios.js              (shared axios instance — request interceptor attaches JWT, response interceptor clears it on 401)
 │   │   ├── context/AuthContext.jsx   (user/token/loading state, login/register/logout, bootstraps via GET /api/auth/me)
 │   │   ├── components/ProtectedRoute.jsx (gates a route on AuthContext's isAuthenticated; redirects to /login)
 │   │   ├── pages/LoginPage.jsx       (email/password form → AuthContext.login)
 │   │   ├── pages/RegisterPage.jsx    (name/email/password form → AuthContext.register)
-│   │   ├── pages/DashboardPage.jsx   (placeholder behind ProtectedRoute — real project list/error table in Task 17)
-│   │   ├── App.jsx                  (react-router-dom routes: /login, /register, /dashboard)
+│   │   ├── pages/DashboardPage.jsx   (project list + create-project form; GET/POST /api/projects)
+│   │   ├── pages/ProjectDetailPage.jsx (project info + error group table; GET /api/projects/:id + GET /api/projects/:id/groups)
+│   │   ├── App.jsx                  (react-router-dom routes: /login, /register, /dashboard, /projects/:id)
 │   │   └── main.jsx
 │   └── README.md
 ├── server/
@@ -36,7 +37,7 @@ faultline/
 │   │   └── rateLimiter.js       (loginLimiter, ingestLimiter — express-rate-limit)
 │   ├── routes/
 │   │   ├── authRoutes.js     (POST /register, POST /login, GET /me)
-│   │   ├── projectRoutes.js  (POST /, GET /, GET/PATCH/DELETE /:id — all authMiddleware-guarded)
+│   │   ├── projectRoutes.js  (POST /, GET /, GET/PATCH/DELETE /:id, GET /:id/groups — all authMiddleware-guarded)
 │   │   └── ingestRoutes.js   (POST / — apiKeyMiddleware + ingestLimiter-guarded, mounted at /api/events)
 │   ├── models/
 │   │   ├── Project.js        (ownerId ref User, name, apiKeyHash unique-indexed, githubRepo validated, timestamps)

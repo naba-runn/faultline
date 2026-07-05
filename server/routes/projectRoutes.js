@@ -12,6 +12,7 @@ router.use(authMiddleware);
 router.post('/', projectController.createProject);
 router.get('/', projectController.listProjects);
 router.get('/:id', projectController.getProject);
+router.get('/:id/groups', projectController.listProjectGroups);
 router.patch('/:id', projectController.updateProject);
 router.delete('/:id', projectController.deleteProject);
 
