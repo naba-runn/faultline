@@ -12,7 +12,7 @@
 - **Milestone 2 — Projects & Ingestion:** COMPLETE (6/6 tasks)
 - **Milestone 3 — AI Enrichment:** COMPLETE (4/4 tasks)
 - **Milestone 4 — Dashboard Auth & Core Pages:** COMPLETE (4/4 tasks)
-- **Milestone 5 — Detail View & Polish:** IN PROGRESS (2/6 tasks — 19, 20 done)
+- **Milestone 5 — Detail View & Polish:** IN PROGRESS (4/6 tasks — 19, 20, 21, 22 done)
 
 Task numbering and full checklist: `TASKS.md`. This section only
 states current position, not a restated description of every task —
@@ -21,8 +21,40 @@ that would duplicate `TASKS.md`.
 ## What's Actively In Progress
 
 Nothing mid-implementation as of this pass. Most recently completed:
-**Task 20 — Centralized error middleware (AppError + catchAsync) +
-validation pass**, across three subtasks:
+**Task 22 — Cursor pagination on the group list endpoint**
+(`errorGroupService.listErrorGroups` now takes `{ limit, cursor }`,
+returns `{ groups, nextCursor }`; sorted on `{ lastSeen: -1, _id: -1 }`
+with `_id` as a tie-breaker for rows sharing a `lastSeen` millisecond;
+`projectController.listProjectGroups` passes query params through and
+translates invalid-limit/invalid-cursor into `400`s). Full reasoning
+in `DECISIONS.md`'s "Task 22: cursor pagination on the group list
+endpoint" entry. **Known consequence, not a bug:** the frontend
+doesn't send `limit`/`cursor` or read `nextCursor` yet, so any project
+with over 20 groups only shows its first page in the UI until the
+client is updated — see Known Open Issues below.
+
+Before that: **Task 21 — Payload size caps.** Rate limiting itself was
+already pulled forward and shipped ahead of schedule in an earlier
+pass; what remained was field-level length caps on ingestion:
+`message` (≤1000 chars) and `stack` (≤10,000 chars) in
+`ingestController.ingestEvent`, returning `400` when exceeded.
+Deliberately doesn't touch `env`/`metadata` — their lack of validation
+is an existing, separate, already-settled decision (accept-but-ignore,
+forward-compatible), not something this task reopens. Full detail in
+`DECISIONS.md`'s Shipped Log.
+
+Also fixed this pass (unplanned, found at session start): **`client/src/App.jsx`
+had been accidentally overwritten with a near-verbatim copy of
+`server/app.js`** during the Task 20.2 commit — the client had no real
+React `App` component, so the page rendered blank (`require` isn't
+defined in the browser). `server/app.js` itself was untouched and
+correct the whole time; this was a stray copy-paste into the wrong
+file, not a missing edit to `app.js`. Restored from git history (the
+commit immediately before the corrupting one). Full detail in
+`DECISIONS.md`'s Shipped Log.
+
+Before all of the above: **Task 20 — Centralized error middleware
+(AppError + catchAsync) + validation pass**, across three subtasks:
 
 - **20.1** — `utils/AppError.js`, `utils/catchAsync.js`, and
   `middleware/errorMiddleware.js` (single centralized handler,
@@ -77,18 +109,34 @@ Log):**
 - Server: `npm test` — all 19 tests still pass unchanged.
 - `projectController.js` loads without throwing.
 
-**Manual test still owed for Task 20.3 specifically:** the four `400`
-branches above were only exercised in-process (no live server/DB in
-this sandbox) — copy-pasteable manual test instructions are provided
-below for the user to confirm against a live local server.
+**Manual test status:**
+- Task 20.3's four `400` branches: exercised in-process only in their
+  original pass; still owed against a live server (unchanged this
+  pass).
+- Task 21: verified in-process (both new `400` branches, boundary case
+  passes validation) **and** confirmed by the user against a live
+  local server this pass.
+- Task 22: verified in-process/unit-test only (22-test suite,
+  including 3 new tests for `hasMore`/`nextCursor`, invalid-limit, and
+  invalid-cursor) **and** confirmed by the user against a live local
+  server — first page, `limit=1` forcing a next page, following
+  `nextCursor` to a second distinct group (via the demo-app's
+  `/crash/range-error` route, after correcting a `demo-app/.env`
+  `FAULTLINE_API_KEY` mismatch that had been reporting into a
+  different project than the one under test — not a pagination bug,
+  a local config mismatch), and both invalid-limit/invalid-cursor
+  `400` cases.
+- App.jsx fix: verified by inspection (diff against the pre-corruption
+  git blob) plus a description of the expected browser-side symptom;
+  not yet confirmed fixed in the user's actual browser as of this
+  writing.
 
 Tasks 17/18/19/20.1/20.2 remain closed exactly as previously recorded
 — no changes to any of them this pass; full detail in `DECISIONS.md`.
 
-Next up: **Task 21** — payload size caps (rate limiting was already
-pulled forward and shipped ahead of schedule — see `DECISIONS.md`'s
-"Rate limiting: login and ingestion" entry). Not started. This is the
-next unchecked box in Milestone 5.
+Next up: **Task 23** — dark theme, monospace tokens, table layout,
+"Simulate Error" demo button. Not started. This is the next unchecked
+box in Milestone 5.
 
 ## Constitution Amendments
 
@@ -124,6 +172,23 @@ next unchecked box in Milestone 5.
   `apiKeyMiddleware`'s 5 cases post-refactor, response-shape
   byte-for-byte diffing, and the new Mongo index have not been run
   against a live Atlas cluster by the user yet either.
+- **Task 22's pagination isn't consumed by the frontend yet** —
+  `ProjectDetailPage.jsx` calls `GET /api/projects/:id/groups` with no
+  `limit`/`cursor` and never reads `nextCursor` back. Any project with
+  more than 20 error groups (the default page size) will only ever
+  show its first page in the dashboard until the client is updated to
+  paginate. Backend-only was the intended scope for Task 22 per the
+  roadmap — this is a known, currently-live consequence of that scope,
+  not a bug, but it's unresolved and worth fixing before relying on
+  the dashboard for a project with real volume.
+- **`demo-app/.env`'s `FAULTLINE_API_KEY` may not match the project
+  currently under manual test** — discovered during Task 22's manual
+  verification: the demo-app was silently reporting into a different
+  project than the one being queried, which looked like a pagination
+  bug (a new error group "wasn't showing up") but was actually a local
+  config mismatch. Worth double-checking this file's key against
+  whichever project you're testing before assuming a pagination/dedup
+  issue is a real bug.
 
 ## Currently-Relevant Locked-In Decisions
 
@@ -141,6 +206,8 @@ Pointers only — see `DECISIONS.md` for full reasoning:
 - `statusHistory` is appended to, never overwritten, and a status PATCH never bumps `lastSeen` (dedup-specific semantics stay unrelated to status edits — see "ErrorGroup uses firstSeen/lastSeen instead of Mongoose timestamps").
 - `AppError`/`catchAsync`/centralized `errorMiddleware` are now the standard for every controller; the one exception is the local `CastError`→resource-specific-404 translation kept in `projectController`/`groupController` ("Task 20.1"/"Task 20.2" Shipped Log entries).
 - `projectController.createProject`/`updateProject` typeof-guard `name`/`githubRepo` before calling the service; `githubRepo`'s format stays exclusively a schema-level (`Project.js`) concern ("Task 20.3: project input validation — closing the typeof gap").
+- `POST /api/events` caps `message`/`stack` at 1000/10,000 characters — a field-level concern separate from the global 100kb body cap; `env`/`metadata` remain deliberately uncapped (Task 21 Shipped Log entry).
+- `GET /api/projects/:id/groups` paginates via an opaque `{lastSeen, _id}` cursor, not offset/skip or `lastSeen` alone — `_id` is a required tie-breaker since `lastSeen` isn't guaranteed unique ("Task 22: cursor pagination on the group list endpoint").
 
 ## Where Things Live
 

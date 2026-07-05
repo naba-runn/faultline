@@ -1248,11 +1248,115 @@ suite (`npm test`) still passes unchanged.
 
 ---
 
+## Task 22: cursor pagination on the group list endpoint — compound `{lastSeen, _id}` cursor, not offset/skip or `lastSeen` alone
+
+**Decision:** `errorGroupService.listErrorGroups(projectId, { limit,
+cursor })` now paginates via an opaque base64-encoded cursor token
+carrying `{ lastSeen, id }` of the last row on the previous page.
+Sort order is `{ lastSeen: -1, _id: -1 }` — `_id` added purely as a
+tie-breaker, not because insertion order otherwise matters. The query
+for "the next page" is a compound `$or`: `lastSeen < cursor.lastSeen`
+OR (`lastSeen == cursor.lastSeen` AND `_id < cursor.id`). Page size
+defaults to 20, is caller-adjustable via `limit`, and is capped at 100.
+The service fetches `pageSize + 1` rows to determine `nextCursor`
+without a separate `count` query.
+
+**Alternatives considered:**
+1. Offset/skip pagination (`.skip(n).limit(pageSize)`).
+2. Cursor on `lastSeen` alone, no tie-breaker.
+3. Expose the cursor as raw, inspectable fields (e.g.
+   `?lastSeen=...&id=...`) instead of an opaque token.
+
+**Justification:** (1, rejected) — `.skip()` still has to walk and
+discard every skipped document server-side, so cost grows with page
+depth; more importantly, it's *unstable* under concurrent writes:
+ingestion pushes new groups to the top of the `lastSeen`-descending
+order constantly, so a `.skip(20)` for "page 2" can silently
+duplicate or skip a row if a write lands between two page requests.
+Cursor pagination anchors each page to a specific document identity,
+so this doesn't happen. (2, rejected) — `lastSeen` is not guaranteed
+unique: two distinct `ErrorGroup`s can be updated in the same
+millisecond (e.g. two different errors deduped/bumped back-to-back
+during a burst), and a cursor built on a non-unique key can skip or
+repeat rows exactly at that boundary. `_id` is guaranteed unique and
+monotonically increasing, so it's a correct, cheap tie-breaker without
+inventing a new indexed field. (3, rejected) — an opaque token means
+callers can't construct or mutate a cursor by hand (e.g. hand-editing
+a `lastSeen` query param to skip around), and it keeps the encoding
+free to change later (e.g. adding a third tie-break field) without
+being a breaking API change, since callers never inspect the token's
+internal shape.
+
+**Known, deliberately out-of-scope consequence:** this task is
+backend-only per the roadmap. The current frontend
+(`ProjectDetailPage.jsx`) calls this endpoint with no `limit`/`cursor`
+and never reads `nextCursor` back, so any project with more than the
+default 20 groups will only ever show its first page in the UI until
+the client is updated to actually paginate. This is flagged in
+`STATUS.md`'s Known Open Issues rather than silently shipped — it's
+the expected shape of a backend-only pagination task, not an
+oversight, but it's a real, currently-live limitation worth surfacing
+rather than letting it be discovered later.
+
+**Shipped:** This pass — `errorGroupService.listErrorGroups` (cursor
+encode/decode, compound sort+filter, page-size validation) and
+`projectController.listProjectGroups` (passes `req.query.limit`/
+`req.query.cursor` through, translates `INVALID_LIMIT`/
+`INVALID_CURSOR` service errors into `400`s). Verified: 22-test server
+suite (`npm test`) passes, including 3 new/updated tests covering the
+`hasMore`/`nextCursor` trim behavior, invalid-limit rejection, and
+invalid-cursor rejection. Also confirmed against a live local server
+by the user: first page and `limit=1` behavior, following a real
+`nextCursor` to a genuinely distinct second group (via the demo-app's
+`/crash/range-error` route), and both `400` error cases. That live
+test surfaced an unrelated local config issue, not a code bug —
+`demo-app/.env`'s `FAULTLINE_API_KEY` didn't match the project under
+test, so a new error briefly appeared to "not show up" in pagination
+when it had actually ingested into a different project entirely (see
+Known Open Issues in `STATUS.md`).
+
+**Likely interview questions:**
+- *Why cursor pagination instead of offset/skip?* — Stability under
+  concurrent writes and no linear skip-cost at depth; see
+  Justification (1) above.
+- *Why not just sort on `lastSeen`?* — Not a unique key; two groups
+  can share a millisecond. See Justification (2).
+- *What happens if a group's `lastSeen` changes between two page
+  requests (e.g. a new event bumps it)?* — If it moves to before the
+  cursor position in sort order, it may appear again on a later page
+  (temporary duplicate); if it moves to after, it won't be re-skipped
+  incorrectly, since the cursor comparison is still evaluated fresh
+  each request. This is standard cursor-pagination behavior under a
+  live-updating dataset, not a bug specific to this implementation.
+
+---
+
 ## Shipped Log
 
 Chronological, most-recent-first, entries with no dedicated decision
 above. Migrated from `CHANGELOG.md`.
 
+- **Task 21** — Added field-level payload caps to `POST /api/events`:
+  `message` capped at 1000 characters, `stack` at 10,000, both
+  returning `400` when exceeded. Separate concern from the existing
+  global `express.json({ limit: '100kb' })` body cap in `app.js`,
+  which bounds the whole request rather than either field
+  individually. `env`/`metadata` deliberately left unvalidated by this
+  task — that's an existing, separate decision (accept-but-ignore,
+  forward-compatible), not something Task 21 reopens. Verified:
+  in-process calls confirm both new `400` branches fire correctly and
+  a payload exactly at both boundaries passes validation; 19-test
+  server suite passes unchanged. Manual live-server test confirmed by
+  the user.
+- **Fix: `client/src/App.jsx` regression** — the file had been
+  accidentally overwritten with a near-verbatim copy of
+  `server/app.js` (Express server code) during the Task 20.2 commit,
+  leaving the client with no real `App` component (`require` isn't
+  defined in the browser/Vite context, so nothing rendered — blank
+  page). `server/app.js` itself was untouched and correct throughout;
+  this was a stray copy-paste into the wrong file, not a missing edit
+  to `app.js`. Restored `App.jsx` to its pre-corruption content (the
+  router/`ProtectedRoute` setup from Task 16-19) from git history.
 - **Task 20.2** — Controllers (`authController`, `projectController`,
   `groupController`, `ingestController`) refactored to wrap their
   async handlers in `catchAsync`, removing duplicated top-level
