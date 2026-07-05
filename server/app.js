@@ -4,6 +4,7 @@ const cors = require('cors');
 const morgan = require('morgan');
 
 const config = require('./config/env');
+const errorMiddleware = require('./middleware/errorMiddleware');
 
 const authRoutes = require('./routes/authRoutes');
 const projectRoutes = require('./routes/projectRoutes');
@@ -57,15 +58,9 @@ app.use((req, res) => {
   });
 });
 
-// Centralized error handler (stub) — replaced with AppError/catchAsync
-// pattern in Task 20. For now, catches anything passed to next(err).
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  const statusCode = err.statusCode || 500;
-  res.status(statusCode).json({
-    success: false,
-    error: err.message || 'Internal Server Error',
-  });
-});
+// Centralized error handler — Task 20. Must be mounted last. See
+// middleware/errorMiddleware.js for the full handling order
+// (AppError / CastError / ValidationError / unanticipated).
+app.use(errorMiddleware);
 
 module.exports = app;
