@@ -1200,11 +1200,88 @@ closed.
 
 ---
 
+## Task 20.3: project input validation — closing the typeof gap
+
+**Decision:** `projectController.createProject` and `updateProject`
+now reject a truthy-but-non-string `name`, and reject a non-string,
+non-null/non-undefined `githubRepo`, before either reaches
+`projectService`. `updateProject` had no input validation at all
+before this pass — `name`/`githubRepo` went straight from `req.body`
+to the service layer, relying entirely on `Project.js`'s own schema
+validators (which only run once Mongoose actually attempts the
+write).
+
+**Alternatives considered:**
+1. Leave it to the schema — `Project.js`'s `match` validator already
+   rejects a malformed `githubRepo` string, and `required` catches a
+   missing `name`.
+2. Adopt a validation library (`express-validator`/`Joi`/`zod`) across
+   all controllers as part of this pass.
+
+**Justification:** (1) doesn't fail closed the same way for a
+truthy-but-non-string value — e.g. `{ "$gt": "" }` sent as `name` —
+since that's not a format the `match` regex or `required` check is
+built to catch, and it's the same NoSQL-injection-shaped-object
+concern already fixed in `authController` (see "Auth input
+validation: explicit `typeof` checks in authController"). This pass
+extends that exact precedent to the two project endpoints that were
+still missing it, rather than re-deriving a new approach. (2) was
+rejected for the same reason it was rejected for auth: no new
+dependency for a check this mechanical, and mixing one library-driven
+controller with several hand-rolled ones would be a worse
+inconsistency than the one being fixed (see PROJECT_RULES.md §11 on
+premature abstraction). `githubRepo`'s *format* (not just its type)
+stays exclusively the schema's job — this pass only adds the
+type-safety net one layer up, it doesn't duplicate the regex.
+
+Deliberately out of scope for this pass: a "no-op PATCH" check
+(rejecting a request where neither `name` nor `githubRepo` is
+present). That's a business-logic nicety, not a type-safety gap, and
+wasn't part of what this pass was asked to close — noted as a
+possible future follow-up, not implemented.
+
+**Shipped:** This pass — `createProject`/`updateProject` in
+`projectController.js`. Verified with a direct in-process call
+(fake `req`/`res`, no Express/DB) confirming all four new branches
+return `400` before calling `projectService`; existing 19-test server
+suite (`npm test`) still passes unchanged.
+
+---
+
 ## Shipped Log
 
 Chronological, most-recent-first, entries with no dedicated decision
 above. Migrated from `CHANGELOG.md`.
 
+- **Task 20.2** — Controllers (`authController`, `projectController`,
+  `groupController`, `ingestController`) refactored to wrap their
+  async handlers in `catchAsync`, removing duplicated top-level
+  try/catch. Not a wholesale removal: `groupController` and
+  `projectController` deliberately keep a local `try/catch` around
+  their service calls specifically to translate a Mongoose `CastError`
+  (malformed `:id`) into a resource-specific 404 message (e.g.
+  "Project not found") — the centralized `errorMiddleware`'s own
+  `CastError` handling only has a generic "Resource not found"
+  fallback, and only the controller layer knows which resource name to
+  use. Verified: 19-test server suite passes; `app.js` loads with all
+  routes mounted.
+- **Task 20.1** — Added `utils/AppError.js` (operational-error class,
+  `isOperational: true`) and `utils/catchAsync.js` (async handler
+  wrapper forwarding rejections to `next`), plus
+  `middleware/errorMiddleware.js` as the single centralized error
+  handler (replacing the Task-1 stub), mounted last in `app.js`.
+  Handling order: `AppError`/anything `isOperational` → trusted
+  message + its own status code; Mongoose `CastError` → generic 404;
+  Mongoose `ValidationError` → 400 with concatenated field messages;
+  anything else → full stack logged server-side only, generic 500 to
+  the client (never leaking internals).
+- **Task 19** — `GroupDetailPage.jsx` added on the client (AI summary
+  panel rendered as a checklist, per-group event list, sparkline of
+  recent event counts), backed by a new
+  `errorGroupService.getGroupDetail({ ownerId, groupId })` (ownership
+  check via scoped `Project.findOne`, same pattern as Task 18's
+  `updateGroupStatus`) and `groupController.getGroupDetail`, mounted at
+  `GET /api/groups/:id` alongside the existing status-update route.
 - **This pass** — `demo-app/README.md` given real content (usage of
   the three crash routes, how it reports to Faultline, required env
   vars) — previously still a placeholder despite `HANDOFF.md` having

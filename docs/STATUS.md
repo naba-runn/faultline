@@ -12,6 +12,7 @@
 - **Milestone 2 — Projects & Ingestion:** COMPLETE (6/6 tasks)
 - **Milestone 3 — AI Enrichment:** COMPLETE (4/4 tasks)
 - **Milestone 4 — Dashboard Auth & Core Pages:** COMPLETE (4/4 tasks)
+- **Milestone 5 — Detail View & Polish:** IN PROGRESS (2/6 tasks — 19, 20 done)
 
 Task numbering and full checklist: `TASKS.md`. This section only
 states current position, not a restated description of every task —
@@ -20,61 +21,74 @@ that would duplicate `TASKS.md`.
 ## What's Actively In Progress
 
 Nothing mid-implementation as of this pass. Most recently completed:
-**Task 18 — Status update endpoint + UI**, closing out Milestone 4.
+**Task 20 — Centralized error middleware (AppError + catchAsync) +
+validation pass**, across three subtasks:
 
-**Server:** `errorGroupService.updateGroupStatus({ ownerId, groupId,
-status })` (new) — fetches the `ErrorGroup` by id, then enforces
-ownership via a scoped `Project.findOne({ _id: group.projectId,
-ownerId })` (not a fetch-then-compare on a fetched project's
-`ownerId`), pushes a `statusHistory` entry, and saves. Never touches
-`lastSeen` (dedup-specific field, unrelated to a status edit).
-`groupController.updateStatus` (new) validates `status` is one of
-`open`/`resolved`/`ignored` before calling the service, and collapses
-group-not-found / not-yours / malformed-`:id` into the same 404 used
-everywhere else. `groupRoutes.js` (new) mounts
-`PATCH /api/groups/:id/status` under `/api/groups` in `app.js`, behind
-the same JWT `authMiddleware` as project routes. Full reasoning for the
-ownership-check design (and the two alternatives rejected) is in
-`DECISIONS.md`'s "Task 18: ownership check for group status updates."
+- **20.1** — `utils/AppError.js`, `utils/catchAsync.js`, and
+  `middleware/errorMiddleware.js` (single centralized handler,
+  replacing the Task-1 stub; mounted last in `app.js`).
+- **20.2** — Controllers refactored onto `catchAsync`/`AppError`,
+  duplicated try/catch removed — except the deliberate local
+  `CastError`-to-resource-specific-404 translation kept in
+  `projectController`/`groupController` (only the controller layer
+  knows the right resource name; the centralized handler's own
+  `CastError` path is a generic fallback only).
+- **20.3** — Validation pass: `projectController.createProject`/
+  `updateProject` now reject a truthy-but-non-string `name` and a
+  non-string `githubRepo`, closing the same typeof gap already fixed
+  in `authController` (`updateProject` previously had *no* input
+  validation before this). `githubRepo`'s format validation stays at
+  the schema level (`Project.js`'s regex) — unchanged. `env`/
+  `metadata` on ingestion remain deliberately unvalidated by design
+  (see `DECISIONS.md`).
 
-**Client:** `src/pages/ProjectDetailPage.jsx`'s status column changed
-from static text to a `<select>` (`open`/`resolved`/`ignored`) wired to
-the new PATCH. Only the row being changed disables during its request
-(`updatingGroupId`); a page-level `statusError` surfaces a failed PATCH
-without touching the initial-load `error` state. Local `groups` state
-is only updated after the PATCH succeeds — never optimistically before
-the response — so a failed request can't leave the UI showing a status
-the server didn't actually record.
+Full reasoning for each subtask is in `DECISIONS.md` — "Task 20.3:
+project input validation — closing the typeof gap" plus the Shipped
+Log entries for 20.1/20.2.
 
-**Verified this pass:**
-- Server: `npm test` — all 16 tests pass, including 3 new
-  `updateGroupStatus` unit tests (owned-group happy path with
-  `statusHistory` append, group-not-found short-circuits before
-  querying `Project`, group-exists-but-not-yours never saves) — same
-  monkey-patched-Mongoose-model approach as the file's existing tests
-  (no live Mongo in this sandbox).
-- Server: `app.js` loads without throwing with `groupRoutes` mounted
-  (confirms the new route wiring doesn't break app construction).
-- Client: `npm run build` succeeds (89 modules, no errors).
+Docs had drifted after Task 18 (Tasks 19, 20.1, 20.2 shipped without a
+doc update, per an explicit decision to batch this catch-up). This
+pass reconciles `STATUS.md`/`TASKS.md`/`DECISIONS.md` against the
+actual repo state for 19, 20.1, 20.2, and 20.3 all at once — no other
+code changed as part of this reconciliation.
 
-**Manually verified by the user against a live local server + Atlas,
-this pass:** the two-call PATCH sequence (`resolved` then `ignored` on
-the same group) — `statusHistory` accumulated to 2 entries rather than
-being overwritten, and `lastSeen` stayed unchanged across both calls;
-bad `status` value correctly returned `400`; a nonexistent group id
-correctly returned `404`; the dashboard `<select>` persisted a status
-change across a full page refresh, confirming it round-trips through
-the server rather than only updating local state. Task 18 is fully
-closed — no outstanding verification owed for this task.
+Before Task 20: **Task 19 — ErrorGroupDetail page** (AI panel as
+checklist, event list, sparkline), backed by a new
+`errorGroupService.getGroupDetail`/`groupController.getGroupDetail`
+(`GET /api/groups/:id`, same ownership-check pattern as Task 18's
+status update). Before that: **Task 18 — Status update endpoint +
+UI**, closing out Milestone 4.
 
-Before this: Task 17 — Dashboard + ProjectDetail pages (project list,
-error group table), including the mid-task addition of
-`GET /api/projects/:id/groups` (manually verified working end-to-end
-by the user against a live local server, per the prior pass).
+**(Task 18 detail, unchanged this pass — condensed here; full detail
+in `DECISIONS.md`):** `errorGroupService.updateGroupStatus` enforces
+ownership via a scoped `Project.findOne`, pushes a `statusHistory`
+entry, never touches `lastSeen`. `groupController.updateStatus`
+validates `status` against the enum before calling the service.
+`PATCH /api/groups/:id/status` mounted behind JWT `authMiddleware`.
 
-Next up: **Task 19** — ErrorGroupDetail page (AI panel as checklist,
-event list, sparkline). Not started. This is the first task in
-Milestone 5.
+**Verified this pass (Task 20.3 only — 20.1/20.2/19 were verified in
+their own original passes; full history in `DECISIONS.md`'s Shipped
+Log):**
+- Direct in-process call against `projectController` (fake `req`/`res`,
+  no Express/DB): all four new validation branches (non-string `name`
+  on create, non-string `githubRepo` on create, non-string `name` on
+  update, empty-string `name` on update) return `400` before
+  `projectService` is ever called.
+- Server: `npm test` — all 19 tests still pass unchanged.
+- `projectController.js` loads without throwing.
+
+**Manual test still owed for Task 20.3 specifically:** the four `400`
+branches above were only exercised in-process (no live server/DB in
+this sandbox) — copy-pasteable manual test instructions are provided
+below for the user to confirm against a live local server.
+
+Tasks 17/18/19/20.1/20.2 remain closed exactly as previously recorded
+— no changes to any of them this pass; full detail in `DECISIONS.md`.
+
+Next up: **Task 21** — payload size caps (rate limiting was already
+pulled forward and shipped ahead of schedule — see `DECISIONS.md`'s
+"Rate limiting: login and ingestion" entry). Not started. This is the
+next unchecked box in Milestone 5.
 
 ## Constitution Amendments
 
@@ -122,9 +136,11 @@ Pointers only — see `DECISIONS.md` for full reasoning:
 - API-key auth (ingestion) and JWT auth (dashboard) are deliberately separate middleware ("API key hashing: SHA-256, not bcrypt").
 - Raw fetched GitHub source snippets are never persisted ("githubService: snippet windowing + optional GITHUB_TOKEN").
 - `apiKeyMiddleware`'s inert `timingSafeEqual` check was removed this pass — the hash-indexed `findOne` lookup is the actual security boundary ("apiKeyMiddleware: removal of inert timingSafeEqual check").
-- The response-shaping helper (`sendSuccess`/`sendError`) added this pass is explicitly not the Task 20 `AppError`/`catchAsync` refactor ("`httpResponse` helper: response-shaping only, not Task 20").
+- The `httpResponse` helper (`sendSuccess`/`sendError`) is response-shaping only — a separate concern from the `AppError`/`catchAsync`/`errorMiddleware` trio Task 20 added; both are now in place and used together throughout controllers ("`httpResponse` helper: response-shaping only, not Task 20").
 - `PATCH /api/groups/:id/status` enforces ownership via a scoped `Project.findOne({ _id, ownerId })` after looking up the group, not a fetch-then-compare — `ErrorGroup` has no `ownerId` field to scope on directly ("Task 18: ownership check for group status updates").
 - `statusHistory` is appended to, never overwritten, and a status PATCH never bumps `lastSeen` (dedup-specific semantics stay unrelated to status edits — see "ErrorGroup uses firstSeen/lastSeen instead of Mongoose timestamps").
+- `AppError`/`catchAsync`/centralized `errorMiddleware` are now the standard for every controller; the one exception is the local `CastError`→resource-specific-404 translation kept in `projectController`/`groupController` ("Task 20.1"/"Task 20.2" Shipped Log entries).
+- `projectController.createProject`/`updateProject` typeof-guard `name`/`githubRepo` before calling the service; `githubRepo`'s format stays exclusively a schema-level (`Project.js`) concern ("Task 20.3: project input validation — closing the typeof gap").
 
 ## Where Things Live
 
@@ -132,4 +148,4 @@ Pointers only — see `DECISIONS.md` for full reasoning:
   review doc is kept) — treat as final, do not redesign.
 - Living docs: `/docs`
 - Server code: `/server`
-- Client code: `/client` (Vite + React scaffold as of Task 15; real UI pages — Login/Register/Dashboard/ProjectDetail — since Tasks 16-18)
+- Client code: `/client` (Vite + React scaffold as of Task 15; real UI pages — Login/Register/Dashboard/ProjectDetail/GroupDetail — since Tasks 16-19)

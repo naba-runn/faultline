@@ -16,8 +16,17 @@ const AppError = require('../utils/AppError');
 const createProject = catchAsync(async (req, res) => {
   const { name, githubRepo } = req.body;
 
-  if (!name) {
+  // typeof check alongside truthiness, same reasoning as Task 20.3's
+  // pass on authController: a truthy-but-non-string name (e.g. an
+  // object) would otherwise reach Project.create() unguarded — see
+  // DECISIONS.md's "Auth input validation" entry, which this extends
+  // to the project endpoints.
+  if (!name || typeof name !== 'string') {
     return sendError(res, 400, 'name is required');
+  }
+
+  if (githubRepo !== undefined && githubRepo !== null && typeof githubRepo !== 'string') {
+    return sendError(res, 400, 'githubRepo must be a string');
   }
 
   const { project, apiKey } = await projectService.createProject({
@@ -52,6 +61,20 @@ const getProject = catchAsync(async (req, res) => {
 
 const updateProject = catchAsync(async (req, res) => {
   const { name, githubRepo } = req.body;
+
+  // Previously unvalidated entirely — name/githubRepo went straight
+  // to projectService with only the schema's own validators as a
+  // backstop. Added as part of Task 20.3: same typeof-guard pattern
+  // as createProject above (and authController before it), applied
+  // only to fields that were actually provided — omitting a field
+  // here still means "leave it unchanged" (see projectService.js).
+  if (name !== undefined && (typeof name !== 'string' || !name)) {
+    return sendError(res, 400, 'name must be a non-empty string');
+  }
+
+  if (githubRepo !== undefined && githubRepo !== null && typeof githubRepo !== 'string') {
+    return sendError(res, 400, 'githubRepo must be a string');
+  }
 
   let project;
   try {
