@@ -53,10 +53,55 @@ approved blueprint. Check off as completed; do not reorder or skip.
 
 - [x] **Task 19** — ErrorGroupDetail page (AI panel as checklist, event list, sparkline)
 - [x] **Task 20** — Centralized error middleware (AppError + catchAsync) + validation pass
-- [x] **Task 21** — ~~Rate limiting (ingestion + login)~~ (pulled forward ahead of schedule — see `DECISIONS.md`'s "Rate limiting: login and ingestion" entry), payload size caps still remain
-- [x] **Task 22** — Cursor pagination on group list endpoint
+- [ ] **Task 21** — ~~Rate limiting (ingestion + login)~~ (pulled forward ahead of schedule — see `DECISIONS.md`'s "Rate limiting: login and ingestion" entry), payload size caps still remain
+- [ ] **Task 22** — Cursor pagination on group list endpoint
 - [x] **Task 23** — Dark theme, monospace tokens, table layout, "Simulate Error" demo button
-- [ ] **Task 24** — README, screenshots/GIF, deploy (Vercel + Render + Atlas)
+
+## Milestone 6: Reliability & Real-Time Infrastructure
+
+Foundational — later milestones build on this one. See `DECISIONS.md`'s
+"Scope expansion: Milestones 6-9" entry for the full ordering
+rationale, and its "Scope expansion — revision after deeper review"
+addendum for the technical findings behind the specifics below (this
+milestone's task descriptions were substantially corrected after a
+shallow first pass missed real issues — see that addendum for what
+changed and why).
+
+- [ ] **Task 25** — Background job queue: BullMQ + Render Key Value (Redis-compatible, free tier), consumed by a **separate** `server/worker.js` process (its own Render Background Worker service, not folded into the API process). Migrates AI enrichment off its current unawaited fire-and-forget call onto this queue, with retry/backoff. Sub-parts:
+  - [ ] 25.1 — Render Key Value connection config (`config/redis.js`), local dev instructions (run Redis locally or point at a dev Render Key Value instance)
+  - [ ] 25.2 — BullMQ queue + job producer (`services/enrichmentQueue.js`), `errorGroupService`'s new-group path enqueues instead of calling `enrichErrorGroup` directly
+  - [ ] 25.3 — `server/worker.js` — separate process, own `package.json` start script, consumes the queue and calls the existing `enrichErrorGroup`/`aiService` code unchanged
+  - [ ] 25.4 — Retry/backoff policy + failed-job visibility (BullMQ's built-in retry, exponential backoff; failed jobs stay queryable, not silently dropped)
+  - [ ] 25.5 — Manual test (kill the worker mid-queue, confirm jobs wait and resume) + docs + commit
+- [ ] **Task 26** — Real-time push to dashboard via Server-Sent Events. **Auth note (see addendum):** native `EventSource` cannot send an `Authorization` header, and this app's `morgan` logging means a JWT-in-query-string would land in plaintext server logs — so auth is a short-lived, single-use SSE ticket, not the JWT directly. Sub-parts:
+  - [ ] 26.1 — `POST /api/sse/ticket` (JWT-authed, existing pattern) mints a random ticket, stored in Redis (from Task 25) with a ~30s TTL, one-time use
+  - [ ] 26.2 — `GET /api/sse/stream?ticket=...` — validates + burns the ticket, upgrades to `req.user` context, holds the SSE connection open
+  - [ ] 26.3 — Server-side emit points: new error group created, group status changed, enrichment job completed (from `worker.js`, so this needs a way for the worker process to signal the API process — e.g. Redis pub/sub, already available from Task 25)
+  - [ ] 26.4 — Client: `EventSource` consumer in `ProjectDetailPage`/`GroupDetailPage`, reconnect-on-drop handling
+  - [ ] 26.5 — Manual test (two browser tabs, confirm live push) + docs + commit
+- [ ] **Task 27** — Per-API-key ingestion rate limiting (current limiter in `middleware/rateLimiter.js` is per-IP only — a shared IP with one noisy key throttles every other key on it)
+
+## Milestone 7: Alerting & Insights
+
+- [ ] **Task 28** — Alert delivery infra (Resend, dispatched as a queue job via Task 25's infra for retry) + per-project alert config (which email, which triggers enabled) + new-group / severity-threshold triggers
+- [ ] **Task 29** — Trend/spike detection. **Concrete algorithm (see addendum for why this needed specifying up front):** for each error group, compare the current hour's event count against the trailing 24-hour average hourly rate (excluding the current, in-progress hour). Flag as a spike when the current rate exceeds the baseline by a configurable multiplier (default 3x) **and** the current hour's absolute count is above a minimum floor (default 5) — the floor exists so a group going from 1 event/hour to 3 doesn't register as a "3x spike" on noise. Groups with under 24 hours of history have no baseline yet and are never flagged as spiking (reported as "insufficient history," not silently treated as 0). Sub-parts:
+  - [ ] 29.1 — Baseline calculation service (`services/trendService.js`), pure function over `ErrorEvent` timestamps, unit-testable in isolation
+  - [ ] 29.2 — Wire into `GroupDetailPage`'s existing sparkline area (surface current-vs-baseline, not just raw counts)
+  - [ ] 29.3 — Manual test with `Simulate Error` fired in a tight loop to actually trigger the threshold + docs + commit
+- [ ] **Task 30** — Spike-triggered alerts (extends Task 28's delivery infra with Task 29's detection as a second trigger type)
+- [ ] **Task 31** — Multi-environment / release tagging. **Additive, not overlapping** (see addendum): `ErrorEvent.env` already exists but is explicitly documented as "accepted but unused" — this task both finally uses `env` meaningfully and adds a new, distinct `release` field (e.g. `"v1.4.2"`) alongside it; `env` answers "which deployment" (staging/production), `release` answers "which build." Surfaces "introduced in v1.4.2" on the group detail page.
+- [ ] **Task 32** — Source-map support. **Scope boundary (see addendum):** resolves minified stack frames to original source **for display only** on the group detail page — does **not** change fingerprinting/dedup, which keeps hashing the raw frames exactly as it does today; changing what dedup hashes on is a separate, riskier decision this task explicitly does not make. Reuses `utils/stackNormalizer.js`'s existing `parseStackFrames` structured output rather than re-parsing stacks. **Demo note:** the existing `demo-app` throws real, non-minified Node stack traces, so it won't exercise this feature on its own — a small hand-crafted minified-JS-plus-`.map` example is needed alongside it for the demo/manual test.
+
+## Milestone 8: Product Polish & Growth
+
+- [ ] **Task 33** — Search/filter + saved views on the error group table
+- [ ] **Task 34** — SDK snippet generator (per-project copyable onboarding snippet on the dashboard, reduces "how do I even send it an error" friction)
+- [ ] **Task 35** — Public API reference page (rendered from `API.md`, not hand-duplicated)
+- [ ] **Task 36** — UI redesign pass 2 — dashboard overview page (trend charts, alert status, release timeline), refined visual system building on Task 23's token set. Deliberately last among feature work so it reflects the final feature surface (alerts, releases, trends) instead of being redone twice.
+
+## Milestone 9: Ship
+
+- [ ] **Task 37** — README, screenshots/GIF, deploy (Vercel + Render web service + Render Background Worker + Render Key Value + Atlas) — renumbered from the original Task 24; unchanged in substance, just resequenced to the end now that Milestones 6-8 exist
 
 ## Notes
 
@@ -64,6 +109,17 @@ approved blueprint. Check off as completed; do not reorder or skip.
   docs updated, commit made.
 - Do not batch tasks even if they feel small — one task, one stop, one
   confirmation.
+- Milestones 6-9 are a deliberate scope expansion agreed on after
+  Task 23, before starting the original Task 24. See `DECISIONS.md`'s
+  "Scope expansion: Milestones 6-9" entry for the reasoning and the
+  alternatives considered.
+
+## Open Infra Decisions (resolve at the start of the task named)
+
+- **Task 25:** BullMQ + **Render Key Value** (Render's own Redis-compatible free tier — revised from an earlier Upstash recommendation after checking Render's actual pricing page; same platform as the planned deploy, private networking, no third-party account). Worker runs as a **separate process** (`worker.js`), its own free Render Background Worker service — not folded into the API process, so queue processing doesn't compete with request handling on a free instance.
+- **Task 26:** SSE, not Socket.io (Faultline only needs server→client push). Auth via a short-lived, single-use ticket minted over the existing JWT-authed pattern — **not** the JWT itself in the query string, because native `EventSource` can't send headers and this app's `morgan` request logging would otherwise write the raw JWT to server logs in plaintext.
+- **Task 28:** Resend, not Nodemailer/Gmail SMTP (chosen for free-tier reliability over a resume demo's lifetime; Gmail SMTP is a known flakiness trap for exactly this use case).
+- **Task 32:** Source-map resolution is display-only — it does not change what `fingerprintService` hashes for dedup. Changing fingerprinting to use resolved positions would plausibly produce *more* stable cross-release grouping, but it's a separate, riskier decision (affects dedup for every future event) intentionally deferred, not folded into this task.
 
 ## Deferred / Follow-Up Items
 

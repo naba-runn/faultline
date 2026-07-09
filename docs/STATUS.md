@@ -13,6 +13,15 @@
 - **Milestone 3 — AI Enrichment:** COMPLETE (4/4 tasks)
 - **Milestone 4 — Dashboard Auth & Core Pages:** COMPLETE (4/4 tasks)
 - **Milestone 5 — Detail View & Polish:** IN PROGRESS (5/6 tasks — 19, 20, 21, 22, 23 done)
+- **Milestone 6 — Reliability & Real-Time Infrastructure:** NOT STARTED (0/3 tasks)
+- **Milestone 7 — Alerting & Insights:** NOT STARTED (0/5 tasks)
+- **Milestone 8 — Product Polish & Growth:** NOT STARTED (0/4 tasks)
+- **Milestone 9 — Ship:** NOT STARTED (0/1 task — original Task 24, renumbered to Task 37)
+
+Milestones 6-9 are a scope expansion agreed on after Task 23, before
+starting the original Task 24. Full reasoning, ordering rationale, and
+alternatives considered: `DECISIONS.md`'s "Scope expansion: Milestones
+6-9" entry.
 
 Task numbering and full checklist: `TASKS.md`. This section only
 states current position, not a restated description of every task —
@@ -165,9 +174,19 @@ Log):**
 Tasks 17/18/19/20.1/20.2 remain closed exactly as previously recorded
 — no changes to any of them this pass; full detail in `DECISIONS.md`.
 
-Next up: **Task 24** — README, screenshots/GIF, deploy (Vercel +
-Render + Atlas). Not started. This is the next unchecked box in
-Milestone 5, and the last task in the roadmap.
+Next up: **Task 25** — Background job queue (BullMQ + Render Key
+Value, consumed by a separate `worker.js` process); migrate AI
+enrichment from fire-and-forget onto it. Not
+started. First task of Milestone 6, chosen to go first because it's
+infrastructure Tasks 26, 28, and 30 all build on — see `DECISIONS.md`'s
+"Scope expansion: Milestones 6-9" entry and its "revision after deeper
+review" addendum for the full ordering rationale and the specific
+technical findings (SSE auth, Redis hosting, worker process
+architecture) behind the current task specs. The original Task 24
+(README/deploy) is deferred to the end as Task 37 — not skipped, just
+resequenced now that Milestones 6-8 exist and should be finished (and
+documented, and screenshot-able) before the README describing the
+project is written.
 
 ## Constitution Amendments
 
