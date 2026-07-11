@@ -67,12 +67,12 @@ milestone's task descriptions were substantially corrected after a
 shallow first pass missed real issues — see that addendum for what
 changed and why).
 
-- [ ] **Task 25** — Background job queue: BullMQ + Render Key Value (Redis-compatible, free tier), consumed by a **separate** `server/worker.js` process (its own Render Background Worker service, not folded into the API process). Migrates AI enrichment off its current unawaited fire-and-forget call onto this queue, with retry/backoff. Sub-parts:
-  - [ ] 25.1 — Render Key Value connection config (`config/redis.js`), local dev instructions (run Redis locally or point at a dev Render Key Value instance)
-  - [ ] 25.2 — BullMQ queue + job producer (`services/enrichmentQueue.js`), `errorGroupService`'s new-group path enqueues instead of calling `enrichErrorGroup` directly
-  - [ ] 25.3 — `server/worker.js` — separate process, own `package.json` start script, consumes the queue and calls the existing `enrichErrorGroup`/`aiService` code unchanged
-  - [ ] 25.4 — Retry/backoff policy + failed-job visibility (BullMQ's built-in retry, exponential backoff; failed jobs stay queryable, not silently dropped)
-  - [ ] 25.5 — Manual test (kill the worker mid-queue, confirm jobs wait and resume) + docs + commit
+- [x] **Task 25** — Background job queue: BullMQ + Render Key Value (Redis-compatible, free tier), consumed by a **separate** `server/worker.js` process (its own Render Background Worker service, not folded into the API process). Migrates AI enrichment off its current unawaited fire-and-forget call onto this queue, with retry/backoff. Sub-parts:
+  - [x] 25.1 — Render Key Value connection config (`config/redis.js`), local dev instructions (run Redis locally or point at a dev Render Key Value instance)
+  - [x] 25.2 — BullMQ queue + job producer (`services/enrichmentQueue.js`), `errorGroupService`'s new-group path enqueues instead of calling `enrichErrorGroup` directly
+  - [x] 25.3 — `server/worker.js` — separate process, own `package.json` start script, consumes the queue and calls the existing `enrichErrorGroup`/`aiService` code unchanged
+  - [x] 25.4 — Retry/backoff policy + failed-job visibility (BullMQ's built-in retry, exponential backoff; failed jobs stay queryable, not silently dropped)
+  - [x] 25.5 — Manual test (kill the worker mid-queue, confirm jobs wait and resume) + docs + commit — verified against a real local Redis in this pass, see `DECISIONS.md`'s "Task 25" entry for the two integration checks run
 - [ ] **Task 26** — Real-time push to dashboard via Server-Sent Events. **Auth note (see addendum):** native `EventSource` cannot send an `Authorization` header, and this app's `morgan` logging means a JWT-in-query-string would land in plaintext server logs — so auth is a short-lived, single-use SSE ticket, not the JWT directly. Sub-parts:
   - [ ] 26.1 — `POST /api/sse/ticket` (JWT-authed, existing pattern) mints a random ticket, stored in Redis (from Task 25) with a ~30s TTL, one-time use
   - [ ] 26.2 — `GET /api/sse/stream?ticket=...` — validates + burns the ticket, upgrades to `req.user` context, holds the SSE connection open

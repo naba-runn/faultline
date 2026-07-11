@@ -1,7 +1,7 @@
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
 
-const required = ['MONGODB_URI', 'JWT_SECRET'];
+const required = ['MONGODB_URI', 'JWT_SECRET', 'REDIS_URL'];
 
 function validateEnv(env) {
   const missing = required.filter((key) => !env[key]);
@@ -21,6 +21,8 @@ const config = {
   port: parseInt(process.env.PORT, 10) || 5000,
 
   mongodbUri: process.env.MONGODB_URI,
+
+  redisUrl: process.env.REDIS_URL,
 
   jwtSecret: process.env.JWT_SECRET,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',

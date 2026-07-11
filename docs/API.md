@@ -214,10 +214,12 @@ once at creation and never stored in retrievable form (see
 `POST /api/projects` above) — a logged-in dashboard user has no way to
 call `/api/events` directly for their own project. This endpoint
 closes that gap by reusing `errorGroupService.recordEvent` and (on a
-new group) `enrichErrorGroup` — the same functions the real ingestion
-path calls — behind ownership-scoped JWT auth instead. No new dedup,
-fingerprinting, or AI logic; only a new auth path into the existing
-pipeline. Ownership is checked the same way as
+new group) enqueuing an enrichment job via
+`enrichmentQueue.enqueueEnrichment` — the same functions/queue the
+real ingestion path uses (updated in Task 25; originally called
+`enrichErrorGroup` directly) — behind ownership-scoped JWT auth
+instead. No new dedup, fingerprinting, or AI logic; only a new auth
+path into the existing pipeline. Ownership is checked the same way as
 `GET /api/projects/:id/groups` (reuses `projectService.getProject`).
 
 One of a small, fixed set of canned synthetic errors
@@ -306,17 +308,21 @@ Mongoose timestamps").
 Requires auth: `Authorization: Bearer <apiKey>` (API key — client
 program, not a dashboard user; see `apiKeyMiddleware`).
 
-**Status: fully wired (Tasks 9.3, 13, 14).** Validates, fingerprints
-(`fingerprintService`), atomically upserts the owning `ErrorGroup`
-(dedup), and persists the individual `ErrorEvent`. On a **new** group
-only, AI enrichment is dispatched fire-and-forget after the response
-is sent (never `await`-ed in this request cycle) —
-`errorGroupService.enrichErrorGroup` fetches a GitHub source snippet
-when the project has `githubRepo` configured, calls Gemini, and saves
-`aiSummary: { rootCause, severity, suggestedFix, confidence,
-affectedFile, affectedFunction }` on the group a few seconds later.
-Duplicate events never re-trigger enrichment. See `AI_CONTEXT.md` for
-the full pipeline and `DECISIONS.md`'s Task 13/14 entries.
+**Status: fully wired (Tasks 9.3, 13, 14; dispatch updated Task 25).**
+Validates, fingerprints (`fingerprintService`), atomically upserts the
+owning `ErrorGroup` (dedup), and persists the individual `ErrorEvent`.
+On a **new** group only, an AI enrichment job is enqueued (BullMQ,
+`enrichmentQueue.enqueueEnrichment`) after the response is sent (never
+`await`-ed in this request cycle) — a separate `worker.js` process
+consumes the queue, where `errorGroupService.enrichErrorGroup` fetches
+a GitHub source snippet when the project has `githubRepo` configured,
+calls Gemini, and saves `aiSummary: { rootCause, severity,
+suggestedFix, confidence, affectedFile, affectedFunction }` on the
+group a few seconds later — with up to 3 attempts and exponential
+backoff on transient failures, since `worker.js` must be running for
+this to happen at all (see `DECISIONS.md`'s "Task 25" entry). Duplicate
+events never re-trigger enrichment. See `AI_CONTEXT.md` for the full
+pipeline and `DECISIONS.md`'s Task 13/14/25 entries.
 
 **Request body:**
 ```json

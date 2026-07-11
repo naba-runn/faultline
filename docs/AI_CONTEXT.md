@@ -1,12 +1,14 @@
 # Faultline — AI Integration Context
 
-**Status: Tasks 11–14 done** (`aiService.js`'s pure functions +
-`callGemini`; `githubService.js`'s Contents API fetch; Task 13 wired
-both into `errorGroupService.enrichErrorGroup`, dispatched
-fire-and-forget from `ingestController` on new groups only; Task 14
-added the three server-derived fields below). This file exists so the
-design decisions from the architecture review survive even if
-implementation happens in a different session.
+**Status: Tasks 11–14 done, dispatch model updated in Task 25**
+(`aiService.js`'s pure functions + `callGemini`; `githubService.js`'s
+Contents API fetch; Task 13 wired both into
+`errorGroupService.enrichErrorGroup`; Task 14 added the three
+server-derived fields below; Task 25 moved dispatch from a direct
+fire-and-forget call to a BullMQ job queue consumed by a separate
+`worker.js` process — see the Dispatch Model section below). This file
+exists so the design decisions from the architecture review survive
+even if implementation happens in a different session.
 
 **Doc gap resolved (this pass):** the `confidence` description below
 now correctly matches `ErrorGroup.js`'s `aiSummarySchema` (`Number,
@@ -69,12 +71,30 @@ this without updating this doc and explaining why:
 
 ## Dispatch Model
 
-AI enrichment is **fire-and-forget**, kicked off after the ingestion
-HTTP response has already been sent. It is never `await`-ed inside the
-request/response cycle. This is a deliberate fix to keep ingestion
-latency independent of LLM latency, without needing queue
-infrastructure (BullMQ/Redis) at MVP scale — that's the named next
-step if this needs to scale further, not something to build now.
+**Updated in Task 25** — see `DECISIONS.md`'s "Task 25" entry for the
+full reasoning. Originally (Tasks 11-24): AI enrichment was
+fire-and-forget, kicked off after the ingestion HTTP response had
+already been sent, never `await`-ed inside the request/response cycle.
+That was a deliberate choice to keep ingestion latency independent of
+LLM latency without needing queue infrastructure at MVP scale — and
+this section said, at the time, that BullMQ/Redis was "the named next
+step if this needs to scale further, not something to build now."
+Task 25 is that step.
+
+As of Task 25: `ingestController` and `projectController.simulateError`
+enqueue a BullMQ job (`services/enrichmentQueue.js`) instead of calling
+`enrichErrorGroup` directly. The actual AI call happens in a separate
+process (`worker.js`, its own Render Background Worker service in
+deployment) that consumes the queue. Ingestion latency is still
+independent of LLM latency — enqueueing is a fast Redis write, not the
+AI call itself — but enrichment failures are now retried (3 attempts,
+exponential backoff) instead of being silently swallowed, since a
+thrown error from a BullMQ job processor is what triggers a retry.
+`errorGroupService.enrichErrorGroup`'s doc comment has the full
+retryable-vs-terminal-failure breakdown (a Gemini network/API failure
+is retried; a Gemini response that fails our own validation is not,
+since retrying an identical prompt against identical input won't
+produce a different result).
 
 ## Explicitly Rejected Designs (don't rebuild these)
 

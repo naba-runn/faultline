@@ -1,5 +1,6 @@
 const projectService = require('../services/projectService');
 const errorGroupService = require('../services/errorGroupService');
+const { enqueueEnrichment } = require('../services/enrichmentQueue');
 const { sendSuccess, sendError } = require('../utils/httpResponse');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/AppError');
@@ -202,14 +203,20 @@ const listProjectGroups = catchAsync(async (req, res) => {
 // reuses projectService.getProject rather than duplicating the
 // Project.findOne({ _id, ownerId }) query.
 //
-// Deliberately calls the exact same errorGroupService.recordEvent /
-// enrichErrorGroup functions the real POST /api/events ingestion path
-// uses (see ingestController.ingestEvent) -- no new dedup/fingerprint/
-// AI logic is introduced here, only a new auth path into the existing
-// pipeline. One of a small fixed set of canned errors is chosen at
-// random each call so repeated clicks can demonstrate both a brand-new
-// ErrorGroup (fresh AI enrichment) and a duplicate (count bump, no new
+// Deliberately calls the exact same errorGroupService.recordEvent
+// the real POST /api/events ingestion path uses (see
+// ingestController.ingestEvent) -- no new dedup/fingerprint logic is
+// introduced here, only a new auth path into the existing pipeline.
+// One of a small fixed set of canned errors is chosen at random each
+// call so repeated clicks can demonstrate both a brand-new ErrorGroup
+// (fresh AI enrichment) and a duplicate (count bump, no new
 // enrichment) depending on which one lands.
+//
+// Task 25: enqueues via the same enrichmentQueue.enqueueEnrichment
+// used by real ingestion, rather than calling
+// errorGroupService.enrichErrorGroup directly -- simulated errors get
+// the same retry/backoff and worker-process handling as real ones,
+// not a second, inconsistent enrichment path.
 const simulateError = catchAsync(async (req, res) => {
   let project;
   try {
@@ -245,15 +252,18 @@ const simulateError = catchAsync(async (req, res) => {
     isNewGroup,
   });
 
-  // Fire-and-forget, same dispatch model as ingestController -- never
-  // awaited, never delays the response. enrichErrorGroup catches all
-  // of its own failures internally (see errorGroupService.js).
   if (isNewGroup) {
-    errorGroupService.enrichErrorGroup({
-      errorGroup,
-      project,
+    // Task 25: same enqueue-not-call-directly pattern as
+    // ingestController -- see that file's doc comment for why a queue
+    // failure is caught here rather than left to propagate (the
+    // response has already been sent by this point).
+    enqueueEnrichment({
+      errorGroupId: errorGroup._id,
+      projectId: project.id,
       message: canned.message,
       stack: canned.stack,
+    }).catch((err) => {
+      console.error(`[simulateError] failed to enqueue enrichment job for group ${errorGroup._id}:`, err.message);
     });
   }
 });

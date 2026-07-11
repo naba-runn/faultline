@@ -8,19 +8,23 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
+    "worker": "node worker.js",
+    "worker:dev": "nodemon worker.js",
     "test": "node --test"
   },
   "dependencies": {
+    "@google/genai": "^2.10.0",
     "bcryptjs": "^2.4.3",
+    "bullmq": "^5.80.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "express-rate-limit": "^7.2.0",
     "helmet": "^7.1.0",
+    "ioredis": "^5.11.1",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.4.0",
-    "morgan": "^1.10.0",
-    "@google/genai": "^2.10.0"
+    "morgan": "^1.10.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"

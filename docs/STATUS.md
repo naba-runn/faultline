@@ -13,7 +13,7 @@
 - **Milestone 3 — AI Enrichment:** COMPLETE (4/4 tasks)
 - **Milestone 4 — Dashboard Auth & Core Pages:** COMPLETE (4/4 tasks)
 - **Milestone 5 — Detail View & Polish:** IN PROGRESS (5/6 tasks — 19, 20, 21, 22, 23 done)
-- **Milestone 6 — Reliability & Real-Time Infrastructure:** NOT STARTED (0/3 tasks)
+- **Milestone 6 — Reliability & Real-Time Infrastructure:** IN PROGRESS (1/3 tasks — 25 done)
 - **Milestone 7 — Alerting & Insights:** NOT STARTED (0/5 tasks)
 - **Milestone 8 — Product Polish & Growth:** NOT STARTED (0/4 tasks)
 - **Milestone 9 — Ship:** NOT STARTED (0/1 task — original Task 24, renumbered to Task 37)
@@ -30,19 +30,46 @@ that would duplicate `TASKS.md`.
 ## What's Actively In Progress
 
 Nothing mid-implementation as of this pass. Most recently completed:
-**Task 23 — dark theme, monospace tokens, table layout, "Simulate
-Error" demo button.** Two parts: (1) a new global stylesheet
+**Task 25 — background job queue (BullMQ + Render Key Value), separate
+`worker.js` process, AI enrichment migrated off fire-and-forget onto
+it with retry/backoff.** `ingestController` and
+`projectController.simulateError` now enqueue an enrichment job
+instead of calling `enrichErrorGroup` directly; the actual AI call now
+happens in a genuinely separate process. `enrichErrorGroup`'s error
+contract inverted as part of this — it used to swallow every failure
+internally (nowhere to send one from fire-and-forget); it now
+propagates retryable failures (Gemini API errors, transient Mongo
+write failures) so BullMQ's retry/backoff can act on them, while
+keeping a Gemini-response-failed-our-own-validation outcome terminal
+(not retried — retrying an identical prompt against identical input
+won't produce a different result). Full reasoning, alternatives
+considered, and the real-infrastructure verification performed (a
+local Redis was installed in-sandbox and two integration checks were
+run against real BullMQ Queue/Worker instances, not just mocks) are in
+`DECISIONS.md`'s "Task 25" entry.
+
+**Known consequence, not a bug:** local dev now needs two processes
+running for enrichment to actually happen — `npm run dev` (API) and
+`npm run worker:dev` (worker) — not one. Without the worker running,
+jobs queue up in Redis and wait; nothing is lost, but no `ErrorGroup`
+gets an `aiSummary` until a worker consumes the queue.
+
+**Not yet done:** `server/.env`'s `REDIS_URL` currently points at a
+local Redis placeholder (a real Render Key Value instance couldn't be
+provisioned in this pass) — needs provisioning and swapping in before
+Task 37's deploy step.
+
+Before that: **Task 23 — dark theme, monospace tokens, table layout,
+"Simulate Error" demo button.** Two parts: (1) a new global stylesheet
 (`client/src/index.css`) applying a dark graphite/teal token system —
 monospace specifically for data (error messages, stacks, counts,
 timestamps, the API key), sans for UI chrome, severity/status as
-colored pill badges — across all five client pages; (2) a new
+colored pill badges — across all five client pages; (2) a
 `POST /api/projects/:id/simulate` endpoint (JWT-authed, ownership-
-scoped) backing the button, which reuses the exact same
-`errorGroupService.recordEvent`/`enrichErrorGroup` the real ingestion
-path calls, avoiding the need to expose or reconstruct a project's
-one-way-hashed API key. Full reasoning in `DECISIONS.md`'s "Task 23:
-dark theme + monospace tokens + table polish, and
-`POST /api/projects/:id/simulate`" entry.
+scoped) backing the button, which reused (at the time)
+`errorGroupService.recordEvent`/`enrichErrorGroup` directly — now
+updated by Task 25 above to enqueue instead. Full reasoning in
+`DECISIONS.md`'s "Task 23" entry.
 
 **Known consequence, not a bug:** simulated errors' canned fake file
 paths never match a real project's `githubRepo`, so simulated-error AI
@@ -174,19 +201,15 @@ Log):**
 Tasks 17/18/19/20.1/20.2 remain closed exactly as previously recorded
 — no changes to any of them this pass; full detail in `DECISIONS.md`.
 
-Next up: **Task 25** — Background job queue (BullMQ + Render Key
-Value, consumed by a separate `worker.js` process); migrate AI
-enrichment from fire-and-forget onto it. Not
-started. First task of Milestone 6, chosen to go first because it's
-infrastructure Tasks 26, 28, and 30 all build on — see `DECISIONS.md`'s
-"Scope expansion: Milestones 6-9" entry and its "revision after deeper
-review" addendum for the full ordering rationale and the specific
-technical findings (SSE auth, Redis hosting, worker process
-architecture) behind the current task specs. The original Task 24
-(README/deploy) is deferred to the end as Task 37 — not skipped, just
-resequenced now that Milestones 6-8 exist and should be finished (and
-documented, and screenshot-able) before the README describing the
-project is written.
+Next up: **Task 26** — Real-time push to dashboard via Server-Sent
+Events, using a short-lived single-use ticket for auth (native
+`EventSource` can't send an `Authorization` header, and this app's
+`morgan` request logging would otherwise write a JWT-in-query-string
+to plaintext server logs — see `DECISIONS.md`'s "Scope expansion"
+addendum for the full reasoning). Not started. Second task of
+Milestone 6 — depends on Task 25's Redis connection (the ticket needs
+somewhere short-lived to live) and now that Task 25 is done, this is
+unblocked.
 
 ## Constitution Amendments
 
@@ -239,6 +262,19 @@ project is written.
   config mismatch. Worth double-checking this file's key against
   whichever project you're testing before assuming a pagination/dedup
   issue is a real bug.
+- **`server/.env`'s `REDIS_URL` points at a local Redis placeholder, not
+  a real Render Key Value instance** — a real one couldn't be
+  provisioned in the Task 25 pass (no way to create a Render account
+  resource from this environment). Needs provisioning and swapping in
+  before Task 37's deploy step; local dev works fine against a local
+  Redis in the meantime.
+- **Local dev now requires two processes running for AI enrichment to
+  actually happen** — `npm run dev` (API) and, separately,
+  `npm run worker:dev` (the Task 25 worker). Without the worker
+  running, enrichment jobs queue up in Redis and wait (nothing lost),
+  but no `ErrorGroup` gets an `aiSummary` until a worker consumes the
+  queue. Easy to forget when testing Task 26+ features that expect
+  enrichment to complete.
 - **Simulated errors (Task 23's "Simulate Error" button) never exercise
   GitHub-grounded AI enrichment** — the canned fake file paths
   (`/app/src/services/...`) won't match any real project's
@@ -260,7 +296,7 @@ project is written.
 Pointers only — see `DECISIONS.md` for full reasoning:
 
 - Dedup uses atomic `findOneAndUpdate` upsert, not read-then-write ("Atomic upsert dedup: `findOneAndUpdate` before read-then-write").
-- AI enrichment is fire-and-forget, dispatched after the ingestion response is sent, only for new groups (`AI_CONTEXT.md`'s Dispatch Model — wired in Task 13, in `ingestController` + `errorGroupService.enrichErrorGroup`; see `DECISIONS.md`'s "errorGroupService.enrichErrorGroup: orchestration lives in errorGroupService, not aiService (Task 13)").
+- AI enrichment is enqueued as a BullMQ job and processed by a separate `worker.js` process, only for new groups — not called directly/fire-and-forget as it was before Task 25 (`AI_CONTEXT.md`'s Dispatch Model — originally wired in Task 13, updated in Task 25; see `DECISIONS.md`'s "Task 25" entry and its "errorGroupService.enrichErrorGroup: orchestration lives in errorGroupService, not aiService (Task 13)" entry).
 - AI confidence is derived programmatically as a binary value (`0.8` grounded / `0.4` ungrounded), never self-reported by the LLM ("Task 14: confidence values and affectedFile/affectedFunction source").
 - `aiService` is pure functions, not a 4-class provider hierarchy ("aiService: package and model choice").
 - API-key auth (ingestion) and JWT auth (dashboard) are deliberately separate middleware ("API key hashing: SHA-256, not bcrypt").
@@ -273,7 +309,8 @@ Pointers only — see `DECISIONS.md` for full reasoning:
 - `projectController.createProject`/`updateProject` typeof-guard `name`/`githubRepo` before calling the service; `githubRepo`'s format stays exclusively a schema-level (`Project.js`) concern ("Task 20.3: project input validation — closing the typeof gap").
 - `POST /api/events` caps `message`/`stack` at 1000/10,000 characters — a field-level concern separate from the global 100kb body cap; `env`/`metadata` remain deliberately uncapped (Task 21 Shipped Log entry).
 - `GET /api/projects/:id/groups` paginates via an opaque `{lastSeen, _id}` cursor, not offset/skip or `lastSeen` alone — `_id` is a required tie-breaker since `lastSeen` isn't guaranteed unique ("Task 22: cursor pagination on the group list endpoint").
-- `POST /api/projects/:id/simulate` (JWT, ownership-scoped) reuses the exact same `errorGroupService.recordEvent`/`enrichErrorGroup` real ingestion calls, rather than exposing or reconstructing a project's one-way-hashed API key ("Task 23: dark theme + monospace tokens + table polish, and `POST /api/projects/:id/simulate`").
+- `POST /api/projects/:id/simulate` (JWT, ownership-scoped) reuses the exact same `errorGroupService.recordEvent` call and (as of Task 25) the same `enrichmentQueue.enqueueEnrichment` enqueue the real ingestion path uses, rather than exposing or reconstructing a project's one-way-hashed API key ("Task 23: dark theme + monospace tokens + table polish, and `POST /api/projects/:id/simulate`"; enqueue behavior updated in "Task 25").
+- AI enrichment is enqueued as a BullMQ job (`services/enrichmentQueue.js`), consumed by a separate `worker.js` process — not called directly, fire-and-forget, as it was before Task 25. `enrichErrorGroup` now throws on retryable failures (propagates for BullMQ's retry/backoff) instead of swallowing everything internally; a Gemini-response-fails-validation outcome stays terminal/non-throwing ("Task 25: background job queue...").
 
 ## Where Things Live
 

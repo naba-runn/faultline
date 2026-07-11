@@ -105,11 +105,34 @@ const UNGROUNDED_CONFIDENCE = 0.4;
 
 /**
  * Task 13: wires aiService + githubService together for the
- * "new error group" enrichment path. Called fire-and-forget from
- * ingestController — never awaited inside the request/response cycle
- * (AI_CONTEXT.md's Dispatch Model) — so this function must never
- * throw out to its caller; every failure mode is caught and logged
- * here instead, leaving `aiSummary: null` on the group untouched.
+ * "new error group" enrichment path.
+ *
+ * Task 25 changed this function's error contract — read this before
+ * changing it again. It used to be called fire-and-forget directly
+ * from the request/response cycle and had to swallow every failure
+ * itself, since there was nowhere to send one. It is now called from
+ * worker.js's BullMQ job processor instead, and the opposite is true:
+ * BullMQ's retry/backoff (see enrichmentQueue.js's JOB_OPTIONS) only
+ * works if failures are thrown, not swallowed. So:
+ *
+ *   - A thrown error here (Gemini API failure, a transient Mongo write
+ *     failure on the final save) propagates out to the worker, which
+ *     is exactly what triggers a retry. This is the RETRYABLE case —
+ *     the same input might succeed on a later attempt because the
+ *     failure was about the network/service being unavailable, not
+ *     about what came back.
+ *   - `githubService.fetchCodeSnippet` never throws by its own
+ *     documented contract (best-effort — returns null on any failure,
+ *     see githubService.js) — grounding failing just means falling
+ *     back to ungrounded enrichment, not a job failure.
+ *   - A Gemini response that comes back but fails
+ *     `aiService.parseAndValidate` (`parsed === null`, below) is
+ *     deliberately NOT thrown/retried — retrying the identical prompt
+ *     against the identical input is very unlikely to produce a
+ *     different, valid result, so retrying would just burn Gemini API
+ *     quota three times for the same outcome. This stays a terminal
+ *     "log a warning, leave aiSummary null" case, exactly like before
+ *     Task 25.
  *
  * Task 14 adds confidence/affectedFile/affectedFunction on top of
  * Task 13's rootCause/severity/suggestedFix — all three derived
@@ -118,52 +141,47 @@ const UNGROUNDED_CONFIDENCE = 0.4;
  * LLM"). See DECISIONS.md for the exact confidence values chosen.
  */
 async function enrichErrorGroup({ errorGroup, project, message, stack }) {
-  try {
-    const { frames } = normalizeStack(stack);
-    const topFrame = frames[0] || null;
+  const { frames } = normalizeStack(stack);
+  const topFrame = frames[0] || null;
 
-    let codeSnippet = null;
-    if (project && project.githubRepo && topFrame) {
-      codeSnippet = await githubService.fetchCodeSnippet({
-        githubRepo: project.githubRepo,
-        filePath: topFrame.file,
-        line: topFrame.line,
-      });
-    }
-
-    const prompt = aiService.buildPrompt({ message, stack, codeSnippet });
-    const rawResponse = await aiService.callGemini(prompt);
-    const parsed = aiService.parseAndValidate(rawResponse);
-
-    if (!parsed) {
-      console.warn(
-        `[errorGroupService] AI enrichment returned no valid summary for group ${errorGroup._id} — leaving aiSummary null`
-      );
-      return;
-    }
-
-    const aiSummary = {
-      ...parsed,
-      // Higher when the model actually saw real source (grounded),
-      // lower when it only had the error message + stack to go on.
-      // Never the LLM's own self-reported confidence — see
-      // AI_CONTEXT.md and DECISIONS.md's "Task 14: confidence values
-      // and affectedFile/affectedFunction source" entry.
-      confidence: codeSnippet ? GROUNDED_CONFIDENCE : UNGROUNDED_CONFIDENCE,
-      affectedFile: topFrame ? topFrame.file : null,
-      affectedFunction: topFrame ? topFrame.functionName : null,
-    };
-
-    await ErrorGroup.findByIdAndUpdate(errorGroup._id, { $set: { aiSummary } });
-  } catch (err) {
-    // Enrichment must never break ingestion — by the time this runs,
-    // the 202 has already been sent. Log and stop; aiSummary stays
-    // null on the group, same as the parseAndValidate-failure case.
-    console.error(
-      `[errorGroupService] AI enrichment failed for group ${errorGroup._id}:`,
-      err.message
-    );
+  let codeSnippet = null;
+  if (project && project.githubRepo && topFrame) {
+    codeSnippet = await githubService.fetchCodeSnippet({
+      githubRepo: project.githubRepo,
+      filePath: topFrame.file,
+      line: topFrame.line,
+    });
   }
+
+  const prompt = aiService.buildPrompt({ message, stack, codeSnippet });
+  const rawResponse = await aiService.callGemini(prompt);
+  const parsed = aiService.parseAndValidate(rawResponse);
+
+  if (!parsed) {
+    // Terminal, not retryable — see the doc comment above for why.
+    console.warn(
+      `[errorGroupService] AI enrichment returned no valid summary for group ${errorGroup._id} — leaving aiSummary null`
+    );
+    return;
+  }
+
+  const aiSummary = {
+    ...parsed,
+    // Higher when the model actually saw real source (grounded),
+    // lower when it only had the error message + stack to go on.
+    // Never the LLM's own self-reported confidence — see
+    // AI_CONTEXT.md and DECISIONS.md's "Task 14: confidence values
+    // and affectedFile/affectedFunction source" entry.
+    confidence: codeSnippet ? GROUNDED_CONFIDENCE : UNGROUNDED_CONFIDENCE,
+    affectedFile: topFrame ? topFrame.file : null,
+    affectedFunction: topFrame ? topFrame.functionName : null,
+  };
+
+  // Errors thrown here (e.g. a transient Mongo write failure) are
+  // deliberately NOT caught — they propagate out to the worker's job
+  // processor, which is what makes them retryable. See the doc
+  // comment above.
+  await ErrorGroup.findByIdAndUpdate(errorGroup._id, { $set: { aiSummary } });
 }
 
 // Task 22 pagination defaults/caps. DEFAULT_PAGE_SIZE is what applies

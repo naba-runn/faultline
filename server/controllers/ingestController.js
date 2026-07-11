@@ -1,4 +1,5 @@
-const { recordEvent, enrichErrorGroup } = require('../services/errorGroupService');
+const { recordEvent } = require('../services/errorGroupService');
+const { enqueueEnrichment } = require('../services/enrichmentQueue');
 const { sendSuccess, sendError } = require('../utils/httpResponse');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/AppError');
@@ -17,11 +18,12 @@ const MAX_STACK_LENGTH = 10000;
 /**
  * Ingestion endpoint. Validates, fingerprints, atomically upserts the
  * owning ErrorGroup (dedup), and records the individual ErrorEvent. On
- * a brand-new group only, AI enrichment is dispatched fire-and-forget
- * — kicked off after the response is sent, never `await`-ed in the
- * request/response cycle (AI_CONTEXT.md's Dispatch Model). Controller
- * stays thin: parse req, call the service, shape the response — no
- * Mongoose calls happen directly in this file.
+ * a brand-new group only, AI enrichment is enqueued as a BullMQ job
+ * (Task 25) — kicked off after the response is sent, never `await`-ed
+ * in the request/response cycle (AI_CONTEXT.md's Dispatch Model, since
+ * updated for Task 25's queue). Controller stays thin: parse req, call
+ * the service, shape the response — no Mongoose calls happen directly
+ * in this file.
  */
 const ingestEvent = catchAsync(async (req, res) => {
   const { message, stack, env, metadata } = req.body;
@@ -78,8 +80,8 @@ const ingestEvent = catchAsync(async (req, res) => {
   // 202 Accepted, not 201 Created — this endpoint's contract has
   // always been "accepted for processing," and now that's literally
   // true: the event was persisted, and for a new group AI enrichment
-  // (the other half of "processing") is about to be dispatched below
-  // — but not awaited, so it never delays this response.
+  // (the other half of "processing") is about to be enqueued below —
+  // but not awaited, so it never delays this response.
   sendSuccess(res, 202, {
     received: true,
     projectId: req.project._id,
@@ -88,10 +90,23 @@ const ingestEvent = catchAsync(async (req, res) => {
   });
 
   if (isNewGroup) {
-    // Fire-and-forget: intentionally not awaited. enrichErrorGroup
-    // catches all of its own failures internally, so there's nothing
-    // to .catch() here — see errorGroupService.js.
-    enrichErrorGroup({ errorGroup, project: req.project, message, stack });
+    // Task 25: enqueue, don't call enrichErrorGroup directly. The
+    // actual AI call now happens in the separate worker.js process,
+    // with BullMQ retry/backoff on transient failures — see
+    // enrichmentQueue.js and DECISIONS.md's "Task 25" entry. Enqueuing
+    // itself is fast (a single Redis write), so it's still safe to
+    // fire without delaying this response, but a queue-enqueue
+    // failure (e.g. Redis unreachable) is a distinct, worth-logging
+    // failure mode from an AI-enrichment failure — caught here, not
+    // inside enqueueEnrichment itself.
+    enqueueEnrichment({
+      errorGroupId: errorGroup._id,
+      projectId: req.project._id,
+      message,
+      stack,
+    }).catch((err) => {
+      console.error(`[ingest] failed to enqueue enrichment job for group ${errorGroup._id}:`, err.message);
+    });
   }
 });
 

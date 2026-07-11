@@ -364,7 +364,14 @@ test('enrichErrorGroup: invalid/unparseable Gemini response — leaves aiSummary
   );
 });
 
-test('enrichErrorGroup: Gemini call throws — caught internally, never propagates', async () => {
+test('enrichErrorGroup: Gemini call throws — propagates to the caller (Task 25: retryable, not swallowed)', async () => {
+  // Task 25 changed this contract: enrichErrorGroup used to swallow
+  // every failure internally (there was nowhere to send one from a
+  // fire-and-forget call). It's now called from worker.js's BullMQ
+  // job processor, where a thrown error is exactly what triggers a
+  // retry — see errorGroupService.js's doc comment on enrichErrorGroup
+  // for the full contract, and enrichmentQueue.js's JOB_OPTIONS for
+  // the retry/backoff policy this depends on.
   await withMockedEnrichmentDeps(
     {
       fetchCodeSnippet: async () => null,
@@ -374,13 +381,15 @@ test('enrichErrorGroup: Gemini call throws — caught internally, never propagat
       },
     },
     async () => {
-      await assert.doesNotReject(() =>
-        enrichErrorGroup({
-          errorGroup: { _id: fakeObjectId('group-gemini-down') },
-          project: { githubRepo: null },
-          message: 'Error: boom',
-          stack: 'at qux (/app/server/index.js:4:4)',
-        })
+      await assert.rejects(
+        () =>
+          enrichErrorGroup({
+            errorGroup: { _id: fakeObjectId('group-gemini-down') },
+            project: { githubRepo: null },
+            message: 'Error: boom',
+            stack: 'at qux (/app/server/index.js:4:4)',
+          }),
+        /Gemini API unavailable/
       );
     }
   );
