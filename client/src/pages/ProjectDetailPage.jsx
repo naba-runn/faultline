@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../api/axios.js';
+import { useProjectSSE } from '../hooks/useProjectSSE.js';
 
 // Severity/status badge classes live in index.css (.badge-severity-*,
 // .badge-status-*) — Task 23's dark theme pass. Label maps stay here
@@ -37,7 +38,9 @@ function SeverityBadge({ severity }) {
 // (POST /api/projects/:id/simulate — see docs/API.md and
 // projectController.simulateError for why this is a separate,
 // JWT-authed endpoint rather than reusing the API-key-only ingestion
-// route).
+// route). Task 26 adds a live "connected" indicator and a silent
+// background refetch whenever the SSE stream reports a relevant event
+// for this project (see hooks/useProjectSSE.js).
 function ProjectDetailPage() {
     const { id } = useParams();
 
@@ -58,8 +61,13 @@ function ProjectDetailPage() {
     const [simulateResult, setSimulateResult] = useState(null);
     const [simulateError, setSimulateErrorMsg] = useState('');
 
-    const fetchData = useCallback(async () => {
-        setLoading(true);
+    const fetchData = useCallback(async (silent = false) => {
+        // silent=true is used for SSE-triggered refetches (Task 26) —
+        // toggling `loading` on every live push would blank the whole
+        // table each time an event arrives, which defeats the purpose
+        // of a *live*, non-disruptive update. The initial page-load
+        // call below still uses the default (silent=false).
+        if (!silent) setLoading(true);
         setError('');
         try {
             // Two independent GETs rather than relying on one endpoint to
@@ -78,13 +86,23 @@ function ProjectDetailPage() {
             // malformed — surfaced here as-is, no attempt to distinguish.
             setError(err.response?.data?.error || 'Failed to load project.');
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     }, [id]);
 
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    // Task 26: live updates. Any of the three published event types
+    // (new_group, status_changed, enrichment_completed) means this
+    // page's table is now stale — a silent refetch is simpler and
+    // safer than surgically patching one row's state client-side, at
+    // the cost of a bit more network chatter than a hand-patched
+    // update would need. See docs/DECISIONS.md's "Task 26" entry.
+    const { connected: liveConnected } = useProjectSSE(id, () => {
+        fetchData(true);
+    });
 
     // Optimistic-ish update: apply the new status to local state only
     // after the PATCH succeeds (not before), so a failed request never
@@ -152,7 +170,14 @@ function ProjectDetailPage() {
             <Link to="/dashboard" className="back-link">← Back to dashboard</Link>
             <header className="topbar">
                 <h1>{project.name}</h1>
-                <p className="topbar-meta mono">{project.githubRepo || 'no repo linked'}</p>
+                <p className="topbar-meta mono">
+                    {project.githubRepo || 'no repo linked'}
+                    {' · '}
+                    <span className={`live-indicator${liveConnected ? ' is-connected' : ''}`}>
+                        <span className="live-indicator-dot" />
+                        {liveConnected ? 'live' : 'connecting…'}
+                    </span>
+                </p>
             </header>
 
             <section className="card">

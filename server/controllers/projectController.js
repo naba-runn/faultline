@@ -1,9 +1,21 @@
+const crypto = require('crypto');
 const projectService = require('../services/projectService');
 const errorGroupService = require('../services/errorGroupService');
 const { enqueueEnrichment } = require('../services/enrichmentQueue');
+const sseHub = require('../services/sseHub');
+const { getRedisConnection } = require('../config/redis');
 const { sendSuccess, sendError } = require('../utils/httpResponse');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/AppError');
+
+// Task 26: ticket TTL for the SSE stream endpoint. Short and
+// single-use deliberately — see routes/sseRoutes.js and
+// DECISIONS.md's "Task 26" entry for why a ticket exists at all
+// (native EventSource can't send an Authorization header, and this
+// app's morgan request logging means a JWT-in-query-string would be a
+// real credential leak; a ticket that's dead within seconds and only
+// works once bounds the exposure of putting *something* in a URL).
+const SSE_TICKET_TTL_SECONDS = 30;
 
 // Task 23: a small, fixed set of canned synthetic errors for the
 // dashboard's "Simulate Error" button. Deliberately not user-supplied
@@ -253,6 +265,19 @@ const simulateError = catchAsync(async (req, res) => {
   });
 
   if (isNewGroup) {
+    // Bug found via manual testing (see DECISIONS.md's "Duplicate
+    // events never pushed a live update" entry): this function
+    // previously never published any SSE event at all, unlike
+    // ingestController's real ingestion path. A new group created via
+    // this button only ever appeared to sync live by coincidence --
+    // via the *separate*, delayed enrichment_completed event a worker
+    // publishes once AI enrichment finishes seconds later, not from
+    // this button press itself. Fixed to match ingestController's
+    // pattern exactly, so both paths behave identically.
+    sseHub.publish(project.id, 'new_group', { errorGroupId: errorGroup._id }).catch((err) => {
+      console.error(`[simulateError] failed to publish SSE event for group ${errorGroup._id}:`, err.message);
+    });
+
     // Task 25: same enqueue-not-call-directly pattern as
     // ingestController -- see that file's doc comment for why a queue
     // failure is caught here rather than left to propagate (the
@@ -265,7 +290,54 @@ const simulateError = catchAsync(async (req, res) => {
     }).catch((err) => {
       console.error(`[simulateError] failed to enqueue enrichment job for group ${errorGroup._id}:`, err.message);
     });
+  } else {
+    // Same duplicate-case gap as ingestController, same fix.
+    sseHub.publish(project.id, 'duplicate_recorded', {
+      errorGroupId: errorGroup._id,
+      count: errorGroup.count,
+    }).catch((err) => {
+      console.error(`[simulateError] failed to publish SSE event for group ${errorGroup._id}:`, err.message);
+    });
   }
+});
+
+// Task 26: mints a short-lived, single-use ticket authorizing an SSE
+// connection to this project's event stream. JWT-authed and
+// ownership-checked exactly like every other project route (reuses
+// projectService.getProject) -- the ownership decision is made HERE,
+// once, at mint time; the stream endpoint itself
+// (routes/sseRoutes.js) trusts whatever project ID is embedded in a
+// valid ticket rather than re-deriving ownership, since it has no
+// JWT to check against in the first place. See DECISIONS.md's "Task
+// 26" entry for the full reasoning on why a ticket exists instead of
+// putting the JWT directly in the stream URL.
+const mintSseTicket = catchAsync(async (req, res) => {
+  let project;
+  try {
+    project = await projectService.getProject({
+      ownerId: req.user._id,
+      projectId: req.params.id,
+    });
+  } catch (err) {
+    if (err.name === 'CastError') {
+      throw new AppError('Project not found', 404);
+    }
+    throw err;
+  }
+
+  if (!project) {
+    return sendError(res, 404, 'Project not found');
+  }
+
+  const ticket = crypto.randomBytes(24).toString('hex');
+  await getRedisConnection().set(
+    `sse:ticket:${ticket}`,
+    JSON.stringify({ userId: String(req.user._id), projectId: project.id }),
+    'EX',
+    SSE_TICKET_TTL_SECONDS
+  );
+
+  sendSuccess(res, 201, { ticket, expiresInSeconds: SSE_TICKET_TTL_SECONDS });
 });
 
 module.exports = {
@@ -276,4 +348,5 @@ module.exports = {
   deleteProject,
   listProjectGroups,
   simulateError,
+  mintSseTicket,
 };

@@ -10,6 +10,7 @@ const authRoutes = require('./routes/authRoutes');
 const projectRoutes = require('./routes/projectRoutes');
 const ingestRoutes = require('./routes/ingestRoutes');
 const groupRoutes = require('./routes/groupRoutes');
+const sseRoutes = require('./routes/sseRoutes');
 
 const app = express();
 
@@ -38,6 +39,15 @@ app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/events', ingestRoutes);
 app.use('/api/groups', groupRoutes);
+// Task 26: deliberately NOT wrapped in authMiddleware at this level —
+// see routes/sseRoutes.js for why. The ticket its one route reads is
+// also logged by morgan below (it logs every request URL), same as
+// any other route — that's fine by design, not an oversight: a
+// single-use, ~30s ticket that's already been consumed by the very
+// request that generated the log line has essentially nothing left to
+// steal, unlike a long-lived, reusable JWT. See DECISIONS.md's "Task
+// 26" entry.
+app.use('/api/sse', sseRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

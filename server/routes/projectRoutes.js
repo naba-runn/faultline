@@ -18,6 +18,10 @@ router.get('/:id/groups', projectController.listProjectGroups);
 // projectController.simulateError for why this reuses
 // errorGroupService's real pipeline instead of duplicating logic.
 router.post('/:id/simulate', projectController.simulateError);
+// Task 26: mints a short-lived ticket for GET /api/sse/stream (a
+// separate, unauthenticated-at-the-Express-level route -- see
+// routes/sseRoutes.js and projectController.mintSseTicket for why).
+router.post('/:id/sse-ticket', projectController.mintSseTicket);
 router.patch('/:id', projectController.updateProject);
 router.delete('/:id', projectController.deleteProject);
 

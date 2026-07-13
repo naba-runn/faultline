@@ -25,9 +25,10 @@
 const { Worker } = require('bullmq');
 const config = require('./config/env');
 const connectDB = require('./config/db');
-const { getRedisConnection } = require('./config/redis');
+const { getBullConnection } = require('./config/redis');
 const { QUEUE_NAME } = require('./services/enrichmentQueue');
 const { enrichErrorGroup } = require('./services/errorGroupService');
+const sseHub = require('./services/sseHub');
 const ErrorGroup = require('./models/ErrorGroup');
 const Project = require('./models/Project');
 
@@ -59,13 +60,25 @@ async function processEnrichmentJob(job) {
   // do its job. See errorGroupService.js's doc comment on
   // enrichErrorGroup for the full contract.
   await enrichErrorGroup({ errorGroup, project, message, stack });
+
+  // Task 26: dashboard live-update signal, published from this
+  // separate process via the same Redis pub/sub channel sseHub.js
+  // uses — the API process's SSE connections don't know or care which
+  // process an event came from, they just get whatever's published on
+  // "sse:events". Only reached on SUCCESS (enrichErrorGroup throwing
+  // means this line never runs, and a failed job after all retries are
+  // exhausted has nothing meaningful to announce to a live viewer —
+  // aiSummary stays null, same as it would have before Task 25).
+  await sseHub.publish(projectId, 'enrichment_completed', { errorGroupId }).catch((err) => {
+    console.error(`[worker] failed to publish SSE event for group ${errorGroupId}:`, err.message);
+  });
 }
 
 async function start() {
   await connectDB();
 
   const worker = new Worker(QUEUE_NAME, processEnrichmentJob, {
-    connection: getRedisConnection(),
+    connection: getBullConnection(),
   });
 
   // Failed-job visibility (Task 25.4) — logged, not silently dropped.

@@ -1,4 +1,5 @@
 const errorGroupService = require('../services/errorGroupService');
+const sseHub = require('../services/sseHub');
 const { sendSuccess, sendError } = require('../utils/httpResponse');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/AppError');
@@ -42,6 +43,15 @@ const updateStatus = catchAsync(async (req, res) => {
     if (!group) {
         return sendError(res, 404, 'Error group not found');
     }
+
+    // Task 26: dashboard live-update signal — fire-and-forget, same
+    // reasoning as ingestController's publish call (a Redis hiccup
+    // here shouldn't turn a successful status update into a failed
+    // request; live viewers just miss the push and see it on next
+    // manual refresh instead).
+    sseHub.publish(group.projectId, 'status_changed', { errorGroupId: group.id, status: group.status }).catch((err) => {
+        console.error(`[groupController] failed to publish SSE event for group ${group.id}:`, err.message);
+    });
 
     return sendSuccess(res, 200, { group });
 });

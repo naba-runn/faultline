@@ -241,10 +241,43 @@ call — not user-supplied free text.
 }
 ```
 Same 202 semantics as `POST /api/events` — accepted for processing.
-When `isNewGroup` is `true`, AI enrichment is dispatched fire-and-
-forget after this response is sent, same dispatch model as real
-ingestion (`AI_CONTEXT.md`'s Dispatch Model) — `aiSummary` will not be
-populated yet in an immediate follow-up `GET`.
+When `isNewGroup` is `true`, an AI enrichment job is enqueued (not
+called directly — see `enrichmentQueue.enqueueEnrichment`, Task 25)
+after this response is sent; `aiSummary` will not be populated yet in
+an immediate follow-up `GET`. Task 26 also publishes a `new_group` SSE
+event on the project's live stream when this happens — see
+`GET /api/sse/stream` below.
+
+**Errors:**
+| Status | Cause | Body |
+|---|---|---|
+| 404 | Same three cases as `GET /api/projects/:id` | `{ "success": false, "error": "Project not found" }` |
+
+### `POST /api/projects/:id/sse-ticket`
+
+Requires auth: `Authorization: Bearer <token>` (JWT — dashboard user).
+Added in Task 26, for the dashboard's live-update feature.
+
+Mints a short-lived (30s), single-use ticket authorizing a subsequent
+connection to `GET /api/sse/stream`. Exists because native
+`EventSource` cannot send an `Authorization` header — there's no way
+for the stream endpoint itself to check a JWT — so authorization
+happens here instead, once, at mint time (ownership-checked the same
+way as `POST /api/projects/:id/simulate`, reusing
+`projectService.getProject`), and the resulting ticket is what proves
+that check happened when the stream connection is opened moments
+later. See `DECISIONS.md`'s "Task 26" entry for the full reasoning,
+including why a JWT-in-query-string was rejected in favor of this.
+
+**Request body:** none.
+
+**Success (201):**
+```json
+{
+  "success": true,
+  "data": { "ticket": "a1b2c3...", "expiresInSeconds": 30 }
+}
+```
 
 **Errors:**
 | Status | Cause | Body |
@@ -280,6 +313,7 @@ the `ErrorGroup` schema).
   "data": {
     "group": {
       "id": "...",
+      "projectId": "...",
       "status": "resolved",
       "statusHistory": [
         { "status": "resolved", "changedAt": "..." }
@@ -288,6 +322,10 @@ the `ErrorGroup` schema).
   }
 }
 ```
+`projectId` added in Task 26 (previously omitted — additive, not a
+breaking change to this shape) so callers know which SSE channel a
+resulting `status_changed` event belongs to; also published as a live
+event on that project's stream, see `GET /api/sse/stream` below.
 `statusHistory` is appended to, never overwritten — every PATCH adds
 one entry, it never replaces prior ones (`DATABASE.md`'s locked
 design). This PATCH deliberately never touches `lastSeen` — that
@@ -366,8 +404,57 @@ waits on it.
 | 401 | Missing/malformed/wrong/revoked API key | `{ "success": false, "error": "Not authorized, no API key provided" }`
 | 500 | Unexpected persistence failure (DB unreachable, etc.) | `{ "success": false, "error": "Failed to process event" }` | or `"Not authorized, invalid API key"` — see `apiKeyMiddleware` in DECISIONS.md for why these aren't distinguished further |
 
-## Not Yet Implemented
+## Real-Time Events (Task 26)
 
-Planned per the blueprint (added to this table as each is built):
+Server-Sent Events push live updates to the dashboard — new error
+groups, status changes, and enrichment completions — without the
+client needing to poll or manually refresh. See `DECISIONS.md`'s
+"Task 26" entry for the full architecture and reasoning (Redis pub/sub
+fan-out via `services/sseHub.js`, the ticket-based auth pattern, and
+why a JWT directly in the stream URL was rejected).
 
-- `GET /api/groups/:id`
+### `POST /api/projects/:id/sse-ticket`
+
+Documented above, under Projects — included here too since it's the
+first half of this feature's request flow.
+
+### `GET /api/sse/stream?ticket=<ticket>`
+
+**No `Authorization` header — deliberately not behind the usual JWT
+middleware.** Native `EventSource` cannot send custom headers, so this
+route has nothing to check a header against; authorization already
+happened at ticket-mint time (see
+`POST /api/projects/:id/sse-ticket` above). The `ticket` query param
+is validated via an atomic Redis `GETDEL` (read-and-delete in one
+command) — valid exactly once, and only within ~30 seconds of being
+minted.
+
+**Success:** `200`, `Content-Type: text/event-stream`, connection held
+open. Sends an initial `: connected` comment so the client's
+`EventSource.onopen` fires promptly, then a `: heartbeat` comment every
+20 seconds to keep the connection alive through idle-timeout proxies
+(comments are invisible to `EventSource.onmessage` — only `data:` lines
+fire it). Each live event is written as:
+```
+data: {"type":"new_group","payload":{"errorGroupId":"..."}}
+
+```
+`type` is one of `new_group` (from `POST /api/events` or
+`POST /api/projects/:id/simulate`, a genuinely new `ErrorGroup`),
+`duplicate_recorded` (from either of those same two endpoints, when the
+event matched an *existing* group — payload includes the updated
+`count`; added after initial Task 26 shipped, once manual testing
+surfaced that a count-bump was otherwise invisible to live viewers),
+`status_changed` (from `PATCH /api/groups/:id/status`), or
+`enrichment_completed` (from `worker.js`, published only on a
+successful enrichment — a failed job, even after all retries, has
+nothing new to announce; `aiSummary` stays null exactly as before Task
+25). The connection stays open until the client closes it or the
+ticket's originating project stops being relevant to that page.
+
+**Errors:**
+| Status | Cause | Body |
+|---|---|---|
+| 401 | Missing `ticket` query param | `{ "success": false, "error": "Missing ticket" }` |
+| 401 | Ticket invalid, already used, or expired | `{ "success": false, "error": "Invalid or expired ticket" }` |
+| 500 | Redis lookup failed | `{ "success": false, "error": "Failed to validate ticket" }` |

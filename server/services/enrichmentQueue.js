@@ -15,14 +15,14 @@
 // staleness if something changed between enqueue and processing.
 
 const { Queue } = require('bullmq');
-const { getRedisConnection } = require('../config/redis');
+const { getBullConnection } = require('../config/redis');
 
 const QUEUE_NAME = 'enrichment';
 
 let queue = null;
 function getQueue() {
   if (!queue) {
-    queue = new Queue(QUEUE_NAME, { connection: getRedisConnection() });
+    queue = new Queue(QUEUE_NAME, { connection: getBullConnection() });
   }
   return queue;
 }

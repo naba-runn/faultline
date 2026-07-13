@@ -334,6 +334,7 @@ async function updateGroupStatus({ ownerId, groupId, status }) {
 
   return {
     id: group._id,
+    projectId: group.projectId,
     status: group.status,
     statusHistory: group.statusHistory,
   };

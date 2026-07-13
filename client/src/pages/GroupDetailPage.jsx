@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../api/axios.js';
+import { useProjectSSE } from '../hooks/useProjectSSE.js';
 
 // Same map as ProjectDetailPage.jsx — kept duplicated rather than
 // extracted to a shared module for one small constant used in two
@@ -134,7 +135,11 @@ function AiChecklist({ suggestedFix }) {
 // two). Status is shown read-only here — changing it stays on
 // ProjectDetailPage (Task 18's PATCH), not duplicated on this page,
 // per PROJECT_RULES.md §2's no-scope-creep rule. Task 23 adds the
-// dark theme/badge/table polish.
+// dark theme/badge/table polish. Task 26 adds a live "connected"
+// indicator and a silent background refetch when the SSE stream
+// reports a status change or enrichment completion for *this specific
+// group* (filtered by errorGroupId — a status_changed event for a
+// different group in the same project shouldn't refetch this page).
 function GroupDetailPage() {
     const { id } = useParams();
 
@@ -143,8 +148,10 @@ function GroupDetailPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
-    const fetchData = useCallback(async () => {
-        setLoading(true);
+    const fetchData = useCallback(async (silent = false) => {
+        // silent=true for SSE-triggered refetches (Task 26) — see the
+        // same reasoning in ProjectDetailPage.jsx's fetchData.
+        if (!silent) setLoading(true);
         setError('');
         try {
             const res = await api.get(`/groups/${id}`);
@@ -155,13 +162,24 @@ function GroupDetailPage() {
             // :id identically — surfaced as-is, same as ProjectDetailPage.
             setError(err.response?.data?.error || 'Failed to load error group.');
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     }, [id]);
 
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    // Task 26: subscribes once `group.projectId` is known (undefined
+    // before the first fetch resolves — useProjectSSE no-ops until
+    // then, then connects automatically once it's set). Filters to
+    // this specific group so an unrelated group's event in the same
+    // project doesn't trigger a pointless refetch here.
+    const { connected: liveConnected } = useProjectSSE(group?.projectId, (type, payload) => {
+        if (payload?.errorGroupId === id) {
+            fetchData(true);
+        }
+    });
 
     if (loading) {
         return (
@@ -194,6 +212,11 @@ function GroupDetailPage() {
                     {' · '}Seen {group.count} time{group.count === 1 ? '' : 's'}
                     {' · '}First seen {formatDate(group.firstSeen)}
                     {' · '}Last seen {formatDate(group.lastSeen)}
+                    {' · '}
+                    <span className={`live-indicator${liveConnected ? ' is-connected' : ''}`}>
+                        <span className="live-indicator-dot" />
+                        {liveConnected ? 'live' : 'connecting…'}
+                    </span>
                 </p>
             </header>
 

@@ -482,3 +482,35 @@ table select {
 .simulate-result strong {
     color: var(--color-accent-strong);
 }
+
+/* ---------- Live indicator (Task 26) ---------- */
+
+.live-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--color-text-faint);
+}
+
+.live-indicator-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--color-text-faint);
+}
+
+.live-indicator.is-connected {
+    color: var(--color-success);
+}
+
+.live-indicator.is-connected .live-indicator-dot {
+    background: var(--color-success);
+    animation: live-pulse 2s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+}

@@ -1,5 +1,6 @@
 const { recordEvent } = require('../services/errorGroupService');
 const { enqueueEnrichment } = require('../services/enrichmentQueue');
+const sseHub = require('../services/sseHub');
 const { sendSuccess, sendError } = require('../utils/httpResponse');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/AppError');
@@ -90,6 +91,17 @@ const ingestEvent = catchAsync(async (req, res) => {
   });
 
   if (isNewGroup) {
+    // Task 26: dashboard live-update signal. Fire-and-forget, same
+    // reasoning as the enqueue below — a publish failure (Redis
+    // unreachable) shouldn't break ingestion, just means live viewers
+    // don't get pushed the update (they'd still see it on next
+    // manual refresh). Kept as a separate .catch(), not combined with
+    // the enqueue below, so a failure in one doesn't obscure the
+    // other's error message in logs.
+    sseHub.publish(req.project._id, 'new_group', { errorGroupId: errorGroup._id }).catch((err) => {
+      console.error(`[ingest] failed to publish SSE event for group ${errorGroup._id}:`, err.message);
+    });
+
     // Task 25: enqueue, don't call enrichErrorGroup directly. The
     // actual AI call now happens in the separate worker.js process,
     // with BullMQ retry/backoff on transient failures — see
@@ -106,6 +118,20 @@ const ingestEvent = catchAsync(async (req, res) => {
       stack,
     }).catch((err) => {
       console.error(`[ingest] failed to enqueue enrichment job for group ${errorGroup._id}:`, err.message);
+    });
+  } else {
+    // Bug found via manual testing (see DECISIONS.md's "Duplicate
+    // events never pushed a live update" entry): a repeat of an
+    // existing error group (count bump, lastSeen bump) previously had
+    // no SSE publish at all — only genuinely new groups did. A live
+    // viewer would never see a count change without a manual refresh,
+    // even though the underlying data changed on every single
+    // duplicate event, not just new ones.
+    sseHub.publish(req.project._id, 'duplicate_recorded', {
+      errorGroupId: errorGroup._id,
+      count: errorGroup.count,
+    }).catch((err) => {
+      console.error(`[ingest] failed to publish SSE event for group ${errorGroup._id}:`, err.message);
     });
   }
 });
