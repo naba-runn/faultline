@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../api/axios.js';
 import { useProjectSSE } from '../hooks/useProjectSSE.js';
@@ -94,15 +94,37 @@ function ProjectDetailPage() {
         fetchData();
     }, [fetchData]);
 
-    // Task 26: live updates. Any of the three published event types
-    // (new_group, status_changed, enrichment_completed) means this
-    // page's table is now stale — a silent refetch is simpler and
-    // safer than surgically patching one row's state client-side, at
-    // the cost of a bit more network chatter than a hand-patched
-    // update would need. See docs/DECISIONS.md's "Task 26" entry.
+    // Task 26: live updates. Any of the four published event types
+    // (new_group, duplicate_recorded, status_changed,
+    // enrichment_completed) means this page's table is now stale — a
+    // silent refetch is simpler and safer than surgically patching one
+    // row's state client-side, at the cost of a bit more network
+    // chatter than a hand-patched update would need. See
+    // docs/DECISIONS.md's "Task 26" entry.
+    //
+    // Debounced: this tab is subscribed to its own project's channel,
+    // so an action taken in THIS tab (e.g. clicking Simulate Error)
+    // triggers both a direct fetchData() from the click handler below
+    // AND, moments later, its own published event bouncing back over
+    // SSE — a real redundant-refetch gap found via manual testing (see
+    // docs/DECISIONS.md's "Redundant self-triggered refetches" entry).
+    // Coalescing rapid-fire triggers into one fetchData() call after a
+    // short quiet window fixes that without needing to thread a
+    // per-connection client ID through the server just to filter out
+    // "events this tab caused."
+    const refetchDebounceRef = useRef(null);
     const { connected: liveConnected } = useProjectSSE(id, () => {
-        fetchData(true);
+        if (refetchDebounceRef.current) clearTimeout(refetchDebounceRef.current);
+        refetchDebounceRef.current = setTimeout(() => {
+            fetchData(true);
+        }, 400);
     });
+
+    useEffect(() => {
+        return () => {
+            if (refetchDebounceRef.current) clearTimeout(refetchDebounceRef.current);
+        };
+    }, []);
 
     // Optimistic-ish update: apply the new status to local state only
     // after the PATCH succeeds (not before), so a failed request never
@@ -140,7 +162,15 @@ function ProjectDetailPage() {
             const res = await api.post(`/projects/${id}/simulate`);
             const { isNewGroup } = res.data.data;
             setSimulateResult({ isNewGroup });
-            await fetchData();
+            // silent=true: the button already shows its own "simulating..."
+            // feedback while this request is in flight (see `simulating`
+            // state below) -- refetching non-silently here would blank
+            // the entire page (topbar, live indicator, table) down to a
+            // single "Loading project..." line and back, which looks
+            // exactly like a page reload even though it's pure React
+            // state. Found via manual testing -- see DECISIONS.md's
+            // "The actual page-reload mystery" entry.
+            await fetchData(true);
         } catch (err) {
             setSimulateErrorMsg(err.response?.data?.error || 'Failed to simulate error.');
         } finally {
@@ -234,6 +264,9 @@ function ProjectDetailPage() {
                                     </td>
                                     <td>
                                         <select
+                                            id={`status-${group.id}`}
+                                            name={`status-${group.id}`}
+                                            aria-label={`Status for ${group.message}`}
                                             value={group.status}
                                             disabled={updatingGroupId === group.id}
                                             onChange={(e) => handleStatusChange(group.id, e.target.value)}

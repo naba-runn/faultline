@@ -29,8 +29,37 @@ that would duplicate `TASKS.md`.
 
 ## What's Actively In Progress
 
-Nothing mid-implementation as of this pass. Most recently done: **a
-third fix for the same live-update feature**, found via the user's own
+Nothing mid-implementation as of this pass. Most recently done: **the
+actual resolution of the "page reload" symptom** reported across
+several rounds of manual testing — it was never a browser-level
+reload. `ProjectDetailPage.jsx`'s `handleSimulate` called `fetchData()`
+without the `silent` flag added back in Task 26, so every Simulate
+Error click blanked the entire page (topbar, live indicator, table —
+everything) down to a single "Loading project..." line before
+redrawing — a pure React state change that looks exactly like a
+reload but involves no navigation at all. One-line fix:
+`fetchData()` → `fetchData(true)`. Also fixed in the same investigative
+arc: two elements missing `id`/`name` attributes (the status `<select>`
+and the AI-checklist `<input type="checkbox">`), which explained a
+separate, unrelated Chrome DevTools Issues-tab report ("violating
+node" × 34) that had initially looked connected to the reload mystery
+but wasn't. Full story, including an honest account of why the
+earlier investigation (Redis, routing, `window.location` searches) took
+longer than the eventual one-line fix warranted, is in `DECISIONS.md`'s
+"The actual page-reload mystery" entry.
+
+**Status: implementation-side, this live-update feature (Task 26) is
+now believed complete** — every symptom raised across four rounds of
+real manual testing has a confirmed, fixed root cause: the Redis
+connection hang, the missing route registration, the missing
+`duplicate_recorded` event type, and now this rendering bug. What's
+still open is the user's own final confirmation that a clean two-tab
+test — click Simulate Error, watch it update in place with no visual
+flash, on both a new group and a repeat — now passes end to end. Once
+that's confirmed, Task 26 (and 26.5) get checked off in `TASKS.md` for
+real, and Milestone 6 moves to Task 27.
+
+Before this: **a third fix for the same live-update feature**, found via the user's own
 detailed, precise manual testing — this time against the previous two
 fixes already applied. Reported exactly: status changes sync live
 correctly; a brand-new error group syncs live (with a short pause);
@@ -49,17 +78,6 @@ button; `simulateError` also now publishes `new_group` directly,
 matching real ingestion's behavior exactly instead of relying on
 incidental timing. Full story in `DECISIONS.md`'s "Duplicate events
 never pushed a live update" entry.
-
-**This is genuinely close to a complete, real manual test now** — the
-user has, across three rounds, exercised: the live indicator itself,
-status-change sync, new-group sync, and (just found broken)
-duplicate/count-bump sync, all in real two-tab conditions. What's
-still technically unconfirmed is this *specific* fix (the
-`duplicate_recorded` event didn't exist yet when the user tested) —
-worth one more quick check (simulate an error against an existing
-group a few times, confirm the count updates live in a second tab) but
-the bulk of 26.5's actual intent has now been genuinely, manually
-verified by a real person in a real browser, not just asserted.
 
 Before this: **a second bug fix**, found after the Redis connection fix below turned
 out to be real but not sufficient — the user confirmed Redis was

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../api/axios.js';
 import { useProjectSSE } from '../hooks/useProjectSSE.js';
@@ -117,6 +117,8 @@ function AiChecklist({ suggestedFix }) {
                 <li key={index}>
                     <label className="field-inline">
                         <input
+                            id={`fix-step-${index}`}
+                            name={`fix-step-${index}`}
                             type="checkbox"
                             checked={Boolean(checked[index])}
                             onChange={() => toggle(index)}
@@ -174,12 +176,25 @@ function GroupDetailPage() {
     // before the first fetch resolves — useProjectSSE no-ops until
     // then, then connects automatically once it's set). Filters to
     // this specific group so an unrelated group's event in the same
-    // project doesn't trigger a pointless refetch here.
+    // project doesn't trigger a pointless refetch here. Debounced for
+    // the same reason as ProjectDetailPage.jsx — see that file's
+    // comment and docs/DECISIONS.md's "Redundant self-triggered
+    // refetches" entry.
+    const refetchDebounceRef = useRef(null);
     const { connected: liveConnected } = useProjectSSE(group?.projectId, (type, payload) => {
         if (payload?.errorGroupId === id) {
-            fetchData(true);
+            if (refetchDebounceRef.current) clearTimeout(refetchDebounceRef.current);
+            refetchDebounceRef.current = setTimeout(() => {
+                fetchData(true);
+            }, 400);
         }
     });
+
+    useEffect(() => {
+        return () => {
+            if (refetchDebounceRef.current) clearTimeout(refetchDebounceRef.current);
+        };
+    }, []);
 
     if (loading) {
         return (
