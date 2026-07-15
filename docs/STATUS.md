@@ -13,7 +13,7 @@
 - **Milestone 3 — AI Enrichment:** COMPLETE (4/4 tasks)
 - **Milestone 4 — Dashboard Auth & Core Pages:** COMPLETE (4/4 tasks)
 - **Milestone 5 — Detail View & Polish:** IN PROGRESS (5/6 tasks — 19, 20, 21, 22, 23 done)
-- **Milestone 6 — Reliability & Real-Time Infrastructure:** IN PROGRESS (1/3 tasks fully done — 25 done; 26's implementation is done and a real bug found via the user's own manual testing has since been fixed, but the actual two-browser-tab manual test is still owed before 26 is checked off for real)
+- **Milestone 6 — Reliability & Real-Time Infrastructure:** COMPLETE (3/3 tasks — 25, 26, 27 all done and confirmed)
 - **Milestone 7 — Alerting & Insights:** NOT STARTED (0/5 tasks)
 - **Milestone 8 — Product Polish & Growth:** NOT STARTED (0/4 tasks)
 - **Milestone 9 — Ship:** NOT STARTED (0/1 task — original Task 24, renumbered to Task 37)
@@ -29,9 +29,31 @@ that would duplicate `TASKS.md`.
 
 ## What's Actively In Progress
 
-Nothing mid-implementation as of this pass. Most recently done: **the
-actual resolution of the "page reload" symptom** reported across
-several rounds of manual testing — it was never a browser-level
+Nothing mid-implementation as of this pass. Most recently done:
+**Task 27 — per-API-key ingestion rate limiting.** `ingestLimiter`
+(`POST /api/events`) now keys on the authenticated project instead of
+IP — a shared IP with one noisy API key no longer throttles every
+other key on that IP. Verified with a real functional test (two
+simulated projects sharing an IP got fully independent buckets).
+Related, deliberately out-of-scope finding along the way: invalid API
+keys still bypass this limiter entirely (rejected by
+`apiKeyMiddleware` before ever reaching it) — a different problem than
+what this task was scoped to fix; noted in Known Open Issues below,
+not built. Full reasoning in `DECISIONS.md`'s "Task 27" entry.
+
+**Milestone 6 is now fully complete.** Task 26's live-update feature
+was confirmed working end-to-end by the user's own two-tab test —
+new group, duplicate/count-bump, and status change all updating live
+with no visual flash — after four rounds of real bugs found and fixed
+across earlier testing (the Redis connection hang, the missing route
+registration, the missing `duplicate_recorded` event type, and the
+non-silent-refetch rendering bug that looked like a page reload). Full
+sequence in `DECISIONS.md`; `TASKS.md`'s Task 26/26.5 are checked off
+for real, not on the strength of a narrower earlier check.
+
+Before Task 27: **the actual resolution of the "page reload" symptom**
+reported across several rounds of manual testing — it was never a
+browser-level
 reload. `ProjectDetailPage.jsx`'s `handleSimulate` called `fetchData()`
 without the `silent` flag added back in Task 26, so every Simulate
 Error click blanked the entire page (topbar, live indicator, table —
@@ -47,17 +69,6 @@ but wasn't. Full story, including an honest account of why the
 earlier investigation (Redis, routing, `window.location` searches) took
 longer than the eventual one-line fix warranted, is in `DECISIONS.md`'s
 "The actual page-reload mystery" entry.
-
-**Status: implementation-side, this live-update feature (Task 26) is
-now believed complete** — every symptom raised across four rounds of
-real manual testing has a confirmed, fixed root cause: the Redis
-connection hang, the missing route registration, the missing
-`duplicate_recorded` event type, and now this rendering bug. What's
-still open is the user's own final confirmation that a clean two-tab
-test — click Simulate Error, watch it update in place with no visual
-flash, on both a new group and a repeat — now passes end to end. Once
-that's confirmed, Task 26 (and 26.5) get checked off in `TASKS.md` for
-real, and Milestone 6 moves to Task 27.
 
 Before this: **a third fix for the same live-update feature**, found via the user's own
 detailed, precise manual testing — this time against the previous two
@@ -369,16 +380,14 @@ Log):**
 Tasks 17/18/19/20.1/20.2 remain closed exactly as previously recorded
 — no changes to any of them this pass; full detail in `DECISIONS.md`.
 
-Next up: **verify the Task 25/26 bug fix yourself** — run the actual
-two-browser-tabs manual test (see "What's Actively In Progress" above
-and `TASKS.md`'s 26.5) against the fixed Redis connection code, with a
-real local Redis (or Render Key Value instance) running. Once that
-genuinely passes, Task 26 gets checked off for real and **Task 27** —
-Per-API-key ingestion rate limiting (the current limiter in
-`middleware/rateLimiter.js` is per-IP only — a shared IP with one noisy
-API key currently throttles every other key on that IP too) — is next.
-No code dependency between them; this ordering is just "confirm the
-fix actually works before building more on top of this layer."
+Next up: **Task 28** — alert delivery infra (Resend, dispatched as a
+queue job via Task 25's infra for retry) + per-project alert config +
+new-group/severity-threshold triggers. Not started. First task of
+Milestone 7, now that Milestone 6 is fully complete (Tasks 25-27 all
+done and confirmed). Recommended effort/thinking level: **medium-high,
+thinking on** — correctness-sensitive (a silently-dropped alert
+defeats the feature) but building on Task 25's existing queue
+infrastructure, not from scratch.
 
 ## Constitution Amendments
 
@@ -431,14 +440,11 @@ fix actually works before building more on top of this layer."
   config mismatch. Worth double-checking this file's key against
   whichever project you're testing before assuming a pagination/dedup
   issue is a real bug.
-- **`server/.env` has no `REDIS_URL` line at all** (confirmed directly
-  against the real file — not a placeholder value, genuinely absent).
-  Falls back to ioredis's own default (`127.0.0.1:6379`) — works fine
-  if you have a local Redis actually running on the default port,
-  silently does nothing useful if you don't. Add an explicit
-  `REDIS_URL=redis://localhost:6379` to `.env` rather than relying on
-  the implicit default. A real Render Key Value instance still needs
-  provisioning before Task 37's deploy step.
+- **`server/.env` now has `REDIS_URL` set** (was missing entirely as of
+  the entry that first diagnosed this — since resolved: the user added
+  it and confirmed a local Redis running on the default port). A real
+  Render Key Value instance still needs provisioning and swapping in
+  before Task 37's deploy step — that part remains open.
 - **Bug found and fixed: ad-hoc Redis commands (SSE ticket
   mint/lookup) used to hang forever, not fail, when Redis was
   unreachable** — found via the user's own manual browser testing
@@ -454,8 +460,8 @@ fix actually works before building more on top of this layer."
   hung forever when Redis was unreachable" entry. **This fix makes
   failures fail fast and visible — it does not remove the need to
   actually have a Redis server running** for Task 25/26 to work at
-  all. The real two-browser-tabs manual test (26.5) is still owed
-  against this fixed code.
+  all. (26.5's real two-tabs manual test has since been confirmed —
+  see Task 26 in `TASKS.md`.)
 - **No missed-event replay for SSE (Task 26)** — a client disconnected
   at the moment an event publishes simply misses that specific push.
   Nothing is permanently lost (the next fetch, whenever it happens,
@@ -491,6 +497,16 @@ fix actually works before building more on top of this layer."
   but the actual rendered dark theme, badge colors, and the Simulate
   Error button's end-to-end click flow are still owed a live check —
   see this pass's manual test instructions.
+- **Invalid API keys are not rate-limited on `POST /api/events` (Task
+  27)** — `apiKeyMiddleware` rejects a missing/invalid key with `401`
+  before the request ever reaches `ingestLimiter`, so someone hammering
+  the endpoint with garbage keys hits no rate limit at all (only
+  requests from a *successfully authenticated* project are limited).
+  A separate, coarser IP-based limiter running *before*
+  `apiKeyMiddleware` would close this — deliberately not built as part
+  of Task 27, which was scoped to a different problem (one legitimate
+  key's traffic throttling its IP-mates). Worth a future task if this
+  project's threat model calls for it.
 
 ## Currently-Relevant Locked-In Decisions
 
@@ -512,7 +528,8 @@ Pointers only — see `DECISIONS.md` for full reasoning:
 - `GET /api/projects/:id/groups` paginates via an opaque `{lastSeen, _id}` cursor, not offset/skip or `lastSeen` alone — `_id` is a required tie-breaker since `lastSeen` isn't guaranteed unique ("Task 22: cursor pagination on the group list endpoint").
 - `POST /api/projects/:id/simulate` (JWT, ownership-scoped) reuses the exact same `errorGroupService.recordEvent` call and (as of Task 25) the same `enrichmentQueue.enqueueEnrichment` enqueue the real ingestion path uses, rather than exposing or reconstructing a project's one-way-hashed API key ("Task 23: dark theme + monospace tokens + table polish, and `POST /api/projects/:id/simulate`"; enqueue behavior updated in "Task 25").
 - AI enrichment is enqueued as a BullMQ job (`services/enrichmentQueue.js`), consumed by a separate `worker.js` process — not called directly, fire-and-forget, as it was before Task 25. `enrichErrorGroup` now throws on retryable failures (propagates for BullMQ's retry/backoff) instead of swallowing everything internally; a Gemini-response-fails-validation outcome stays terminal/non-throwing ("Task 25: background job queue...").
-- Live dashboard updates (`new_group`, `status_changed`, `enrichment_completed`) are pushed via Server-Sent Events, authorized by a short-lived single-use ticket (not a JWT in the URL — see "Task 26" for why), and fanned out via one shared Redis pub/sub channel + in-process `EventEmitter`, not a Redis connection per SSE client ("Task 26: real-time dashboard updates via Server-Sent Events...").
+- Live dashboard updates (`new_group`, `duplicate_recorded`, `status_changed`, `enrichment_completed`) are pushed via Server-Sent Events, authorized by a short-lived single-use ticket (not a JWT in the URL — see "Task 26" for why), and fanned out via one shared Redis pub/sub channel + in-process `EventEmitter`, not a Redis connection per SSE client ("Task 26: real-time dashboard updates via Server-Sent Events..."; `duplicate_recorded` added later — see "Duplicate events never pushed a live update").
+- `ingestLimiter` (`POST /api/events`) keys on `req.project._id`, not `req.ip` — a shared IP no longer throttles every API key on it. Invalid-key traffic bypasses this limiter entirely (rejected by `apiKeyMiddleware` first) — a deliberately out-of-scope gap, not an oversight ("Task 27: per-API-key ingestion rate limiting").
 
 ## Where Things Live
 

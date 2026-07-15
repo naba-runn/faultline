@@ -21,16 +21,23 @@ const loginLimiter = rateLimit({
 
 /**
  * Generous limiter for POST /api/events. 100 requests / minute per
- * IP — comfortably above the demo app's burst pattern (a handful of
- * requests across 3 routes in a tight loop), while still capping a
- * client sending at a rate no legitimate error-reporting integration
- * would sustain. Abuse protection, not throttling of normal use.
+ * PROJECT (API key), not per IP. See DECISIONS.md, "Rate limiting:
+ * login and ingestion" for the original reasoning on the 100/min
+ * figure, and "Task 27: per-API-key ingestion rate limiting" for why
+ * the key changed from IP to project.
+ *
+ * keyGenerator reads req.project, which apiKeyMiddleware guarantees is
+ * set before calling next() on any request that reaches this limiter
+ * (see routes/ingestRoutes.js -- apiKeyMiddleware runs first). The
+ * req.ip fallback is defensive only, for if that ordering ever
+ * changes; it should never actually trigger in normal operation.
  */
 const ingestLimiter = rateLimit({
   windowMs: 60 * 1000,
   limit: 100,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => (req.project ? String(req.project._id) : req.ip),
   message: {
     success: false,
     error: 'Too many requests, please slow down',

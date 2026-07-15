@@ -301,6 +301,84 @@ const simulateError = catchAsync(async (req, res) => {
   }
 });
 
+// Task 28.1: alert config read/update, JWT-authed and ownership-scoped
+// via projectService.getAlertConfig/updateAlertConfig -- same
+// not-found-or-not-yours ambiguity as every other project route (see
+// projectService.getProject's doc comment). Validation here mirrors
+// updateProject's typeof-guard pattern: only fields actually present
+// in the body are checked/applied, everything else is left unchanged.
+const VALID_SEVERITIES = ['low', 'medium', 'high', 'critical'];
+
+const getAlertConfig = catchAsync(async (req, res) => {
+  let alertConfig;
+  try {
+    alertConfig = await projectService.getAlertConfig({
+      ownerId: req.user._id,
+      projectId: req.params.id,
+    });
+  } catch (err) {
+    if (err.name === 'CastError') {
+      throw new AppError('Project not found', 404);
+    }
+    throw err;
+  }
+
+  if (!alertConfig) {
+    return sendError(res, 404, 'Project not found');
+  }
+
+  return sendSuccess(res, 200, { alertConfig });
+});
+
+const updateAlertConfig = catchAsync(async (req, res) => {
+  const { email, newGroup, severityThreshold } = req.body;
+
+  if (email !== undefined && email !== null && typeof email !== 'string') {
+    return sendError(res, 400, 'email must be a string');
+  }
+
+  if (newGroup !== undefined && typeof newGroup !== 'boolean') {
+    return sendError(res, 400, 'newGroup must be a boolean');
+  }
+
+  if (severityThreshold !== undefined) {
+    if (typeof severityThreshold !== 'object' || severityThreshold === null || Array.isArray(severityThreshold)) {
+      return sendError(res, 400, 'severityThreshold must be an object');
+    }
+    if (severityThreshold.enabled !== undefined && typeof severityThreshold.enabled !== 'boolean') {
+      return sendError(res, 400, 'severityThreshold.enabled must be a boolean');
+    }
+    if (
+      severityThreshold.minSeverity !== undefined &&
+      !VALID_SEVERITIES.includes(severityThreshold.minSeverity)
+    ) {
+      return sendError(res, 400, `severityThreshold.minSeverity must be one of: ${VALID_SEVERITIES.join(', ')}`);
+    }
+  }
+
+  let alertConfig;
+  try {
+    alertConfig = await projectService.updateAlertConfig({
+      ownerId: req.user._id,
+      projectId: req.params.id,
+      email,
+      newGroup,
+      severityThreshold,
+    });
+  } catch (err) {
+    if (err.name === 'CastError') {
+      throw new AppError('Project not found', 404);
+    }
+    throw err;
+  }
+
+  if (!alertConfig) {
+    return sendError(res, 404, 'Project not found');
+  }
+
+  return sendSuccess(res, 200, { alertConfig });
+});
+
 // Task 26: mints a short-lived, single-use ticket authorizing an SSE
 // connection to this project's event stream. JWT-authed and
 // ownership-checked exactly like every other project route (reuses
@@ -349,4 +427,6 @@ module.exports = {
   listProjectGroups,
   simulateError,
   mintSseTicket,
+  getAlertConfig,
+  updateAlertConfig,
 };

@@ -46,7 +46,56 @@ async function getProject({ ownerId, projectId }) {
     githubRepo: project.githubRepo,
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
+    // Task 28.1: included here (unlike listProjects' deliberately
+    // trimmed shape) since the dashboard's single-project view is
+    // where alert config is actually read/edited.
+    alertConfig: project.alertConfig,
   };
+}
+
+/**
+ * Reads a project's alert config only, scoped to its owner. Returns
+ * null under the same not-found-or-not-yours ambiguity as getProject.
+ * Kept separate from getProject rather than making callers pluck
+ * .alertConfig off the full shape, since alertRoutes' GET is a
+ * narrower concern than the full project read.
+ */
+async function getAlertConfig({ ownerId, projectId }) {
+  const project = await Project.findOne({ _id: projectId, ownerId });
+  if (!project) return null;
+
+  return project.alertConfig;
+}
+
+/**
+ * Updates a project's alert config, scoped to its owner. Each field is
+ * independently optional — omitting a field leaves it unchanged, same
+ * pattern as updateProject's name/githubRepo handling. Uses dotted
+ * paths in the update doc (not a single alertConfig: {...} replace) so
+ * a partial update (e.g. only { newGroup: true }) doesn't blow away
+ * fields the caller didn't mention, like email or severityThreshold.
+ */
+async function updateAlertConfig({ ownerId, projectId, email, newGroup, severityThreshold }) {
+  const update = {};
+  if (email !== undefined) update['alertConfig.email'] = email || null;
+  if (newGroup !== undefined) update['alertConfig.newGroup'] = newGroup;
+  if (severityThreshold !== undefined) {
+    if (severityThreshold.enabled !== undefined) {
+      update['alertConfig.severityThreshold.enabled'] = severityThreshold.enabled;
+    }
+    if (severityThreshold.minSeverity !== undefined) {
+      update['alertConfig.severityThreshold.minSeverity'] = severityThreshold.minSeverity;
+    }
+  }
+
+  const project = await Project.findOneAndUpdate(
+    { _id: projectId, ownerId },
+    { $set: update },
+    { new: true, runValidators: true }
+  );
+  if (!project) return null;
+
+  return project.alertConfig;
 }
 
 /**
@@ -91,6 +140,8 @@ module.exports = {
   getProject,
   updateProject,
   deleteProject,
+  getAlertConfig,
+  updateAlertConfig,
 };
 
 /**
@@ -108,4 +159,3 @@ async function listProjects(ownerId) {
     updatedAt: project.updatedAt,
   }));
 }
-

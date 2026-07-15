@@ -402,6 +402,7 @@ waits on it.
 | 400 | Missing/non-string `message` | `{ "success": false, "error": "message is required and must be a string" }` |
 | 400 | Missing/non-string `stack` | `{ "success": false, "error": "stack is required and must be a string" }` |
 | 401 | Missing/malformed/wrong/revoked API key | `{ "success": false, "error": "Not authorized, no API key provided" }`
+| 429 | Rate limit exceeded — 100 requests/minute, keyed per-project (Task 27; previously per-IP) | `{ "success": false, "error": "Too many requests, please slow down" }` |
 | 500 | Unexpected persistence failure (DB unreachable, etc.) | `{ "success": false, "error": "Failed to process event" }` | or `"Not authorized, invalid API key"` — see `apiKeyMiddleware` in DECISIONS.md for why these aren't distinguished further |
 
 ## Real-Time Events (Task 26)

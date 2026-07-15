@@ -22,6 +22,12 @@ router.post('/:id/simulate', projectController.simulateError);
 // separate, unauthenticated-at-the-Express-level route -- see
 // routes/sseRoutes.js and projectController.mintSseTicket for why).
 router.post('/:id/sse-ticket', projectController.mintSseTicket);
+// Task 28.1: separate from PATCH /:id (updateProject) -- alert config
+// is a distinct concern (who gets notified, on what) from the
+// project's own name/githubRepo fields, and Task 28.2/28.3 will add
+// more behavior here without touching updateProject at all.
+router.get('/:id/alerts', projectController.getAlertConfig);
+router.patch('/:id/alerts', projectController.updateAlertConfig);
 router.patch('/:id', projectController.updateProject);
 router.delete('/:id', projectController.deleteProject);
 
