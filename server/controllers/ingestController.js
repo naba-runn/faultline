@@ -1,5 +1,6 @@
 const { recordEvent } = require('../services/errorGroupService');
 const { enqueueEnrichment } = require('../services/enrichmentQueue');
+const { enqueueNewGroupAlert } = require('../services/alertQueue');
 const sseHub = require('../services/sseHub');
 const { sendSuccess, sendError } = require('../utils/httpResponse');
 const catchAsync = require('../utils/catchAsync');
@@ -119,6 +120,24 @@ const ingestEvent = catchAsync(async (req, res) => {
     }).catch((err) => {
       console.error(`[ingest] failed to enqueue enrichment job for group ${errorGroup._id}:`, err.message);
     });
+
+    // Task 28.3: new-group alert trigger. Gated on this project's
+    // alertConfig.newGroup — enqueueNewGroupAlert itself has no
+    // opinion on whether the alert should fire, only on queuing it
+    // once asked (see alertQueue.js). Same fire-and-forget,
+    // caught-here-not-inside reasoning as the enrichment enqueue
+    // above: a failure to enqueue an alert job is a distinct, worth-
+    // logging failure mode from an email-delivery failure (which is
+    // instead handled inside the alert worker's own retry/backoff —
+    // see worker.js's processAlertJob).
+    if (req.project.alertConfig?.newGroup) {
+      enqueueNewGroupAlert({
+        errorGroupId: errorGroup._id,
+        projectId: req.project._id,
+      }).catch((err) => {
+        console.error(`[ingest] failed to enqueue new-group alert for group ${errorGroup._id}:`, err.message);
+      });
+    }
   } else {
     // Bug found via manual testing (see DECISIONS.md's "Duplicate
     // events never pushed a live update" entry): a repeat of an

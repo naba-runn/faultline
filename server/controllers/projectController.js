@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const projectService = require('../services/projectService');
 const errorGroupService = require('../services/errorGroupService');
 const { enqueueEnrichment } = require('../services/enrichmentQueue');
+const { enqueueNewGroupAlert } = require('../services/alertQueue');
 const sseHub = require('../services/sseHub');
 const { getRedisConnection } = require('../config/redis');
 const { sendSuccess, sendError } = require('../utils/httpResponse');
@@ -290,6 +291,22 @@ const simulateError = catchAsync(async (req, res) => {
     }).catch((err) => {
       console.error(`[simulateError] failed to enqueue enrichment job for group ${errorGroup._id}:`, err.message);
     });
+
+    // Task 28.3: same new-group alert trigger as ingestController's
+    // real ingestion path — simulated errors go through the exact
+    // same alerting decision, not a separate/inconsistent one. Note
+    // project here is projectService's shaped output (see
+    // projectController.simulateError above), not a raw Mongoose doc
+    // like ingestController's req.project — it already carries
+    // alertConfig since Task 28.1 added it to getProject's shape.
+    if (project.alertConfig?.newGroup) {
+      enqueueNewGroupAlert({
+        errorGroupId: errorGroup._id,
+        projectId: project.id,
+      }).catch((err) => {
+        console.error(`[simulateError] failed to enqueue new-group alert for group ${errorGroup._id}:`, err.message);
+      });
+    }
   } else {
     // Same duplicate-case gap as ingestController, same fix.
     sseHub.publish(project.id, 'duplicate_recorded', {

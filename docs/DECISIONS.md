@@ -17,7 +17,124 @@ instead — that section is what `CHANGELOG.md` used to be.
 
 ---
 
-## Password hashing: bcrypt in a Mongoose pre-save hook, not in the service layer
+## Task 28: alert delivery infra + per-project config + new-group/severity-threshold triggers
+
+**Decision:** Three sub-parts, built in order: (28.1) `Project.alertConfig`
+embedded schema + `GET`/`PATCH /api/projects/:id/alerts`; (28.2)
+`services/alertService.js` (Resend wrapper) + `services/alertQueue.js`
+(BullMQ producer) + a second `Worker` instance added to the existing
+`worker.js` process (not a third process); (28.3) trigger wiring in
+`ingestController.js`/`projectController.simulateError` (new-group) and
+`worker.js`'s `processEnrichmentJob` (severity-threshold).
+
+**The one genuinely non-obvious call: how the severity-threshold
+trigger reads `aiSummary.severity`.** `errorGroupService.enrichErrorGroup`
+writes the freshly-computed `aiSummary` via its own
+`ErrorGroup.findByIdAndUpdate(...)` call — it does not mutate the
+`errorGroup` object passed into it, and does not return the computed
+summary either. That function's own doc comment flags its contract as
+already revised once, for Task 25, with an explicit "read this before
+changing it again."
+
+**Alternatives considered for getting severity out of it:**
+1. Change `enrichErrorGroup` to return the computed `aiSummary` (or
+   `null`), and have `worker.js` use the return value directly.
+2. Re-fetch the `ErrorGroup` by ID in `worker.js`, immediately after
+   `enrichErrorGroup` resolves, and read `aiSummary` off the fresh doc.
+3. Have `enrichErrorGroup` accept an optional callback/side-effect
+   parameter for "do X after writing aiSummary."
+
+**Justification:** Went with (2). This codebase already has an
+established, repeatedly-stated convention — see `enrichmentQueue.js`'s
+and `worker.js`'s own comments — of re-fetching fresh from Mongo
+rather than trusting an in-memory snapshot, specifically because a job
+processor's in-memory state can go stale between steps. Re-fetching
+`ErrorGroup` a second time (after enrichment, not just before it) is
+the same pattern applied consistently, not a new one. (1) would have
+been marginally cheaper (no second query) but means touching a
+function whose own documentation explicitly warns against casual
+changes to its contract — the cost of a second indexed `findById` on a
+single-item, non-hot-path async worker job is negligible next to that.
+(3) was rejected outright as unnecessary indirection for a two-line
+follow-up read.
+
+**Also worth noting — a real gap found and left as a documented gap,
+not silently patched:** the severity-threshold trigger can only ever
+fire from the AI enrichment worker path, never from `simulateError`'s
+early return before enrichment is enqueued, and never synchronously at
+ingestion — severity does not exist until enrichment completes, which
+is itself async and can take several seconds. This means, unlike the
+new-group trigger (which fires the instant a group is created), a
+user watching for a severity alert immediately after triggering an
+error should expect a delay on the order of the enrichment job's own
+latency, not instant delivery. This is inherent to the feature as
+specified (severity is AI-derived), not a bug in this task's wiring.
+
+**Verification status — all three sub-parts fully confirmed live.**
+28.1 and 28.2 were confirmed early (real HTTP round trip; real
+Redis/BullMQ/Resend, a real email delivered to a real inbox). 28.3 —
+the trigger wiring — took considerably longer to conclusively verify
+than expected, not because the trigger logic itself was wrong, but
+because of three real, stacked environmental issues found during
+manual testing. Recording the full sequence here since it's genuinely
+useful for whoever hits similar symptoms testing this kind of
+queue/worker system again:
+
+1. **Stale worker process, never restarted after a code change.** The
+   worker process running during the first test attempt had been
+   started before `worker.js` was updated with 28.3's severity-
+   threshold logic. It kept running the old, in-memory version even
+   after the file on disk changed — Node doesn't hot-reload a running
+   process. Enrichment completed normally under that stale process
+   (writing a perfectly good `aiSummary`, severity `"high"`), but the
+   severity-threshold check simply didn't exist yet in that process's
+   memory, so nothing was ever going to fire, with no error to signal
+   why. Symptom looked exactly like a logic bug in the new code;
+   actually just old code still running. Fixed by killing and
+   restarting the worker process.
+2. **Fingerprint-deduplication collisions in manual test payloads.**
+   `services/fingerprintService.js`'s `generateFingerprint` hashes the
+   extracted error *type* plus the normalized *stack signature* (see
+   that file) — not the raw `message` string. Manual test `curl` calls
+   varied only `message` (e.g. appending a timestamp) while reusing an
+   identical `stack` string across calls, so every "new" test event
+   produced the same fingerprint and deduped into the same, already-
+   existing `ErrorGroup` (`isNewGroup: false` every time). This meant
+   several rounds of testing never even reached a **new** group, so
+   neither trigger had a fresh event to fire on. Fixed by varying the
+   stack trace's line number (not just the message) on each test call,
+   guaranteeing a distinct fingerprint.
+3. **Two `worker.js` processes running simultaneously.** `ps aux`
+   revealed a leftover process from an earlier `npm run worker:dev`
+   session that had never been killed, running alongside a fresh
+   `npm run worker`. Both were connected to the same Redis instance
+   and the same `enrichment`/`alerts` queues; BullMQ hands each job to
+   whichever worker claims it first, with no guarantee it's the one
+   whose terminal is currently being watched. This produced the most
+   confusing symptom of the three: the queue's own job-count stats
+   (`getJobCounts()`) showed jobs genuinely completing, while the
+   terminal being watched showed nothing — because the *other*,
+   invisible process was the one doing the work. Diagnosed by directly
+   querying `enrichment.getJobCounts()` (showed `completed: 5` when
+   the visible terminal showed zero enrichment completions) and then
+   `ps aux | grep "node worker.js"` (showed two PIDs). Fixed by killing
+   the stale one.
+
+None of these three were bugs in the 28.3 implementation — the actual
+trigger logic worked correctly the entire time; every failed test
+attempt had a specific, identifiable environmental cause once actually
+investigated (rather than assumed to be a code bug). Final confirming
+test used temporary `console.log` debug statements added to
+`processEnrichmentJob` (removed once the test passed) plus a
+temporarily-lowered `minSeverity: "low"` (to remove severity-value
+randomness from the test), which showed the exact evaluated
+comparison (`severity=high minSeverity=low comparison=true`) followed
+by the alert job completing and a real email arriving — a fully
+conclusive, mechanism-level confirmation, not just an inferred one.
+
+---
+
+
 
 **Decision:** `User.js` hashes `passwordHash` in a `pre('save')` hook
 (cost factor 12), and exposes `comparePassword()` as an instance

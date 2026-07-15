@@ -33,6 +33,14 @@ const alertService = require('./services/alertService');
 const sseHub = require('./services/sseHub');
 const ErrorGroup = require('./models/ErrorGroup');
 const Project = require('./models/Project');
+const { enqueueSeverityThresholdAlert } = require('./services/alertQueue');
+
+// Task 28.3: severity ordering for the >= comparison below. Not the
+// same array as models/Project.js's SEVERITY_LEVELS or
+// aiService.js's VALID_SEVERITIES (both just validate membership) —
+// this one specifically encodes ordering, which only this comparison
+// needs.
+const SEVERITY_ORDER = ['low', 'medium', 'high', 'critical'];
 
 async function processEnrichmentJob(job) {
   const { errorGroupId, projectId, message, stack } = job.data;
@@ -62,6 +70,34 @@ async function processEnrichmentJob(job) {
   // do its job. See errorGroupService.js's doc comment on
   // enrichErrorGroup for the full contract.
   await enrichErrorGroup({ errorGroup, project, message, stack });
+
+  // Task 28.3: severity-threshold alert trigger. enrichErrorGroup
+  // writes aiSummary via its own findByIdAndUpdate — it does NOT
+  // mutate the `errorGroup` object above, and doesn't return the
+  // computed summary either (see its doc comment: its contract is
+  // deliberately narrow, changed once already for Task 25). So this
+  // re-fetches fresh rather than reading a stale in-memory value —
+  // the same re-fetch-don't-trust-the-snapshot approach this file
+  // already uses for errorGroupId/projectId above, just applied again
+  // after a second write.
+  //
+  // Also handles the case where enrichErrorGroup returned early
+  // without writing anything (Gemini response failed validation —
+  // aiSummary stays null): freshErrorGroup.aiSummary is then still
+  // null, severity is undefined, and the >= comparison below simply
+  // never fires. No separate null-check needed beyond the optional
+  // chaining already here.
+  if (project?.alertConfig?.severityThreshold?.enabled) {
+    const freshErrorGroup = await ErrorGroup.findById(errorGroupId);
+    const severity = freshErrorGroup?.aiSummary?.severity;
+    const minSeverity = project.alertConfig.severityThreshold.minSeverity;
+
+    if (severity && SEVERITY_ORDER.indexOf(severity) >= SEVERITY_ORDER.indexOf(minSeverity)) {
+      enqueueSeverityThresholdAlert({ errorGroupId, projectId }).catch((err) => {
+        console.error(`[worker] failed to enqueue severity-threshold alert for group ${errorGroupId}:`, err.message);
+      });
+    }
+  }
 
   // Task 26: dashboard live-update signal, published from this
   // separate process via the same Redis pub/sub channel sseHub.js

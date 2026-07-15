@@ -14,7 +14,7 @@
 - **Milestone 4 — Dashboard Auth & Core Pages:** COMPLETE (4/4 tasks)
 - **Milestone 5 — Detail View & Polish:** IN PROGRESS (5/6 tasks — 19, 20, 21, 22, 23 done)
 - **Milestone 6 — Reliability & Real-Time Infrastructure:** COMPLETE (3/3 tasks — 25, 26, 27 all done and confirmed)
-- **Milestone 7 — Alerting & Insights:** NOT STARTED (0/5 tasks)
+- **Milestone 7 — Alerting & Insights:** IN PROGRESS (1/5 tasks — Task 28 done and fully verified live)
 - **Milestone 8 — Product Polish & Growth:** NOT STARTED (0/4 tasks)
 - **Milestone 9 — Ship:** NOT STARTED (0/1 task — original Task 24, renumbered to Task 37)
 
@@ -30,16 +30,66 @@ that would duplicate `TASKS.md`.
 ## What's Actively In Progress
 
 Nothing mid-implementation as of this pass. Most recently done:
-**Task 27 — per-API-key ingestion rate limiting.** `ingestLimiter`
-(`POST /api/events`) now keys on the authenticated project instead of
-IP — a shared IP with one noisy API key no longer throttles every
-other key on that IP. Verified with a real functional test (two
-simulated projects sharing an IP got fully independent buckets).
-Related, deliberately out-of-scope finding along the way: invalid API
-keys still bypass this limiter entirely (rejected by
-`apiKeyMiddleware` before ever reaching it) — a different problem than
-what this task was scoped to fix; noted in Known Open Issues below,
-not built. Full reasoning in `DECISIONS.md`'s "Task 27" entry.
+**Task 28 — alert delivery infra, per-project config, and both
+triggers — all three sub-parts fully verified live.** Three parts:
+
+- **28.1 — alert config schema + CRUD.** `Project.alertConfig` (email,
+  newGroup, severityThreshold.{enabled, minSeverity}), `GET`/`PATCH
+  /api/projects/:id/alerts`. Confirmed via a real HTTP round trip
+  (login → JWT → GET returned correct all-off defaults).
+- **28.2 — delivery service + queue.** `services/alertService.js`
+  (Resend wrapper, HTML-escapes user-controlled fields before they hit
+  an email body), `services/alertQueue.js` (BullMQ producer, mirrors
+  `enrichmentQueue.js`'s shape), consumer wired into `worker.js` as a
+  second `Worker` instance on the `alerts` queue. Confirmed via a real
+  Resend sandbox key, both queues listening, a manually-enqueued job
+  completing, and a real email landing in a real inbox.
+- **28.3 — trigger wiring.** `ingestController.js`/
+  `projectController.simulateError` enqueue a new-group alert when
+  `alertConfig.newGroup` is set. `worker.js`'s `processEnrichmentJob`
+  re-fetches the `ErrorGroup` fresh after `enrichErrorGroup` completes
+  (that function writes `aiSummary` via its own `findByIdAndUpdate`
+  and doesn't mutate/return it) and enqueues a severity-threshold
+  alert when the fresh `aiSummary.severity` clears the project's
+  configured `minSeverity`. **Now fully confirmed live** — both
+  trigger paths fired and delivered real emails against real
+  ingestion + real AI enrichment.
+
+**The path to confirming 28.3 live surfaced three real environmental
+issues, worth recording since they'll likely recur in future manual
+testing sessions — none of them were defects in the 28.3 code itself:**
+
+1. A stale `worker.js` process, started before the 28.3 code existed,
+   was never restarted after the file was updated — so enrichment
+   completed and wrote `aiSummary` under old code with zero
+   severity-threshold logic in it. Symptom: severity came back
+   correctly, but no alert ever fired, no error either. Fix: actually
+   restart the worker process after any code change to it — an
+   obvious rule in hindsight, but easy to skip when nothing errors out
+   to prompt it.
+2. Fingerprint-deduplication collisions during manual testing.
+   `fingerprintService.generateFingerprint` hashes error *type* +
+   normalized *stack signature* (see `services/fingerprintService.js`)
+   — not the raw message text. Varying only the `message` field
+   between test `curl` calls while reusing an identical `stack` string
+   produces the same fingerprint every time, so repeated "new" test
+   errors kept deduping into the same, already-existing `ErrorGroup`
+   (`isNewGroup: false`). Fix for future manual testing: vary the
+   stack trace itself (e.g. the line number in the one stack frame),
+   not just the message, to guarantee a fresh group.
+3. Two `worker.js` processes running simultaneously against the same
+   Redis instance and queues (one likely left over from an earlier
+   `npm run worker:dev` session, the other a fresh `npm run worker`).
+   BullMQ hands each job to whichever worker claims it first, so the
+   terminal being watched wasn't necessarily the one that processed
+   any given job — leading to real confusion about "nothing is
+   happening" when in fact something was, just invisibly, in the other
+   process. Fix: `ps aux | grep "node worker.js"` before any manual
+   test session that depends on reading worker output, and kill
+   duplicates first.
+
+Full sequence, quotes, and reasoning for all three: `DECISIONS.md`'s
+"Task 28" entry.
 
 **Milestone 6 is now fully complete.** Task 26's live-update feature
 was confirmed working end-to-end by the user's own two-tab test —
@@ -380,14 +430,13 @@ Log):**
 Tasks 17/18/19/20.1/20.2 remain closed exactly as previously recorded
 — no changes to any of them this pass; full detail in `DECISIONS.md`.
 
-Next up: **Task 28** — alert delivery infra (Resend, dispatched as a
-queue job via Task 25's infra for retry) + per-project alert config +
-new-group/severity-threshold triggers. Not started. First task of
-Milestone 7, now that Milestone 6 is fully complete (Tasks 25-27 all
-done and confirmed). Recommended effort/thinking level: **medium-high,
-thinking on** — correctness-sensitive (a silently-dropped alert
-defeats the feature) but building on Task 25's existing queue
-infrastructure, not from scratch.
+Next up: **Task 29** — trend/spike detection, the next unstarted task
+in Milestone 7, now that Task 28 is fully complete and verified live
+(all three sub-parts). Recommended effort/thinking level: **medium-
+high, thinking on** — the trend/spike algorithm itself needs care (see
+`TASKS.md`'s Task 29 addendum for the baseline/floor logic already
+specified), even though it also builds on existing infrastructure
+(BullMQ, the sparkline area already built in Task 19).
 
 ## Constitution Amendments
 
