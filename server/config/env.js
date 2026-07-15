@@ -33,6 +33,14 @@ const config = {
   // limit. See DECISIONS.md (Task 12).
   githubToken: process.env.GITHUB_TOKEN || null,
 
+  // Task 28.2 — optional, same reasoning as geminiApiKey/githubToken:
+  // alerting is opt-in per project (see Project.alertConfig, Task
+  // 28.1), so a missing key shouldn't block server startup. Absence
+  // only matters once a project actually has an alert trigger
+  // enabled — see services/alertService.js.
+  resendApiKey: process.env.RESEND_API_KEY || null,
+  resendFromEmail: process.env.RESEND_FROM_EMAIL || 'alerts@faultline.dev',
+
   clientOrigin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
 
   isProduction: process.env.NODE_ENV === 'production',

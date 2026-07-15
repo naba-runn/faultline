@@ -27,7 +27,9 @@ const config = require('./config/env');
 const connectDB = require('./config/db');
 const { getBullConnection } = require('./config/redis');
 const { QUEUE_NAME } = require('./services/enrichmentQueue');
+const { QUEUE_NAME: ALERT_QUEUE_NAME } = require('./services/alertQueue');
 const { enrichErrorGroup } = require('./services/errorGroupService');
+const alertService = require('./services/alertService');
 const sseHub = require('./services/sseHub');
 const ErrorGroup = require('./models/ErrorGroup');
 const Project = require('./models/Project');
@@ -74,10 +76,69 @@ async function processEnrichmentJob(job) {
   });
 }
 
+// Task 28.2: consumer side of the alert-delivery queue (see
+// alertQueue.js's producer side and alertService.js for the actual
+// Resend call). Runs in this same process rather than a third one --
+// see alertQueue.js's doc comment for why a dedicated process wasn't
+// justified.
+//
+// Deliberately does NOT re-decide whether an alert *should* fire
+// (config.newGroup / config.severityThreshold gating, or the severity
+// >= minSeverity comparison) -- that decision is made once, at
+// enqueue time, by whichever caller enqueues the job (Task 28.3:
+// ingestController/simulateError for 'newGroup', this same worker's
+// processEnrichmentJob for 'severityThreshold'). This function only
+// re-fetches fresh data (same reasoning as processEnrichmentJob: the
+// job payload is IDs only) and sends -- re-deciding here would
+// duplicate that logic in two places that could drift apart.
+async function processAlertJob(job) {
+  const { kind, errorGroupId, projectId } = job.data;
+
+  const errorGroup = await ErrorGroup.findById(errorGroupId);
+  const project = await Project.findById(projectId);
+
+  if (!errorGroup || !project) {
+    // Same non-failure skip as processEnrichmentJob: deleted between
+    // enqueue and processing, nothing meaningful left to alert about.
+    console.warn(`[worker] alert job ${job.id}: group or project no longer exists — skipping`);
+    return;
+  }
+
+  const recipient = project.alertConfig?.email;
+  if (!recipient) {
+    // Config was cleared between enqueue and processing (e.g. the
+    // recipient email was removed via PATCH /alerts). Not a failure —
+    // there's simply nowhere to send it now.
+    console.warn(`[worker] alert job ${job.id}: no recipient configured for project ${projectId} — skipping`);
+    return;
+  }
+
+  const { subject, html } =
+    kind === 'severityThreshold'
+      ? alertService.buildSeverityThresholdEmail({ project, errorGroup })
+      : alertService.buildNewGroupEmail({ project, errorGroup });
+
+  // Not caught here, same reasoning as enrichErrorGroup in
+  // processEnrichmentJob — a rejected promise lets BullMQ's
+  // retry/backoff (alertQueue.js's JOB_OPTIONS) do its job.
+  await alertService.sendAlertEmail({ to: recipient, subject, html });
+}
+
+
 async function start() {
   await connectDB();
 
   const worker = new Worker(QUEUE_NAME, processEnrichmentJob, {
+    connection: getBullConnection(),
+  });
+
+  // Task 28.2: a second, independent Worker instance for the 'alerts'
+  // queue in this same process. Separate Worker objects (not one
+  // Worker handling both queues) because BullMQ's Worker is
+  // inherently single-queue -- this mirrors having two independently
+  // failing/completing job streams with their own concurrency, not a
+  // shared one.
+  const alertWorker = new Worker(ALERT_QUEUE_NAME, processAlertJob, {
     connection: getBullConnection(),
   });
 
@@ -95,16 +156,33 @@ async function start() {
     console.log(`[worker] job ${job.id} (group ${job.data.errorGroupId}) completed`);
   });
 
+  // Task 28.2: same failed/completed visibility pattern for the alert
+  // queue, kept as its own listener pair rather than sharing the
+  // enrichment worker's — the two logs need different labels and the
+  // job.data shape differs (kind/errorGroupId/projectId here, vs.
+  // errorGroupId/projectId/message/stack above).
+  alertWorker.on('failed', (job, err) => {
+    console.error(
+      `[worker] alert job ${job.id} (${job.data.kind}, group ${job.data.errorGroupId}) failed (attempt ${job.attemptsMade}/${job.opts.attempts}):`,
+      err.message
+    );
+  });
+
+  alertWorker.on('completed', (job) => {
+    console.log(`[worker] alert job ${job.id} (${job.data.kind}, group ${job.data.errorGroupId}) completed`);
+  });
+
   console.log(`[worker] Faultline enrichment worker listening on queue "${QUEUE_NAME}" (${config.nodeEnv})`);
+  console.log(`[worker] Faultline alert worker listening on queue "${ALERT_QUEUE_NAME}" (${config.nodeEnv})`);
 
   process.on('unhandledRejection', (err) => {
     console.error('[worker] Unhandled Rejection:', err);
-    worker.close().finally(() => process.exit(1));
+    Promise.all([worker.close(), alertWorker.close()]).finally(() => process.exit(1));
   });
 
   process.on('uncaughtException', (err) => {
     console.error('[worker] Uncaught Exception:', err);
-    worker.close().finally(() => process.exit(1));
+    Promise.all([worker.close(), alertWorker.close()]).finally(() => process.exit(1));
   });
 }
 
