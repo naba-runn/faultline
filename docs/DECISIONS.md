@@ -1561,6 +1561,30 @@ controller-level tests for any project route).
 Chronological, most-recent-first, entries with no dedicated decision
 above. Migrated from `CHANGELOG.md`.
 
+- **Task 29.1** — `services/trendService.js`: pure function
+  (`computeTrend`), no Mongo/I/O, taking a plain array of event
+  timestamps plus an injectable `now` so it's unit-testable without a
+  DB. Implements the algorithm locked into `TASKS.md`'s Task 29 entry:
+  baseline = trailing-24h event count (in the 24 full hours before the
+  current, in-progress hour) divided by 24; a group spikes when its
+  current-hour count both exceeds `baseline * spikeMultiplier`
+  (default 3x) and clears an absolute `minCountFloor` (default 5) —
+  the floor is what stops a 1/hr baseline going to 3 in an hour from
+  registering as "a 3x spike" on pure noise. A group whose earliest
+  known event is younger than the 24h baseline window reports
+  `status: 'insufficient_history'` rather than computing a baseline
+  over a partial window (which would make a brand-new group's first
+  few events look like an immediate, permanent spike). A trailing-24h
+  window with zero events is a legitimate baseline of 0, distinct from
+  "insufficient history" — handled via `multiplierObserved: Infinity`
+  when baseline is 0 but the current hour has activity. Verified: 9
+  new unit tests (`tests/trendService.test.js`) covering no-history,
+  under-24h-old groups, a flat 1/hr baseline with no spike, the exact
+  "1/hr → 3 in an hour" noise case from the spec (correctly does NOT
+  spike), a real spike clearing both the multiplier and the floor, a
+  zero-baseline burst both above and below the floor, custom
+  multiplier/floor overrides, and mixed Date/ISO-string/epoch-ms input
+  — full 31-test server suite passes unchanged.
 - **Task 21** — Added field-level payload caps to `POST /api/events`:
   `message` capped at 1000 characters, `stack` at 10,000, both
   returning `400` when exceeded. Separate concern from the existing

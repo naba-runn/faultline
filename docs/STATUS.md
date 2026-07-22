@@ -29,9 +29,23 @@ that would duplicate `TASKS.md`.
 
 ## What's Actively In Progress
 
-Nothing mid-implementation as of this pass. Most recently done:
-**Task 28 — alert delivery infra, per-project config, and both
-triggers — all three sub-parts fully verified live.** Three parts:
+**Task 29 (Trend/spike detection) is underway — 29.1 done, 29.2 and
+29.3 not started.** 29.1 shipped `services/trendService.js`
+(`computeTrend`), a pure function implementing the baseline/spike
+algorithm specified in `TASKS.md`'s Task 29 entry, with 9 passing unit
+tests (`tests/trendService.test.js`; full server suite now 31 tests,
+all passing) covering the insufficient-history case, a flat baseline
+with no spike, the spec's own "1/hr → 3 in an hour" noise case (must
+NOT spike), a real spike, zero-baseline bursts above/below the floor,
+custom multiplier/floor overrides, and mixed timestamp input types.
+Not yet done: 29.2 (wiring this into `GroupDetailPage`'s sparkline)
+and 29.3 (manual test via a tight-loop `Simulate Error` run + docs +
+commit for the feature as a whole). Full reasoning:
+`DECISIONS.md`'s "Task 29.1" Shipped Log entry.
+
+Before that, most recently done: **Task 28 — alert delivery infra,
+per-project config, and both triggers — all three sub-parts fully
+verified live.** Three parts:
 
 - **28.1 — alert config schema + CRUD.** `Project.alertConfig` (email,
   newGroup, severityThreshold.{enabled, minSeverity}), `GET`/`PATCH
