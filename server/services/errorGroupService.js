@@ -11,6 +11,7 @@ const { normalizeStack } = require('../utils/stackNormalizer');
 // destructured local that captured the reference at require time.
 const githubService = require('./githubService');
 const aiService = require('./aiService');
+const trendService = require('./trendService');
 
 /**
  * Performs the atomic ErrorGroup upsert. Split out from recordEvent()
@@ -351,6 +352,22 @@ async function updateGroupStatus({ ownerId, groupId, status }) {
 // /api/groups/:id returns group + events combined."
 const RECENT_EVENTS_LIMIT = 50;
 
+// Task 29.2: bound on how many ErrorEvent timestamps are fetched
+// within trendService's ~25h relevant window (baseline window +
+// current in-progress hour) to feed computeTrend. This is a separate
+// cap from RECENT_EVENTS_LIMIT above — that one bounds the page's
+// display list, this one bounds a time-range query that could
+// otherwise return an unbounded number of rows for a genuinely
+// hot/spiking group in a 25h window. Sorted most-recent-first before
+// capping, so a truncated sample still skews toward the most relevant
+// (current-hour) end rather than an arbitrary storage-order slice.
+// Known, deliberate limitation: a group with more than this many
+// events in 25h will have its baseline *undercounted* (rate reported
+// lower than reality) once truncation kicks in — acceptable for a
+// portfolio-grade MVP's demo/manual-test volumes, not something a
+// production system would leave uncounted. See DECISIONS.md.
+const TREND_EVENT_QUERY_CAP = 5000;
+
 /**
  * Fetches the full ErrorGroup document plus its most recent
  * ErrorEvents, for Task 19's ErrorGroupDetail page. Ownership is
@@ -385,6 +402,35 @@ async function getGroupDetail({ ownerId, groupId }) {
     .sort({ receivedAt: -1 })
     .limit(RECENT_EVENTS_LIMIT);
 
+  // Task 29.2: trend is computed from its own bounded time-range
+  // query, deliberately separate from `events` above. `events` is
+  // capped at RECENT_EVENTS_LIMIT (50) with no time bound — for a
+  // low-volume group that's the group's whole history, but for a
+  // busy one it can be just the last few minutes, nowhere near
+  // trendService's 24h baseline window. Querying by time range here
+  // instead (via getWindowBounds) is the only way to get a baseline
+  // that reflects real hourly rates rather than an arbitrary recent
+  // slice. Projected to `receivedAt` only — the rest of each
+  // ErrorEvent document is irrelevant to this calculation.
+  const now = new Date();
+  const { baselineWindowStart } = trendService.getWindowBounds(now);
+  const trendEvents = await ErrorEvent.find(
+    { errorGroupId: group._id, receivedAt: { $gte: baselineWindowStart } },
+    { receivedAt: 1, _id: 0 }
+  )
+    .sort({ receivedAt: -1 })
+    .limit(TREND_EVENT_QUERY_CAP);
+
+  // group.firstSeen is the group's true earliest event, already known
+  // with no extra query — passed as earliestKnownTimestamp so the
+  // insufficient-history check isn't blind to history outside the
+  // bounded query above (which, by construction, never includes
+  // anything older than baselineWindowStart).
+  const trend = trendService.computeTrend(
+    trendEvents.map((e) => e.receivedAt),
+    { now, earliestKnownTimestamp: group.firstSeen }
+  );
+
   return {
     group: {
       id: group._id,
@@ -403,6 +449,12 @@ async function getGroupDetail({ ownerId, groupId }) {
       receivedAt: event.receivedAt,
       env: event.env,
     })),
+    trend: {
+      status: trend.status,
+      isSpiking: trend.isSpiking,
+      currentHourCount: trend.currentHourCount,
+      baselineHourlyRate: trend.baselineHourlyRate,
+    },
   };
 }
 

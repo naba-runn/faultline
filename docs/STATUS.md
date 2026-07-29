@@ -14,7 +14,7 @@
 - **Milestone 4 — Dashboard Auth & Core Pages:** COMPLETE (4/4 tasks)
 - **Milestone 5 — Detail View & Polish:** IN PROGRESS (5/6 tasks — 19, 20, 21, 22, 23 done)
 - **Milestone 6 — Reliability & Real-Time Infrastructure:** COMPLETE (3/3 tasks — 25, 26, 27 all done and confirmed)
-- **Milestone 7 — Alerting & Insights:** IN PROGRESS (1/5 tasks — Task 28 done and fully verified live)
+- **Milestone 7 — Alerting & Insights:** IN PROGRESS (2/5 tasks — Tasks 28 and 29 done and fully verified live)
 - **Milestone 8 — Product Polish & Growth:** NOT STARTED (0/4 tasks)
 - **Milestone 9 — Ship:** NOT STARTED (0/1 task — original Task 24, renumbered to Task 37)
 
@@ -29,19 +29,54 @@ that would duplicate `TASKS.md`.
 
 ## What's Actively In Progress
 
-**Task 29 (Trend/spike detection) is underway — 29.1 done, 29.2 and
-29.3 not started.** 29.1 shipped `services/trendService.js`
-(`computeTrend`), a pure function implementing the baseline/spike
-algorithm specified in `TASKS.md`'s Task 29 entry, with 9 passing unit
-tests (`tests/trendService.test.js`; full server suite now 31 tests,
-all passing) covering the insufficient-history case, a flat baseline
-with no spike, the spec's own "1/hr → 3 in an hour" noise case (must
-NOT spike), a real spike, zero-baseline bursts above/below the floor,
-custom multiplier/floor overrides, and mixed timestamp input types.
-Not yet done: 29.2 (wiring this into `GroupDetailPage`'s sparkline)
-and 29.3 (manual test via a tight-loop `Simulate Error` run + docs +
-commit for the feature as a whole). Full reasoning:
-`DECISIONS.md`'s "Task 29.1" Shipped Log entry.
+Nothing mid-implementation as of this pass. Most recently done:
+**Task 29 — Trend/spike detection — all three sub-parts done and
+29.3 confirmed live by the user against the real running app.**
+
+- **29.1 — baseline calculation service.** `services/trendService.js`
+  (`computeTrend`), a pure function implementing the baseline/spike
+  algorithm specified in `TASKS.md`'s Task 29 entry, with 9 passing
+  unit tests (`tests/trendService.test.js`) covering the
+  insufficient-history case, a flat baseline with no spike, the spec's
+  own "1/hr → 3 in an hour" noise case (must NOT spike), a real spike,
+  zero-baseline bursts above/below the floor, custom multiplier/floor
+  overrides, and mixed timestamp input types. A real bug was found via
+  the user's own `npm test` run on their local machine (IST):
+  `startOfHour` truncated using local timezone, not UTC, so hour
+  boundaries silently shifted for any non-whole-hour UTC offset —
+  fixed by switching to `setUTCMinutes`, confirmed passing under
+  UTC/IST/PST/a fractional +12:45 offset.
+- **29.2 — API + UI wiring.** `computeTrend` wired into `GET
+  /api/groups/:id` (`errorGroupService.getGroupDetail`) and surfaced on
+  `GroupDetailPage` as a new `TrendBadge` in the Activity card. Trend
+  is computed from its own separate, time-bounded `ErrorEvent` query
+  (via `trendService.getWindowBounds`), not the existing capped
+  display-events list — that list has no time bound and can be far
+  narrower than 24h for a busy group, which would corrupt the
+  baseline. `ErrorGroup.firstSeen` feeds `computeTrend`'s new
+  `earliestKnownTimestamp` option so the insufficient-history check
+  isn't blind to history outside the bounded query, which by
+  construction can never contain anything older than its own window
+  start. Also fixed along the way: `GET /api/groups/:id` had never
+  been documented in `API.md` at all since Task 19 — added now,
+  including the new `trend` field (a pre-existing docs-vs-code gap,
+  surfaced per `PROJECT_RULES.md` §13, not something this pass
+  introduced). Full server suite: 36 tests passing under both
+  `TZ=UTC` and `TZ=Asia/Kolkata`.
+- **29.3 — manual test, confirmed live.** Three local processes (API
+  server, worker, Vite client) running against the project's existing
+  MongoDB Atlas connection (already in `.env`, no local Mongo install
+  needed) and a local Redis. Two browser tabs — project page +
+  `GroupDetailPage` — with a tight loop of Simulate Error clicks
+  (`simulateError` picks 1-of-3 canned errors at random per click, so
+  this relies on enough clicks landing on the one watched group, not a
+  literal 1:1 count). **Confirmed by the user**: the trend badge
+  flipped from non-spiking to "spiking" (red) once enough hits landed
+  on that group within the current hour, with Task 26's SSE-driven
+  silent refetch picking up each hit live, no manual reload needed.
+
+Full reasoning for all three: `DECISIONS.md`'s "Task 29.1" / "Task
+29.2" / "Task 29.3" Shipped Log entries.
 
 Before that, most recently done: **Task 28 — alert delivery infra,
 per-project config, and both triggers — all three sub-parts fully

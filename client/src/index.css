@@ -409,6 +409,24 @@ table select {
     color: var(--color-text-faint);
 }
 
+/* Task 29.2: trend badge on the Activity card — same visual language
+   as the severity/status badges above (pill shape, background+text
+   pair from the theme palette), not a new pattern. */
+.badge-trend-spiking {
+    background: var(--color-danger-bg);
+    color: var(--color-danger);
+}
+
+.badge-trend-normal {
+    background: var(--color-accent-bg);
+    color: var(--color-accent-strong);
+}
+
+.badge-trend-insufficient {
+    background: var(--color-surface-raised);
+    color: var(--color-text-faint);
+}
+
 /* ---------- Monospace data ---------- */
 
 .mono {

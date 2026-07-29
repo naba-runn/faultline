@@ -286,6 +286,79 @@ including why a JWT-in-query-string was rejected in favor of this.
 
 ## Error Groups
 
+### `GET /api/groups/:id`
+
+Requires auth: `Authorization: Bearer <token>` (JWT — dashboard user).
+Added in Task 19; **previously undocumented here** — this entry was
+missing from `API.md` entirely despite the route/controller existing
+since Task 19, a pre-existing docs-vs-code gap surfaced and fixed as
+part of Task 29.2 rather than left in place. Powers the
+ErrorGroupDetail page: one combined `{ group, events, trend }`
+response, not split across separate endpoints — see `DECISIONS.md`,
+"Task 19" for why. Ownership enforced the same way as the `PATCH`
+below: group looked up by `:id` first, then its owning `Project`
+checked via a scoped `Project.findOne({ _id, ownerId })`.
+
+**Success (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "group": {
+      "id": "...",
+      "projectId": "...",
+      "message": "TypeError: x is not a function",
+      "stackSample": "...",
+      "status": "open",
+      "statusHistory": [ { "status": "open", "changedAt": "..." } ],
+      "aiSummary": {
+        "rootCause": "...",
+        "severity": "high",
+        "suggestedFix": ["...", "..."],
+        "confidence": 0.8,
+        "affectedFile": "...",
+        "affectedFunction": "..."
+      },
+      "count": 12,
+      "firstSeen": "...",
+      "lastSeen": "..."
+    },
+    "events": [
+      { "id": "...", "receivedAt": "...", "env": "production" }
+    ],
+    "trend": {
+      "status": "ok",
+      "isSpiking": false,
+      "currentHourCount": 3,
+      "baselineHourlyRate": 1.2
+    }
+  }
+}
+```
+`events` is capped at the 50 most recent occurrences (`RECENT_EVENTS_LIMIT`
+in `errorGroupService.js`), unrelated to Task 22's cursor pagination
+(which covers the groups *list* only). `aiSummary` is `null` until
+enrichment completes.
+
+`trend` — added in Task 29.2, `services/trendService.js`'s
+`computeTrend` output, restricted to the four fields the dashboard
+actually needs (`multiplierObserved`/window-boundary fields stay
+internal): `status` is `"ok"` or `"insufficient_history"` (the group is
+younger than the 24h baseline window — every other field is then
+meaningless and callers shouldn't display a rate); `isSpiking` is only
+ever `true` when `status` is `"ok"`; `baselineHourlyRate` is the
+trailing-24h average events/hour (can legitimately be `0`, distinct
+from `insufficient_history`); `currentHourCount` is the current,
+in-progress hour's raw count. Computed from a separate, time-bounded
+`ErrorEvent` query (not the `events` list above, which has no time
+bound and can be far narrower than 24h for a busy group) — see
+`DECISIONS.md`'s "Task 29.2" entry.
+
+**Errors:**
+| Status | Cause | Body |
+|---|---|---|
+| 404 | Group doesn't exist, its project belongs to another user, or `:id` isn't a valid ObjectId | `{ "success": false, "error": "Error group not found" }` |
+
 ### `PATCH /api/groups/:id/status`
 
 Requires auth: `Authorization: Bearer <token>` (JWT — dashboard user,

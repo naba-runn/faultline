@@ -30,6 +30,39 @@ function StatusBadge({ status }) {
     return <span className={`badge badge-status-${status}`}>{status}</span>;
 }
 
+// Task 29.2: surfaces trendService's computed current-vs-baseline
+// comparison (via GET /api/groups/:id's new `trend` field), not raw
+// counts alone — the point of Task 29 per TASKS.md's own wording.
+// `trend` can be undefined only for a payload from before this field
+// existed (stale cached response, if any) — treated the same as
+// 'insufficient_history' rather than crashing on a missing field.
+function TrendBadge({ trend }) {
+    if (!trend || trend.status === 'insufficient_history') {
+        return (
+            <span className="badge badge-trend-insufficient">
+                not enough history yet
+            </span>
+        );
+    }
+
+    const rate = trend.baselineHourlyRate;
+    const rateLabel = Number.isFinite(rate) ? rate.toFixed(1) : '0.0';
+
+    if (trend.isSpiking) {
+        return (
+            <span className="badge badge-trend-spiking">
+                spiking — {trend.currentHourCount} this hour vs {rateLabel}/hr baseline
+            </span>
+        );
+    }
+
+    return (
+        <span className="badge badge-trend-normal">
+            normal — {trend.currentHourCount} this hour vs {rateLabel}/hr baseline
+        </span>
+    );
+}
+
 // Buckets the (already-capped, most-recent-first) events by calendar
 // day, ascending, for the sparkline. This only ever sees the same
 // window of events the page already fetched — it does not requery the
@@ -147,6 +180,7 @@ function GroupDetailPage() {
 
     const [group, setGroup] = useState(null);
     const [events, setEvents] = useState([]);
+    const [trend, setTrend] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
@@ -159,6 +193,7 @@ function GroupDetailPage() {
             const res = await api.get(`/groups/${id}`);
             setGroup(res.data.data.group);
             setEvents(res.data.data.events);
+            setTrend(res.data.data.trend);
         } catch (err) {
             // docs/API.md: 404 covers not-found, not-yours, and a malformed
             // :id identically — surfaced as-is, same as ProjectDetailPage.
@@ -280,6 +315,7 @@ function GroupDetailPage() {
                     Event volume — last {events.length} occurrence{events.length === 1 ? '' : 's'} fetched
                     {group.count > events.length ? ` (of ${group.count} total)` : ''}.
                 </p>
+                <p><TrendBadge trend={trend} /></p>
                 <Sparkline buckets={buckets} />
             </section>
 

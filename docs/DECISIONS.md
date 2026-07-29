@@ -1561,6 +1561,65 @@ controller-level tests for any project route).
 Chronological, most-recent-first, entries with no dedicated decision
 above. Migrated from `CHANGELOG.md`.
 
+- **Task 29.3** — Manual test of the trend badge, run by the user
+  against the real running app (three local processes: API server,
+  worker, Vite client; MongoDB via an existing Atlas connection,
+  already in `.env`, no local install needed). Two browser tabs — one
+  on the project page with the Simulate Error button, one on a
+  `GroupDetailPage` — with a tight loop (~15-20 clicks) of Simulate
+  Error clicks against the project. Since `simulateError` picks one of
+  3 canned errors at random per click, this relies on enough clicks
+  landing on the one group being watched, not a literal 1:1 click
+  count. **Confirmed live**: the trend badge flipped from
+  non-spiking to "spiking" (red) once enough hits landed on that group
+  within the current hour, with the SSE-driven silent refetch (already
+  built in Task 26) picking up each hit without a manual page reload.
+  This closes out Task 29 as a whole — all three sub-parts (29.1
+  baseline calculation, 29.2 API+UI wiring, 29.3 this manual
+  confirmation) are done.
+- **Task 29.2** — Wired `trendService.computeTrend` into
+  `GET /api/groups/:id` (`errorGroupService.getGroupDetail`) and
+  surfaced it on `GroupDetailPage` via a new `TrendBadge` component in
+  the Activity card. Two design points worth recording:
+  - **Trend is computed from its own separate, time-bounded
+    `ErrorEvent` query — not the existing `events` list.** The
+    existing display list (`RECENT_EVENTS_LIMIT`, 50 events, no time
+    bound) is a fine window for a low-volume group but can be far
+    narrower than 24h for a busy one, which would silently corrupt the
+    baseline. The new query filters on `receivedAt: { $gte:
+    baselineWindowStart }` (from `trendService.getWindowBounds`),
+    projects only `receivedAt`, and caps at `TREND_EVENT_QUERY_CAP`
+    (5000) — a known, deliberate limitation: a group with more than
+    5000 events in a 25h window has its baseline undercounted once
+    truncation kicks in, acceptable for this project's demo/manual-test
+    volumes, not something a production system would leave uncounted.
+  - **`ErrorGroup.firstSeen` is passed as `computeTrend`'s new
+    `earliestKnownTimestamp` option, not derived from the windowed
+    query's own timestamps.** A query bounded to the last ~25h can, by
+    construction, never contain anything older than that — so deriving
+    "is this group older than 24h" from its own result would make
+    every group look permanently under-24h-old the moment the naive
+    approach was tried. `firstSeen` is already stored on `ErrorGroup`
+    with no extra query, and is definitionally the group's true
+    earliest event, so it's the correct source for that check. See
+    `services/trendService.js`'s updated `computeTrend` doc comment for
+    the full parameter contract.
+  - **Also fixed a pre-existing documentation gap**: `GET
+    /api/groups/:id` (added in Task 19) had never been documented in
+    `API.md` at all. Added now, including the new `trend` field —
+    surfaced per `PROJECT_RULES.md` §13's "a mismatch [between docs and
+    code] is a bug to surface explicitly," not silently left as-is.
+  - Verified: 3 new/updated unit tests in `tests/errorGroupService.test.js`
+    (the existing `getGroupDetail` "owned group" test updated for the
+    second `ErrorEvent.find` call and the new `trend` field; a new test
+    for the `insufficient_history` path via a 2-hour-old `firstSeen`),
+    4 new unit tests in `tests/trendService.test.js` for the
+    `earliestKnownTimestamp` override and `getWindowBounds` — full
+    server suite now 36 tests, passing under `TZ=UTC` and
+    `TZ=Asia/Kolkata`. `GroupDetailPage.jsx`'s JSX re-verified to parse
+    cleanly via `@babel/parser` (no live-browser render check yet — see
+    `STATUS.md`'s open items, same caveat already on record for Task
+    23's frontend changes).
 - **Task 29.1** — `services/trendService.js`: pure function
   (`computeTrend`), no Mongo/I/O, taking a plain array of event
   timestamps plus an injectable `now` so it's unit-testable without a
@@ -1585,6 +1644,24 @@ above. Migrated from `CHANGELOG.md`.
   zero-baseline burst both above and below the floor, custom
   multiplier/floor overrides, and mixed Date/ISO-string/epoch-ms input
   — full 31-test server suite passes unchanged.
+- **Bug found and fixed: `trendService.startOfHour` used local-timezone
+  truncation, not UTC** — found via the user's own manual `npm test`
+  run, which failed 6 of 9 `trendService` tests on their local machine
+  (IST, UTC+5:30) despite passing in the implementation sandbox (UTC).
+  Root cause: `startOfHour` called `date.setMinutes(0, 0, 0)`, which
+  truncates using the host process's local timezone. For any offset
+  that isn't a whole number of UTC hours (IST's +5:30 being exactly
+  such a case), this silently shifts every "current hour" and
+  "trailing 24h" boundary relative to the UTC timestamps
+  `ErrorEvent.receivedAt` actually stores — a real correctness bug, not
+  a test artifact, since it means the function's output would depend
+  on which timezone the Node process happens to run in. Fixed by
+  switching to `setUTCMinutes(0, 0, 0)`. Verified: reproduced the exact
+  failure by running the original test suite under `TZ=Asia/Kolkata`,
+  confirmed the fix passes under `TZ=UTC`, `TZ=Asia/Kolkata`,
+  `TZ=America/Los_Angeles`, and `TZ=Pacific/Chatham` (a fractional
+  UTC+12:45 offset, the most adversarial case available) — full
+  31-test suite passes under all four.
 - **Task 21** — Added field-level payload caps to `POST /api/events`:
   `message` capped at 1000 characters, `stack` at 10,000, both
   returning `400` when exceeded. Separate concern from the existing

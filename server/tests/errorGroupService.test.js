@@ -725,9 +725,19 @@ function withMockedDetailDeps(mocks, fn) {
   });
 }
 
+// Task 29.2: getGroupDetail now calls ErrorEvent.find twice — once for
+// the display event list (unchanged filter shape), once for
+// trendService's bounded baseline-window query (a second, distinct
+// filter with a receivedAt range). Each test's `find` mock dispatches
+// on whether `receivedAt` is present in the filter to fake the right
+// call site.
+
 test('getGroupDetail: owned group — returns full group shape (incl. projectId + full aiSummary) and shaped, sorted/limited events', async () => {
   let sortArg = null;
   let limitArg = null;
+  let trendFilterArg = null;
+  let trendSortArg = null;
+  let trendLimitArg = null;
   const fakeGroup = {
     _id: fakeObjectId('detail-group'),
     projectId: 'project-1',
@@ -751,6 +761,10 @@ test('getGroupDetail: owned group — returns full group shape (incl. projectId 
     { _id: fakeObjectId('event-2'), receivedAt: new Date('2026-01-03'), env: 'production', rawStack: 'irrelevant' },
     { _id: fakeObjectId('event-1'), receivedAt: new Date('2026-01-01'), env: null, rawStack: 'irrelevant' },
   ];
+  // firstSeen (2026-01-01) is well over 24h before "now" in any real
+  // test run, so this exercises the 'ok' branch (sufficient history),
+  // with a deliberately empty trend window (fakeTrendEvents omitted)
+  // — a legitimate zero baseline, distinct from insufficient_history.
 
   await withMockedDetailDeps(
     {
@@ -762,7 +776,21 @@ test('getGroupDetail: owned group — returns full group shape (incl. projectId 
         assert.deepEqual(filter, { _id: 'project-1', ownerId: 'user-1' });
         return { _id: 'project-1', ownerId: 'user-1' };
       },
-      find: (filter) => {
+      find: (filter, projection) => {
+        if (filter.receivedAt) {
+          trendFilterArg = filter;
+          return {
+            sort: (arg) => {
+              trendSortArg = arg;
+              return {
+                limit: (arg2) => {
+                  trendLimitArg = arg2;
+                  return Promise.resolve([]); // empty trend window
+                },
+              };
+            },
+          };
+        }
         assert.deepEqual(filter, { errorGroupId: fakeObjectId('detail-group') });
         return {
           sort: (arg) => {
@@ -786,6 +814,13 @@ test('getGroupDetail: owned group — returns full group shape (incl. projectId 
       assert.deepEqual(sortArg, { receivedAt: -1 });
       assert.equal(limitArg, 50);
 
+      // Trend query: same group, but a distinct receivedAt-bounded
+      // filter, its own sort/limit — not a reuse of the display query.
+      assert.equal(trendFilterArg.errorGroupId, fakeObjectId('detail-group'));
+      assert.ok(trendFilterArg.receivedAt.$gte instanceof Date);
+      assert.deepEqual(trendSortArg, { receivedAt: -1 });
+      assert.equal(trendLimitArg, 5000);
+
       assert.equal(result.group.id, fakeObjectId('detail-group'));
       assert.equal(result.group.projectId, 'project-1');
       assert.equal(result.group.stackSample, fakeGroup.stackSample);
@@ -801,6 +836,53 @@ test('getGroupDetail: owned group — returns full group shape (incl. projectId 
       assert.equal(result.events[0].id, fakeObjectId('event-2'));
       assert.equal(result.events[0].env, 'production');
       assert.equal(result.events[0].rawStack, undefined);
+
+      // Trend: firstSeen is old enough (well over 24h before real
+      // "now"), so this is a legitimate zero-event-window baseline —
+      // 'ok', not 'insufficient_history'.
+      assert.equal(result.trend.status, 'ok');
+      assert.equal(result.trend.currentHourCount, 0);
+      assert.equal(result.trend.baselineHourlyRate, 0);
+      assert.equal(result.trend.isSpiking, false);
+    }
+  );
+});
+
+test('getGroupDetail: trend reports insufficient_history for a group younger than 24h, using firstSeen rather than the (empty) windowed query', async () => {
+  const recentFirstSeen = new Date(Date.now() - 2 * 60 * 60 * 1000); // 2h old
+  const fakeGroup = {
+    _id: fakeObjectId('young-group'),
+    projectId: 'project-1',
+    message: 'Error: boom',
+    stackSample: 'at x (/app/y.js:1:1)',
+    status: 'open',
+    statusHistory: [],
+    aiSummary: null,
+    count: 1,
+    firstSeen: recentFirstSeen,
+    lastSeen: recentFirstSeen,
+  };
+
+  await withMockedDetailDeps(
+    {
+      findById: async () => fakeGroup,
+      findOne: async () => ({ _id: 'project-1', ownerId: 'user-1' }),
+      find: (filter) => {
+        if (filter.receivedAt) {
+          return { sort: () => ({ limit: () => Promise.resolve([{ receivedAt: recentFirstSeen }]) }) };
+        }
+        return { sort: () => ({ limit: () => Promise.resolve([]) }) };
+      },
+    },
+    async () => {
+      const result = await getGroupDetail({
+        ownerId: 'user-1',
+        groupId: fakeObjectId('young-group'),
+      });
+
+      assert.equal(result.trend.status, 'insufficient_history');
+      assert.equal(result.trend.isSpiking, false);
+      assert.equal(result.trend.baselineHourlyRate, null);
     }
   );
 });

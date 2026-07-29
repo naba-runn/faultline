@@ -7,7 +7,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { computeTrend } = require('../services/trendService');
+const { computeTrend, getWindowBounds } = require('../services/trendService');
 
 const HOUR = 60 * 60 * 1000;
 const MINUTE = 60 * 1000;
@@ -167,4 +167,55 @@ test('computeTrend: accepts ISO strings and epoch-ms, not just Date objects', ()
   ];
   const result = computeTrend(timestamps, { now: NOW });
   assert.equal(result.status, 'ok');
+});
+
+test('computeTrend: earliestKnownTimestamp override lets a bounded/windowed query still recognize an old group', () => {
+  // Simulates 29.2's real usage: the caller only fetched events within
+  // the ~25h window (never anything older), but the group is actually
+  // much older than that — known via ErrorGroup.firstSeen, passed in
+  // as earliestKnownTimestamp rather than re-derived from the (necessarily
+  // incomplete) windowed array.
+  const timestamps = [];
+  for (let h = 24; h >= 1; h -= 1) {
+    timestamps.push(beforeCurrentHour(h)); // 1/hr baseline, all within the window
+  }
+  timestamps.push(minutesIntoCurrentHour(6));
+
+  const groupFirstSeen = beforeCurrentHour(24 * 30); // group is 30 days old
+
+  const result = computeTrend(timestamps, {
+    now: NOW,
+    earliestKnownTimestamp: groupFirstSeen,
+  });
+  assert.equal(result.status, 'ok');
+  assert.equal(result.baselineHourlyRate, 1);
+});
+
+test('computeTrend: earliestKnownTimestamp override correctly reports insufficient_history for a genuinely young group', () => {
+  const timestamps = [minutesIntoCurrentHour(6)];
+  const groupFirstSeen = beforeCurrentHour(3); // group is only 3 hours old
+
+  const result = computeTrend(timestamps, {
+    now: NOW,
+    earliestKnownTimestamp: groupFirstSeen,
+  });
+  assert.equal(result.status, 'insufficient_history');
+});
+
+test('computeTrend: without earliestKnownTimestamp, falls back to deriving age from eventTimestamps (original 29.1 behavior, unchanged)', () => {
+  const timestamps = [];
+  for (let h = 24; h >= 1; h -= 1) {
+    timestamps.push(beforeCurrentHour(h));
+  }
+  timestamps.push(minutesIntoCurrentHour(6));
+
+  const result = computeTrend(timestamps, { now: NOW }); // no override passed
+  assert.equal(result.status, 'ok');
+  assert.equal(result.baselineHourlyRate, 1);
+});
+
+test('getWindowBounds: returns the same boundaries computeTrend uses internally, for query-building callers', () => {
+  const { currentHourStart, baselineWindowStart } = getWindowBounds(NOW);
+  assert.equal(currentHourStart.toISOString(), '2025-01-02T12:00:00.000Z');
+  assert.equal(baselineWindowStart.toISOString(), '2025-01-01T12:00:00.000Z');
 });
