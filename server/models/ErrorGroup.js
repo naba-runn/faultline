@@ -82,6 +82,24 @@ const errorGroupSchema = new mongoose.Schema(
       required: true,
       default: Date.now,
     },
+    // Task 30: persisted spike-alert state — deliberately separate
+    // from anything Task 29.2's on-demand trend badge reads (that
+    // badge always computes fresh via trendService.computeTrend, never
+    // reads these fields). These two exist only so
+    // errorGroupService.maybeEvaluateSpike can (a) detect the specific
+    // false->true transition that should fire an alert, without
+    // re-alerting on every event while a group stays spiking, and (b)
+    // throttle how often the underlying trend query even runs, via the
+    // cooldown check against trendLastCheckedAt. See DECISIONS.md's
+    // "Task 30" entry for the full trigger-design reasoning.
+    isSpiking: {
+      type: Boolean,
+      default: false,
+    },
+    trendLastCheckedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     // Deliberately no { timestamps: true } here. firstSeen/lastSeen

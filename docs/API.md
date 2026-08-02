@@ -284,6 +284,89 @@ including why a JWT-in-query-string was rejected in favor of this.
 |---|---|---|
 | 404 | Same three cases as `GET /api/projects/:id` | `{ "success": false, "error": "Project not found" }` |
 
+### `GET /api/projects/:id/alerts`
+
+Requires auth: `Authorization: Bearer <token>` (JWT — dashboard user).
+Added in Task 28.1; **previously undocumented here** — like `GET
+/api/groups/:id` before it (see that entry above), this route existed
+in `routes/projectRoutes.js`/`controllers/projectController.js` with
+no corresponding `API.md` entry at all, fixed now as part of Task 30
+rather than left in place. Ownership-scoped the same way as every
+other project route (`projectService.getAlertConfig`, a
+`Project.findOne({ _id, ownerId })`).
+
+**Success (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "alertConfig": {
+      "email": null,
+      "newGroup": false,
+      "severityThreshold": { "enabled": false, "minSeverity": "high" },
+      "spikeDetection": { "enabled": false }
+    }
+  }
+}
+```
+Three independent triggers, matching three distinct firing points (see
+`DECISIONS.md`'s "Task 28" and "Task 30" entries): `newGroup` fires
+synchronously at ingestion; `severityThreshold` can only fire once the
+async AI enrichment worker writes `aiSummary.severity`; `spikeDetection`
+(Task 30) is re-evaluated on every ingested/simulated event for the
+group, gated by an internal cooldown, and only actually alerts on the
+transition into spiking, not on every event while a group stays above
+threshold — see `services/errorGroupService.js`'s `maybeEvaluateSpike`
+doc comment for the full mechanism. All three default to disabled;
+`email` defaults to `null` (no recipient configured, nothing will ever
+send regardless of the trigger booleans above).
+
+**Errors:**
+| Status | Cause | Body |
+|---|---|---|
+| 404 | Same three cases as `GET /api/projects/:id` | `{ "success": false, "error": "Project not found" }` |
+
+### `PATCH /api/projects/:id/alerts`
+
+Requires auth: `Authorization: Bearer <token>` (JWT — dashboard user).
+Same previously-undocumented status as the `GET` above, fixed
+alongside it. Every field is independently optional — omitting a
+field leaves it unchanged (same partial-update pattern as `PATCH
+/api/projects/:id`'s `name`/`githubRepo`); this is enforced via
+dotted-path `$set`s in `projectService.updateAlertConfig`, not a
+whole-object replace, so e.g. `{ "spikeDetection": { "enabled": true } }`
+alone cannot blow away an already-configured `email` or `newGroup`.
+
+**Request body (all fields optional):**
+```json
+{
+  "email": "me@example.com",
+  "newGroup": true,
+  "severityThreshold": { "enabled": true, "minSeverity": "critical" },
+  "spikeDetection": { "enabled": true }
+}
+```
+`spikeDetection` — added in Task 30, same enabled-only shape as
+`newGroup` (not `severityThreshold`'s `enabled`+`minSeverity` pair —
+there's no per-project multiplier/floor override; those stay
+`trendService`'s fixed defaults, 3x/floor-5, per `TASKS.md`'s Task 29
+spec). `email` accepts `null` to clear the configured recipient.
+
+**Success (200):** same shape as the `GET` above, reflecting the
+merged result.
+
+**Errors:**
+| Status | Cause | Body |
+|---|---|---|
+| 400 | `email` present and not a string | `{ "success": false, "error": "email must be a string" }` |
+| 400 | `newGroup` present and not a boolean | `{ "success": false, "error": "newGroup must be a boolean" }` |
+| 400 | `severityThreshold` present and not an object | `{ "success": false, "error": "severityThreshold must be an object" }` |
+| 400 | `severityThreshold.enabled` present and not a boolean | `{ "success": false, "error": "severityThreshold.enabled must be a boolean" }` |
+| 400 | `severityThreshold.minSeverity` present and not one of the 4 valid levels | `{ "success": false, "error": "severityThreshold.minSeverity must be one of: low, medium, high, critical" }` |
+| 400 | `spikeDetection` present and not an object | `{ "success": false, "error": "spikeDetection must be an object" }` |
+| 400 | `spikeDetection.enabled` present and not a boolean | `{ "success": false, "error": "spikeDetection.enabled must be a boolean" }` |
+| 404 | Same three cases as `GET /api/projects/:id` | `{ "success": false, "error": "Project not found" }` |
+
 ## Error Groups
 
 ### `GET /api/groups/:id`

@@ -1,6 +1,6 @@
-const { recordEvent } = require('../services/errorGroupService');
+const { recordEvent, maybeEvaluateSpike } = require('../services/errorGroupService');
 const { enqueueEnrichment } = require('../services/enrichmentQueue');
-const { enqueueNewGroupAlert } = require('../services/alertQueue');
+const { enqueueNewGroupAlert, enqueueSpikeAlert } = require('../services/alertQueue');
 const sseHub = require('../services/sseHub');
 const { sendSuccess, sendError } = require('../utils/httpResponse');
 const catchAsync = require('../utils/catchAsync');
@@ -152,6 +152,32 @@ const ingestEvent = catchAsync(async (req, res) => {
     }).catch((err) => {
       console.error(`[ingest] failed to publish SSE event for group ${errorGroup._id}:`, err.message);
     });
+  }
+
+  // Task 30: spike check runs on EVERY event (both branches above),
+  // not gated on isNewGroup — a spike is about ongoing volume on an
+  // existing group, not group creation. Gated first on this project's
+  // alertConfig.spikeDetection.enabled, same "gate lives in the
+  // controller, not the service" pattern as the newGroup check above:
+  // if a project hasn't opted in, there's no reason to pay for
+  // maybeEvaluateSpike's query at all (Task 29.2's on-demand trend
+  // badge doesn't depend on this — it always computes fresh, never
+  // reads the persisted isSpiking field this maintains).
+  if (req.project.alertConfig?.spikeDetection?.enabled) {
+    maybeEvaluateSpike(errorGroup)
+      .then((result) => {
+        if (result.justStartedSpiking) {
+          enqueueSpikeAlert({
+            errorGroupId: errorGroup._id,
+            projectId: req.project._id,
+          }).catch((err) => {
+            console.error(`[ingest] failed to enqueue spike alert for group ${errorGroup._id}:`, err.message);
+          });
+        }
+      })
+      .catch((err) => {
+        console.error(`[ingest] failed to evaluate spike trend for group ${errorGroup._id}:`, err.message);
+      });
   }
 });
 

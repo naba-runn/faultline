@@ -75,7 +75,7 @@ async function getAlertConfig({ ownerId, projectId }) {
  * a partial update (e.g. only { newGroup: true }) doesn't blow away
  * fields the caller didn't mention, like email or severityThreshold.
  */
-async function updateAlertConfig({ ownerId, projectId, email, newGroup, severityThreshold }) {
+async function updateAlertConfig({ ownerId, projectId, email, newGroup, severityThreshold, spikeDetection }) {
   const update = {};
   if (email !== undefined) update['alertConfig.email'] = email || null;
   if (newGroup !== undefined) update['alertConfig.newGroup'] = newGroup;
@@ -86,6 +86,9 @@ async function updateAlertConfig({ ownerId, projectId, email, newGroup, severity
     if (severityThreshold.minSeverity !== undefined) {
       update['alertConfig.severityThreshold.minSeverity'] = severityThreshold.minSeverity;
     }
+  }
+  if (spikeDetection !== undefined && spikeDetection.enabled !== undefined) {
+    update['alertConfig.spikeDetection.enabled'] = spikeDetection.enabled;
   }
 
   const project = await Project.findOneAndUpdate(

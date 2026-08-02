@@ -37,6 +37,18 @@ const alertConfigSchema = new mongoose.Schema(
         default: 'high',
       },
     },
+    // Task 30: no per-project multiplier/floor override — trendService's
+    // defaults (3x, floor 5) are the only knobs TASKS.md's Task 29 spec
+    // defines, and there's no product requirement yet to make them
+    // configurable per project. Just an on/off toggle, same shape as
+    // newGroup above (not severityThreshold's enabled+minSeverity pair,
+    // since there's no equivalent second dimension here).
+    spikeDetection: {
+      enabled: {
+        type: Boolean,
+        default: false,
+      },
+    },
   },
   { _id: false }
 );

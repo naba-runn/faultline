@@ -38,6 +38,7 @@ const {
   listErrorGroups,
   updateGroupStatus,
   getGroupDetail,
+  maybeEvaluateSpike,
 } = require('../services/errorGroupService');
 function fakeObjectId(seed) {
   // Mongoose ObjectIds aren't needed for real here — recordEvent only
@@ -940,6 +941,233 @@ test('getGroupDetail: group exists but belongs to a different owner — returns 
 
       assert.equal(result, null);
       assert.equal(eventsQueried, false, 'must not query ErrorEvent for a group the caller does not own');
+    }
+  );
+});
+
+// --- maybeEvaluateSpike (Task 30) ---
+//
+// Uses an injected `now` (a fixed Date) so fixtures don't need to land
+// on exact real-world hour boundaries — same reasoning trendService's
+// own tests use fixed reference times for. This suite is about
+// maybeEvaluateSpike's OWN logic (cooldown gate, transition detection,
+// which ErrorGroup write happens in which branch) — computeTrend's
+// bucketing math itself is already thoroughly covered by
+// trendService.test.js and isn't re-verified here.
+
+function withMockedSpikeDeps(mocks, fn) {
+  const originalFind = ErrorEvent.find;
+  const originalUpdateOne = ErrorGroup.updateOne;
+  const originalFindOneAndUpdate = ErrorGroup.findOneAndUpdate;
+
+  ErrorEvent.find = mocks.find;
+  ErrorGroup.updateOne = mocks.updateOne;
+  ErrorGroup.findOneAndUpdate = mocks.findOneAndUpdate;
+
+  return fn().finally(() => {
+    ErrorEvent.find = originalFind;
+    ErrorGroup.updateOne = originalUpdateOne;
+    ErrorGroup.findOneAndUpdate = originalFindOneAndUpdate;
+  });
+}
+
+test('maybeEvaluateSpike: within cooldown — skips the query entirely, no state written', async () => {
+  const now = new Date('2025-06-15T12:30:00.000Z');
+  const errorGroup = {
+    _id: fakeObjectId('spike-cooldown'),
+    firstSeen: new Date('2025-01-01'),
+    isSpiking: false,
+    trendLastCheckedAt: new Date(now.getTime() - 3 * 1000), // 3s ago, well under the 10s cooldown
+  };
+
+  await withMockedSpikeDeps(
+    {
+      find: () => {
+        throw new Error('ErrorEvent.find must not be called — cooldown should have short-circuited first');
+      },
+      updateOne: async () => {
+        throw new Error('ErrorGroup.updateOne must not be called — cooldown should have short-circuited first');
+      },
+      findOneAndUpdate: async () => {
+        throw new Error('ErrorGroup.findOneAndUpdate must not be called — cooldown should have short-circuited first');
+      },
+    },
+    async () => {
+      const result = await maybeEvaluateSpike(errorGroup, now);
+      assert.deepEqual(result, { justStartedSpiking: false });
+    }
+  );
+});
+
+test('maybeEvaluateSpike: not spiking — writes isSpiking:false via a plain updateOne, no transition', async () => {
+  const now = new Date('2025-06-15T12:30:00.000Z');
+  const errorGroup = {
+    _id: fakeObjectId('spike-normal'),
+    firstSeen: new Date('2025-01-01'), // well over 24h old
+    isSpiking: false,
+    trendLastCheckedAt: null,
+  };
+  let updateOneArgs = null;
+
+  await withMockedSpikeDeps(
+    {
+      find: () => ({ sort: () => ({ limit: () => Promise.resolve([]) }) }), // empty baseline + current hour
+      updateOne: async (filter, update) => {
+        updateOneArgs = { filter, update };
+        return { acknowledged: true };
+      },
+      findOneAndUpdate: async () => {
+        throw new Error('findOneAndUpdate must not be called on the not-spiking path');
+      },
+    },
+    async () => {
+      const result = await maybeEvaluateSpike(errorGroup, now);
+      assert.deepEqual(result, { justStartedSpiking: false });
+      assert.deepEqual(updateOneArgs.filter, { _id: fakeObjectId('spike-normal') });
+      assert.deepEqual(updateOneArgs.update, { $set: { isSpiking: false, trendLastCheckedAt: now } });
+    }
+  );
+});
+
+test('maybeEvaluateSpike: genuine false->true transition — atomic findOneAndUpdate matches, reports justStartedSpiking:true', async () => {
+  const now = new Date('2025-06-15T12:30:00.000Z');
+  const currentHourStart = new Date('2025-06-15T12:00:00.000Z');
+  const baselineWindowStart = new Date(currentHourStart.getTime() - 24 * 60 * 60 * 1000);
+  const errorGroup = {
+    _id: fakeObjectId('spike-transition'),
+    firstSeen: new Date(baselineWindowStart.getTime() - 60 * 60 * 1000), // older than the baseline window
+    isSpiking: false,
+    trendLastCheckedAt: null,
+  };
+  // Sparse baseline (near-zero rate) + 6 events in the current hour —
+  // same "zero/low baseline burst clears the floor" shape as
+  // trendService.test.js's own real-spike fixtures.
+  const trendTimestamps = Array.from({ length: 6 }, (_, i) => new Date(now.getTime() - (i + 1) * 60 * 1000));
+  let findOneAndUpdateArgs = null;
+
+  await withMockedSpikeDeps(
+    {
+      find: (filter) => {
+        assert.deepEqual(filter, {
+          errorGroupId: fakeObjectId('spike-transition'),
+          receivedAt: { $gte: baselineWindowStart },
+        });
+        return { sort: () => ({ limit: () => Promise.resolve(trendTimestamps.map((receivedAt) => ({ receivedAt }))) }) };
+      },
+      updateOne: async () => {
+        throw new Error('updateOne must not be called on the genuine-transition path');
+      },
+      findOneAndUpdate: async (filter, update) => {
+        findOneAndUpdateArgs = { filter, update };
+        return { _id: errorGroup._id, isSpiking: true }; // simulates a successful atomic match
+      },
+    },
+    async () => {
+      const result = await maybeEvaluateSpike(errorGroup, now);
+      assert.deepEqual(result, { justStartedSpiking: true });
+      assert.deepEqual(findOneAndUpdateArgs.filter, {
+        _id: fakeObjectId('spike-transition'),
+        isSpiking: { $ne: true },
+      });
+      assert.deepEqual(findOneAndUpdateArgs.update, { $set: { isSpiking: true, trendLastCheckedAt: now } });
+    }
+  );
+});
+
+test('maybeEvaluateSpike: regression — a too-early first check (insufficient count) does not block a later check, once outside cooldown, from catching the real transition', async () => {
+  // This is the exact failure mode found via the user's manual test:
+  // a fast click-burst's first check runs before enough events have
+  // accumulated (correctly reports not-spiking), and if the cooldown
+  // were too long, every later check in the same burst would get
+  // silently skipped even as the real count crossed the threshold.
+  // Simulated here as two separate maybeEvaluateSpike calls: the first
+  // sees few events and sets trendLastCheckedAt; the second, called
+  // with `now` far enough past that to clear the cooldown, sees more
+  // events and correctly reports the transition.
+  const firstCheckAt = new Date('2025-06-15T12:00:05.000Z'); // 5s into the hour
+  const secondCheckAt = new Date('2025-06-15T12:00:16.000Z'); // 11s later — outside the 10s cooldown
+  const currentHourStart = new Date('2025-06-15T12:00:00.000Z');
+  const baselineWindowStart = new Date(currentHourStart.getTime() - 24 * 60 * 60 * 1000);
+  const errorGroup = {
+    _id: fakeObjectId('spike-regression'),
+    firstSeen: new Date(baselineWindowStart.getTime() - 60 * 60 * 1000),
+    isSpiking: false,
+    trendLastCheckedAt: null,
+  };
+
+  let updateOneCalls = 0;
+  let findOneAndUpdateCalls = 0;
+  let currentFakeEventCount = 1; // only 1 event exists at the first check
+
+  await withMockedSpikeDeps(
+    {
+      find: () => ({
+        sort: () => ({
+          limit: () =>
+            Promise.resolve(
+              Array.from({ length: currentFakeEventCount }, (_, i) => ({
+                receivedAt: new Date(secondCheckAt.getTime() - i * 1000),
+              }))
+            ),
+        }),
+      }),
+      updateOne: async (filter, update) => {
+        updateOneCalls += 1;
+        errorGroup.trendLastCheckedAt = update.$set.trendLastCheckedAt;
+        return { acknowledged: true };
+      },
+      findOneAndUpdate: async () => {
+        findOneAndUpdateCalls += 1;
+        return { _id: errorGroup._id, isSpiking: true };
+      },
+    },
+    async () => {
+      const firstResult = await maybeEvaluateSpike(errorGroup, firstCheckAt);
+      assert.deepEqual(firstResult, { justStartedSpiking: false });
+      assert.equal(updateOneCalls, 1, 'first check (not spiking) should write via updateOne');
+
+      // Between checks, 5 more events land (matches/exceeds the floor).
+      currentFakeEventCount = 6;
+
+      const secondResult = await maybeEvaluateSpike(errorGroup, secondCheckAt);
+      assert.deepEqual(
+        secondResult,
+        { justStartedSpiking: true },
+        'the second check, once outside cooldown, must catch the transition the first check missed'
+      );
+      assert.equal(findOneAndUpdateCalls, 1);
+    }
+  );
+});
+
+test('maybeEvaluateSpike: already spiking (no transition) — findOneAndUpdate finds no match, falls back to a plain cooldown-refresh update, no alert', async () => {
+  const now = new Date('2025-06-15T12:30:00.000Z');
+  const currentHourStart = new Date('2025-06-15T12:00:00.000Z');
+  const baselineWindowStart = new Date(currentHourStart.getTime() - 24 * 60 * 60 * 1000);
+  const errorGroup = {
+    _id: fakeObjectId('spike-already'),
+    firstSeen: new Date(baselineWindowStart.getTime() - 60 * 60 * 1000),
+    isSpiking: true, // already spiking from a previous check
+    trendLastCheckedAt: new Date(now.getTime() - 2 * 60 * 1000), // 2 min ago, well outside the 10s cooldown
+  };
+  const trendTimestamps = Array.from({ length: 6 }, (_, i) => new Date(now.getTime() - (i + 1) * 60 * 1000));
+  let updateOneArgs = null;
+
+  await withMockedSpikeDeps(
+    {
+      find: () => ({ sort: () => ({ limit: () => Promise.resolve(trendTimestamps.map((receivedAt) => ({ receivedAt }))) }) }),
+      updateOne: async (filter, update) => {
+        updateOneArgs = { filter, update };
+        return { acknowledged: true };
+      },
+      findOneAndUpdate: async () => null, // simulates: already isSpiking:true, atomic filter doesn't match
+    },
+    async () => {
+      const result = await maybeEvaluateSpike(errorGroup, now);
+      assert.deepEqual(result, { justStartedSpiking: false });
+      // Cooldown-refresh only — does not re-set isSpiking (already true).
+      assert.deepEqual(updateOneArgs.filter, { _id: fakeObjectId('spike-already') });
+      assert.deepEqual(updateOneArgs.update, { $set: { trendLastCheckedAt: now } });
     }
   );
 });

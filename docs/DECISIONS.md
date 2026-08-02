@@ -1561,6 +1561,110 @@ controller-level tests for any project route).
 Chronological, most-recent-first, entries with no dedicated decision
 above. Migrated from `CHANGELOG.md`.
 
+- **Task 30** — Spike-triggered alerts, extending Task 28's delivery
+  infra with Task 29's `computeTrend` as a third trigger.
+  **Trigger design — four options considered:**
+  1. *Check on every `ErrorEvent` write, no throttling.* Rejected: runs
+     the bounded trend query on every duplicate hit, concentrating the
+     most expensive check on exactly the busiest groups — the same
+     class of problem Task 27's rate limiting exists to prevent.
+  2. *A new scheduled/polling job (BullMQ repeatable, or cron).*
+     Rejected for this task's scope: genuinely new infrastructure (this
+     codebase has nothing that runs on a schedule, only in response to
+     events), adds latency bounded by the poll interval, and would
+     duplicate trend logic across two paths (on-demand for the badge,
+     polled for alerts) that could drift out of sync. Named as the
+     "if this were a production SaaS" answer, not the pick here.
+  3. *Only evaluate when `GroupDetailPage` loads (piggyback on 29.2).*
+     Rejected outright — not actually an alert, since it only reaches
+     someone already looking at the page. Task 29 already solved "someone's
+     looking" with the badge; this task exists to solve "no one's
+     looking."
+  4. **Chosen: check on every `ErrorEvent` write, fire-and-forget,
+     gated by a per-group cooldown, with persisted state so alerts only
+     fire on the genuine transition.** Reuses the same event-driven
+     shape as the two existing triggers (consistent with the codebase,
+     not a second paradigm). Concretely: `errorGroupService.
+     maybeEvaluateSpike(errorGroup, now)` — gated first by
+     `ErrorGroup.trendLastCheckedAt` (skip re-checking within the
+     cooldown window, initially 60s, see the bugfix below), computes
+     trend via the same `computeGroupTrend` helper `getGroupDetail`
+     uses (extracted specifically so the badge and the alert path can
+     never quietly compute different answers for the same group), and
+     on a `false → true` result performs an atomic
+     `ErrorGroup.findOneAndUpdate({ isSpiking: { $ne: true } })` — only
+     the call that actually matches (flips the field) is responsible
+     for enqueuing the alert, so two near-simultaneous events crossing
+     the threshold around the same moment can't both fire one.
+     `true → true` (still spiking) and `true → false` (recovered) both
+     update state silently. **Recovery notifications were explicitly
+     considered and rejected** — the user was asked directly ("should a
+     group recovering from a spike also send a notification, or stay
+     silent") and chose silent, matching new-group/severity-threshold's
+     one-shot-per-transition pattern rather than introducing a second
+     notification type this task didn't originally call for.
+  - **Config**: `Project.alertConfig.spikeDetection.enabled` — same
+    on/off-only shape as `newGroup`, not `severityThreshold`'s
+    `enabled`+`minSeverity` pair (no per-project multiplier/floor
+    override; those stay `trendService`'s fixed defaults per
+    `TASKS.md`'s Task 29 spec — no product requirement yet to make them
+    configurable). Gated in the controller (`ingestController.js`,
+    `projectController.js`'s `simulateError`), not inside
+    `maybeEvaluateSpike` itself — same "gate lives in the caller, the
+    service function has no opinion" division of responsibility
+    `alertQueue.js`'s enqueue functions already use. If a project
+    hasn't opted in, `maybeEvaluateSpike` never runs at all — the
+    on-demand badge (29.2) doesn't depend on `isSpiking`/
+    `trendLastCheckedAt` in any way, so there's no cost to skip.
+  - **Email**: `worker.js`'s `processAlertJob` recomputes trend fresh
+    via `computeGroupTrend` at send time, rather than trusting anything
+    passed through the job payload — same "worker re-fetches, never
+    trusts an enqueue-time snapshot" principle `alertQueue.js`'s
+    file-level comment already documents for `errorGroupId`/
+    `projectId`, extended here to the trend numbers themselves (by send
+    time, the real current-hour count has likely moved on from whatever
+    it was at enqueue time).
+  - **Bug found via the user's own manual test, not caught by unit
+    tests**: the original 60s cooldown meant a fast click-burst could
+    exhaust its one check opportunity early — on the very first event,
+    before enough had accumulated to clear the floor — and then every
+    later click in that same burst got silently skipped by the
+    cooldown, even as the real count climbed past the threshold in the
+    database the whole time. The badge (29.2, no cooldown, always
+    fresh) never has this problem, which is exactly why it can show
+    "spiking" while the alert path stays dark — they're not reading the
+    same state. Fixed by reducing `SPIKE_CHECK_COOLDOWN_MS` from 60s to
+    10s (still bounds a genuinely hot group to at most 6 background
+    queries/minute, the actual cost concern) and adding a regression
+    test (`tests/errorGroupService.test.js`) that reproduces the exact
+    shape: a too-early first check reporting not-spiking, followed by a
+    second check — outside the new, shorter cooldown — that must catch
+    the transition the first one missed.
+  - **Separately, the first two manual-test attempts found no code bug
+    at all**: `PATCH /api/projects/:id/alerts` meant to enable
+    `spikeDetection` had simply never succeeded — confirmed by having
+    the user run `GET .../alerts` and seeing `email: null`,
+    `spikeDetection.enabled: false` the entire time, meaning none of
+    the alert code downstream had ever had a chance to run. Worth
+    recording as a debugging lesson as much as a code note: "nothing
+    happened" during a manual test needs the actual config state
+    checked directly before assuming the implementation is at fault.
+  - **Also fixed along the way**: `GET`/`PATCH
+    /api/projects/:id/alerts` (Task 28.1) had never been documented in
+    `API.md` at all — the same kind of pre-existing docs-vs-code gap as
+    `GET /api/groups/:id` before it (see "Task 29.2" below), fixed now
+    per `PROJECT_RULES.md` §13 rather than left in place.
+  - Verified: 5 new unit tests in `tests/errorGroupService.test.js`
+    covering the cooldown skip, a non-spiking write, a genuine
+    transition (atomic match succeeds), an already-spiking race (atomic
+    match fails, falls back to a cooldown-refresh-only update), and the
+    too-early-first-check regression above — full server suite now 41
+    tests, passing under both `TZ=UTC` and `TZ=Asia/Kolkata`.
+    **Confirmed live end-to-end**: with `spikeDetection.enabled: true`
+    and a real recipient email configured via the `PATCH` endpoint, a
+    spaced-out burst of `Simulate Error` clicks produced an actual
+    `[Faultline] Spike detected in ...` email delivered to the user's
+    inbox.
 - **Task 29.3** — Manual test of the trend badge, run by the user
   against the real running app (three local processes: API server,
   worker, Vite client; MongoDB via an existing Atlas connection,

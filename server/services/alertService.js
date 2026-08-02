@@ -97,6 +97,32 @@ function buildSeverityThresholdEmail({ project, errorGroup }) {
   return { subject, html };
 }
 
+/**
+ * Builds the subject/html for a "trend spike" alert. Unlike the two
+ * builders above, this one also takes `trend` (trendService's fresh
+ * computeTrend result at *send* time, not enqueue time) — the same
+ * "worker re-fetches rather than trusts a stale snapshot" principle
+ * alertQueue.js's file-level comment already documents for
+ * errorGroupId/projectId, extended here to the trend numbers
+ * themselves: by the time this email actually sends, the count in the
+ * job payload (if there were one) could already be stale, so
+ * worker.js's processAlertJob recomputes via
+ * errorGroupService.computeGroupTrend instead of passing numbers
+ * through the queue.
+ */
+function buildSpikeAlertEmail({ project, errorGroup, trend }) {
+  const rate = Number.isFinite(trend?.baselineHourlyRate) ? trend.baselineHourlyRate.toFixed(1) : '0.0';
+  const subject = `[Faultline] Spike detected in ${project.name}: ${errorGroup.message}`;
+  const html = `
+    <p>An error group in <strong>${escapeHtml(project.name)}</strong> is spiking.</p>
+    <p><strong>Message:</strong> ${escapeHtml(errorGroup.message)}</p>
+    <p><strong>Current hour:</strong> ${trend?.currentHourCount ?? '?'} events
+    (baseline: ~${rate}/hr)</p>
+    <p><a href="${dashboardUrl(project.id, errorGroup._id)}">View in Faultline</a></p>
+  `.trim();
+  return { subject, html };
+}
+
 function dashboardUrl(projectId, errorGroupId) {
   return `${config.clientOrigin}/projects/${projectId}/groups/${errorGroupId}`;
 }
@@ -119,4 +145,5 @@ module.exports = {
   sendAlertEmail,
   buildNewGroupEmail,
   buildSeverityThresholdEmail,
+  buildSpikeAlertEmail,
 };

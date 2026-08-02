@@ -76,4 +76,26 @@ async function enqueueSeverityThresholdAlert({ errorGroupId, projectId }) {
   );
 }
 
-module.exports = { enqueueNewGroupAlert, enqueueSeverityThresholdAlert, QUEUE_NAME };
+/**
+ * Enqueues a "trend spike" alert job. Called only from
+ * errorGroupService.maybeEvaluateSpike's caller (ingestController,
+ * projectController's simulateError — Task 30), and only when that
+ * call reports `justStartedSpiking: true` — a genuine
+ * not-spiking-to-spiking transition, not merely "currently spiking"
+ * (which would otherwise re-fire on every event while a group stays
+ * above threshold). See DECISIONS.md's "Task 30" entry.
+ */
+async function enqueueSpikeAlert({ errorGroupId, projectId }) {
+  await getQueue().add(
+    'spike',
+    { kind: 'spike', errorGroupId: String(errorGroupId), projectId: String(projectId) },
+    JOB_OPTIONS
+  );
+}
+
+module.exports = {
+  enqueueNewGroupAlert,
+  enqueueSeverityThresholdAlert,
+  enqueueSpikeAlert,
+  QUEUE_NAME,
+};

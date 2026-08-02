@@ -369,6 +369,129 @@ const RECENT_EVENTS_LIMIT = 50;
 const TREND_EVENT_QUERY_CAP = 5000;
 
 /**
+ * Task 29.2/30 shared helper: computes trendService's baseline/spike
+ * result for one group, from its own separate, time-bounded
+ * `ErrorEvent` query — never `getGroupDetail`'s `events` list, which
+ * is capped at RECENT_EVENTS_LIMIT with no time bound and can be far
+ * narrower than 24h for a busy group. Used by both getGroupDetail
+ * (29.2's on-demand badge) and maybeEvaluateSpike (30's alert
+ * trigger) — kept as one function rather than two near-identical
+ * query blocks so they can never quietly drift out of sync with each
+ * other.
+ *
+ * `group.firstSeen` is passed as trendService's earliestKnownTimestamp
+ * — already known with no extra query, and the only way the
+ * insufficient-history check can see past the bounded query's own
+ * window start (which, by construction, never includes anything older
+ * than that).
+ */
+async function computeGroupTrend(group, now = new Date()) {
+  const { baselineWindowStart } = trendService.getWindowBounds(now);
+  const trendEvents = await ErrorEvent.find(
+    { errorGroupId: group._id, receivedAt: { $gte: baselineWindowStart } },
+    { receivedAt: 1, _id: 0 }
+  )
+    .sort({ receivedAt: -1 })
+    .limit(TREND_EVENT_QUERY_CAP);
+
+  return trendService.computeTrend(
+    trendEvents.map((e) => e.receivedAt),
+    { now, earliestKnownTimestamp: group.firstSeen }
+  );
+}
+
+// Task 30: gates how often maybeEvaluateSpike actually pays for
+// computeGroupTrend's query, independent of event volume — without
+// this, a genuinely hot/spiking group (the exact case this feature
+// cares about) would run the query on every single duplicate event,
+// concentrating the most expensive check exactly on the busiest
+// path. See DECISIONS.md's "Task 30" entry for the full option
+// comparison (a scheduled/polling job and Redis-based live counters
+// were both considered and rejected in favor of this simpler,
+// consistent-with-Task-28's-existing-triggers approach).
+//
+// Originally 60s; reduced to 10s after a real manual-test failure: a
+// fast click-burst can exhaust its ONE check opportunity within the
+// first cooldown window, at a moment when too few events have
+// accumulated yet to cross the floor — every later click in that same
+// burst then gets silently skipped by the cooldown, even as the real
+// count climbs past the threshold in the database. 10s still bounds a
+// genuinely hot group to at most 6 background queries/minute (the
+// actual cost concern), while being short enough that a realistic
+// click-burst — which naturally spans well over 10s from click/network
+// latency alone — gets more than one look.
+const SPIKE_CHECK_COOLDOWN_MS = 10 * 1000;
+
+/**
+ * Task 30: re-evaluates one group's spike status (via
+ * computeGroupTrend) and updates its persisted isSpiking/
+ * trendLastCheckedAt state, returning whether THIS call is the one
+ * that caused a genuine false->true transition — the only condition
+ * under which an alert should fire. Callers are responsible for the
+ * alertConfig.spikeDetection.enabled gate (this function has no
+ * opinion on whether alerting is turned on, same division of
+ * responsibility as alertQueue.js's enqueue* functions) and for
+ * actually enqueuing the alert job.
+ *
+ * Concurrency: when the trend check says "spiking," the state flip
+ * uses an atomic `findOneAndUpdate({ isSpiking: { $ne: true } })`
+ * rather than a read-then-write — MongoDB guarantees only one
+ * concurrent call against the same document can match and perform
+ * that update, so two near-simultaneous events for the same group
+ * crossing the threshold around the same moment can never both
+ * report `justStartedSpiking: true` and double-alert. Recovery
+ * (true -> false) and "still spiking, no transition" both update
+ * state silently — per the user's own confirmed decision, recovery
+ * never sends a notification (matches new-group/severity-threshold's
+ * one-shot-per-transition pattern; see DECISIONS.md).
+ *
+ * @param {object} errorGroup - a full ErrorGroup Mongoose document
+ *   (needs _id, firstSeen, isSpiking, trendLastCheckedAt).
+ * @param {Date|number} [now] - reference "current" time, same
+ *   injectable-for-tests convention as computeGroupTrend/computeTrend.
+ *   Defaults to `Date.now()`.
+ * @returns {Promise<{ justStartedSpiking: boolean }>}
+ */
+async function maybeEvaluateSpike(errorGroup, now = new Date()) {
+  if (
+    errorGroup.trendLastCheckedAt &&
+    now - errorGroup.trendLastCheckedAt < SPIKE_CHECK_COOLDOWN_MS
+  ) {
+    return { justStartedSpiking: false };
+  }
+
+  const trend = await computeGroupTrend(errorGroup, now);
+  // trend.isSpiking is only ever true when trend.status === 'ok' (see
+  // trendService.computeTrend's own contract) — no separate status
+  // check needed here.
+  const newIsSpiking = trend.isSpiking;
+
+  if (!newIsSpiking) {
+    // Covers both genuinely-normal and insufficient-history cases —
+    // recovery is silent by design (see doc comment above).
+    await ErrorGroup.updateOne(
+      { _id: errorGroup._id },
+      { $set: { isSpiking: false, trendLastCheckedAt: now } }
+    );
+    return { justStartedSpiking: false };
+  }
+
+  const transitioned = await ErrorGroup.findOneAndUpdate(
+    { _id: errorGroup._id, isSpiking: { $ne: true } },
+    { $set: { isSpiking: true, trendLastCheckedAt: now } }
+  );
+
+  if (transitioned) {
+    return { justStartedSpiking: true };
+  }
+
+  // Already spiking — no transition, no alert, but this call already
+  // paid for the query, so still worth refreshing the cooldown clock.
+  await ErrorGroup.updateOne({ _id: errorGroup._id }, { $set: { trendLastCheckedAt: now } });
+  return { justStartedSpiking: false };
+}
+
+/**
  * Fetches the full ErrorGroup document plus its most recent
  * ErrorEvents, for Task 19's ErrorGroupDetail page. Ownership is
  * enforced with the identical two-step pattern as
@@ -402,34 +525,7 @@ async function getGroupDetail({ ownerId, groupId }) {
     .sort({ receivedAt: -1 })
     .limit(RECENT_EVENTS_LIMIT);
 
-  // Task 29.2: trend is computed from its own bounded time-range
-  // query, deliberately separate from `events` above. `events` is
-  // capped at RECENT_EVENTS_LIMIT (50) with no time bound — for a
-  // low-volume group that's the group's whole history, but for a
-  // busy one it can be just the last few minutes, nowhere near
-  // trendService's 24h baseline window. Querying by time range here
-  // instead (via getWindowBounds) is the only way to get a baseline
-  // that reflects real hourly rates rather than an arbitrary recent
-  // slice. Projected to `receivedAt` only — the rest of each
-  // ErrorEvent document is irrelevant to this calculation.
-  const now = new Date();
-  const { baselineWindowStart } = trendService.getWindowBounds(now);
-  const trendEvents = await ErrorEvent.find(
-    { errorGroupId: group._id, receivedAt: { $gte: baselineWindowStart } },
-    { receivedAt: 1, _id: 0 }
-  )
-    .sort({ receivedAt: -1 })
-    .limit(TREND_EVENT_QUERY_CAP);
-
-  // group.firstSeen is the group's true earliest event, already known
-  // with no extra query — passed as earliestKnownTimestamp so the
-  // insufficient-history check isn't blind to history outside the
-  // bounded query above (which, by construction, never includes
-  // anything older than baselineWindowStart).
-  const trend = trendService.computeTrend(
-    trendEvents.map((e) => e.receivedAt),
-    { now, earliestKnownTimestamp: group.firstSeen }
-  );
+  const trend = await computeGroupTrend(group);
 
   return {
     group: {
@@ -464,4 +560,6 @@ module.exports = {
   listErrorGroups,
   updateGroupStatus,
   getGroupDetail,
+  computeGroupTrend,
+  maybeEvaluateSpike,
 };

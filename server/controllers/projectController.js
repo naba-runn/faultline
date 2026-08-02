@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const projectService = require('../services/projectService');
 const errorGroupService = require('../services/errorGroupService');
 const { enqueueEnrichment } = require('../services/enrichmentQueue');
-const { enqueueNewGroupAlert } = require('../services/alertQueue');
+const { enqueueNewGroupAlert, enqueueSpikeAlert } = require('../services/alertQueue');
 const sseHub = require('../services/sseHub');
 const { getRedisConnection } = require('../config/redis');
 const { sendSuccess, sendError } = require('../utils/httpResponse');
@@ -316,6 +316,28 @@ const simulateError = catchAsync(async (req, res) => {
       console.error(`[simulateError] failed to publish SSE event for group ${errorGroup._id}:`, err.message);
     });
   }
+
+  // Task 30: same spike-check trigger as ingestController's real
+  // ingestion path -- runs on every simulated event (both branches
+  // above), gated on this project's alertConfig.spikeDetection.enabled.
+  // Simulated errors go through the exact same alerting decision as
+  // real ingestion, same reasoning as the newGroup check above.
+  if (project.alertConfig?.spikeDetection?.enabled) {
+    errorGroupService.maybeEvaluateSpike(errorGroup)
+      .then((result) => {
+        if (result.justStartedSpiking) {
+          enqueueSpikeAlert({
+            errorGroupId: errorGroup._id,
+            projectId: project.id,
+          }).catch((err) => {
+            console.error(`[simulateError] failed to enqueue spike alert for group ${errorGroup._id}:`, err.message);
+          });
+        }
+      })
+      .catch((err) => {
+        console.error(`[simulateError] failed to evaluate spike trend for group ${errorGroup._id}:`, err.message);
+      });
+  }
 });
 
 // Task 28.1: alert config read/update, JWT-authed and ownership-scoped
@@ -348,7 +370,7 @@ const getAlertConfig = catchAsync(async (req, res) => {
 });
 
 const updateAlertConfig = catchAsync(async (req, res) => {
-  const { email, newGroup, severityThreshold } = req.body;
+  const { email, newGroup, severityThreshold, spikeDetection } = req.body;
 
   if (email !== undefined && email !== null && typeof email !== 'string') {
     return sendError(res, 400, 'email must be a string');
@@ -373,6 +395,19 @@ const updateAlertConfig = catchAsync(async (req, res) => {
     }
   }
 
+  // Task 30: same enabled-only shape as newGroup, not
+  // severityThreshold's enabled+minSeverity pair — no second
+  // dimension to validate here (see models/Project.js's doc comment
+  // for why there's no per-project multiplier/floor override).
+  if (spikeDetection !== undefined) {
+    if (typeof spikeDetection !== 'object' || spikeDetection === null || Array.isArray(spikeDetection)) {
+      return sendError(res, 400, 'spikeDetection must be an object');
+    }
+    if (spikeDetection.enabled !== undefined && typeof spikeDetection.enabled !== 'boolean') {
+      return sendError(res, 400, 'spikeDetection.enabled must be a boolean');
+    }
+  }
+
   let alertConfig;
   try {
     alertConfig = await projectService.updateAlertConfig({
@@ -381,6 +416,7 @@ const updateAlertConfig = catchAsync(async (req, res) => {
       email,
       newGroup,
       severityThreshold,
+      spikeDetection,
     });
   } catch (err) {
     if (err.name === 'CastError') {

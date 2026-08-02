@@ -14,7 +14,7 @@
 - **Milestone 4 — Dashboard Auth & Core Pages:** COMPLETE (4/4 tasks)
 - **Milestone 5 — Detail View & Polish:** IN PROGRESS (5/6 tasks — 19, 20, 21, 22, 23 done)
 - **Milestone 6 — Reliability & Real-Time Infrastructure:** COMPLETE (3/3 tasks — 25, 26, 27 all done and confirmed)
-- **Milestone 7 — Alerting & Insights:** IN PROGRESS (2/5 tasks — Tasks 28 and 29 done and fully verified live)
+- **Milestone 7 — Alerting & Insights:** IN PROGRESS (3/5 tasks — Tasks 28, 29, and 30 done and fully verified live)
 - **Milestone 8 — Product Polish & Growth:** NOT STARTED (0/4 tasks)
 - **Milestone 9 — Ship:** NOT STARTED (0/1 task — original Task 24, renumbered to Task 37)
 
@@ -30,6 +30,60 @@ that would duplicate `TASKS.md`.
 ## What's Actively In Progress
 
 Nothing mid-implementation as of this pass. Most recently done:
+**Task 30 — Spike-triggered alerts — confirmed live by the user
+against the real running app, including a real bug found and fixed
+mid-verification.**
+
+- **Design.** Extends Task 28's delivery infra (`alertQueue.js`,
+  `alertService.js`, `worker.js`'s `processAlertJob`) with Task 29's
+  `computeTrend` as a third trigger. Unlike new-group/severity-threshold
+  (each a clean one-shot event), spike detection has no natural trigger
+  point — `computeTrend` is a snapshot query, not an event. Chosen
+  design (four options considered and compared — see `DECISIONS.md`'s
+  "Task 30" entry for the full comparison, including why a
+  scheduled/polling job and Redis-based live counters were both
+  rejected): re-evaluate on every `ErrorEvent` write, fire-and-forget,
+  gated by a per-group cooldown (`ErrorGroup.trendLastCheckedAt`), with
+  persisted state (`ErrorGroup.isSpiking`) so an alert only fires on
+  the genuine `false → true` transition — never on every event while a
+  group stays above threshold. The transition check itself is an
+  atomic `findOneAndUpdate({ isSpiking: { $ne: true } })`, so two
+  near-simultaneous events for the same group crossing the threshold
+  around the same moment can't both fire an alert. Recovery
+  (`true → false`) is silent by design — the user explicitly confirmed
+  this over adding a "recovered" notification, matching the existing
+  triggers' one-shot pattern.
+- **A real bug was found via the user's own manual test, not caught by
+  unit tests**: the original 60-second cooldown meant a fast
+  click-burst could exhaust its one check opportunity early (before
+  enough events had accumulated), then silently skip every later check
+  in the same burst — event count crossing the real threshold in the
+  database the whole time, with nothing re-checking. Fixed by reducing
+  the cooldown to 10s (still bounds a genuinely hot group to at most 6
+  background queries/minute) and added a regression test reproducing
+  the exact failure shape (a too-early first check followed by a
+  second, later check that must catch the transition the first one
+  missed). **Separately**, the first two attempts at the manual test
+  found no bug in the code at all — the `PATCH
+  /api/projects/:id/alerts` call meant to enable `spikeDetection` had
+  simply never been run successfully (confirmed via `GET
+  .../alerts` showing `email: null`, `spikeDetection.enabled: false`
+  the whole time) — a reminder that "nothing happened" during manual
+  testing needs the config state checked before assuming the code is
+  at fault.
+- **Also fixed along the way**: `GET`/`PATCH /api/projects/:id/alerts`
+  (Task 28.1) had never been documented in `API.md` at all — the same
+  kind of pre-existing docs-vs-code gap as `GET /api/groups/:id` before
+  it, fixed now rather than left in place.
+- **Verified**: full server suite now 41 tests, passing under both
+  `TZ=UTC` and `TZ=Asia/Kolkata`. **Confirmed live end-to-end by the
+  user**: with `spikeDetection.enabled: true` and a real email
+  configured, a spaced-out burst of `Simulate Error` clicks produced a
+  real `[Faultline] Spike detected in ...]` email in the user's inbox.
+
+Full reasoning: `DECISIONS.md`'s "Task 30" Shipped Log entry.
+
+Before that, most recently done:
 **Task 29 — Trend/spike detection — all three sub-parts done and
 29.3 confirmed live by the user against the real running app.**
 

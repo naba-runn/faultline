@@ -28,7 +28,7 @@ const connectDB = require('./config/db');
 const { getBullConnection } = require('./config/redis');
 const { QUEUE_NAME } = require('./services/enrichmentQueue');
 const { QUEUE_NAME: ALERT_QUEUE_NAME } = require('./services/alertQueue');
-const { enrichErrorGroup } = require('./services/errorGroupService');
+const { enrichErrorGroup, computeGroupTrend } = require('./services/errorGroupService');
 const alertService = require('./services/alertService');
 const sseHub = require('./services/sseHub');
 const ErrorGroup = require('./models/ErrorGroup');
@@ -149,10 +149,23 @@ async function processAlertJob(job) {
     return;
   }
 
-  const { subject, html } =
-    kind === 'severityThreshold'
-      ? alertService.buildSeverityThresholdEmail({ project, errorGroup })
-      : alertService.buildNewGroupEmail({ project, errorGroup });
+  let emailContent;
+  if (kind === 'severityThreshold') {
+    emailContent = alertService.buildSeverityThresholdEmail({ project, errorGroup });
+  } else if (kind === 'spike') {
+    // Task 30: recompute trend fresh here, not from anything passed
+    // through the job payload — same "worker re-fetches, never trusts
+    // an enqueue-time snapshot" principle alertQueue.js's file-level
+    // comment already documents for errorGroupId/projectId, extended
+    // to the trend numbers themselves (by send time, seconds or
+    // longer after enqueue, the actual current-hour count has likely
+    // moved on).
+    const trend = await computeGroupTrend(errorGroup);
+    emailContent = alertService.buildSpikeAlertEmail({ project, errorGroup, trend });
+  } else {
+    emailContent = alertService.buildNewGroupEmail({ project, errorGroup });
+  }
+  const { subject, html } = emailContent;
 
   // Not caught here, same reasoning as enrichErrorGroup in
   // processEnrichmentJob — a rejected promise lets BullMQ's
