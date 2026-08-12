@@ -1570,3 +1570,17 @@ textarea {
     border-radius: 6px;
     border: 1px solid var(--color-border);
 }
+
+.trend-stat-headline {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.85rem;
+}
+
+.trend-stat-big {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--color-text);
+    line-height: 1;
+}

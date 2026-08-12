@@ -317,11 +317,11 @@ function GroupDetailPage() {
                 {/* AI Analysis Hero Section */}
                 <section className="card card-ai-hero" style={{ margin: 0 }}>
                     <div className="card-header-bar">
-                        <h2>🧠 AI Root-Cause Intelligence</h2>
+                        <h2>🤖 AI Root Cause Analysis</h2>
                         {aiSummary && (
-                            <div className="ai-confidence-pill mono">
-                                <span>Confidence: <strong>{typeof aiSummary.confidence === 'number' ? `${Math.round(aiSummary.confidence * 100)}%` : '—'}</strong></span>
-                            </div>
+                            <span className="ai-confidence-pill mono">
+                                Confidence <strong style={{ color: 'var(--color-text)' }}>{typeof aiSummary.confidence === 'number' ? `${Math.round(aiSummary.confidence * 100)}%` : '—'}</strong>
+                            </span>
                         )}
                     </div>
 
@@ -329,9 +329,9 @@ function GroupDetailPage() {
                         <div className="ai-content">
                             {aiSummary.affectedFile && (
                                 <div className="ai-target-box mono">
-                                    <span className="target-label">GROUNDED CODE TARGET:</span>
-                                    <span className="target-file">{aiSummary.affectedFile}</span>
-                                    {aiSummary.affectedFunction && <span className="target-func">({aiSummary.affectedFunction})</span>}
+                                    <span className="target-label">📁 AFFECTED TARGET:</span>
+                                    <code className="target-file">{aiSummary.affectedFile}</code>
+                                    {aiSummary.affectedFunction && <code className="target-func">&gt; {aiSummary.affectedFunction}()</code>}
                                 </div>
                             )}
                             
@@ -360,12 +360,18 @@ function GroupDetailPage() {
                 {/* Activity & Trend Section */}
                 <section className="card" style={{ margin: 0 }}>
                     <div className="card-header-bar">
-                        <h2>📈 Event Volume & Trend</h2>
+                        <h2>📈 Error Rate Trend</h2>
                         <TrendBadge trend={trend} />
                     </div>
-                    <p className="cell-muted" style={{ fontSize: '0.82rem', marginBottom: '1rem' }}>
-                        Trailing 24-hour event frequency evaluation — showing last {events.length} occurrence{events.length === 1 ? '' : 's'} fetched.
-                    </p>
+                    {trend && Number.isFinite(trend.baselineHourlyRate) && (
+                        <div className="trend-stat-headline mono">
+                            <span className="trend-stat-big">{trend.currentHourCount}</span>
+                            <span className="cell-muted" style={{ fontSize: '0.85rem' }}>events/hr</span>
+                            <span className="cell-muted" style={{ marginLeft: 'auto', fontSize: '0.8rem' }}>
+                                vs {trend.baselineHourlyRate.toFixed(1)} baseline
+                            </span>
+                        </div>
+                    )}
                     <Sparkline buckets={buckets} />
                 </section>
             </div>
