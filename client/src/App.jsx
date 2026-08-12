@@ -4,17 +4,20 @@ import RegisterPage from './pages/RegisterPage.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
 import ProjectDetailPage from './pages/ProjectDetailPage.jsx';
 import GroupDetailPage from './pages/GroupDetailPage.jsx';
+import ApiDocsPage from './pages/ApiDocsPage.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 
 // Task 17 added the real Dashboard (project list + create form) and
 // ProjectDetail (error group table), replacing Task 16's Dashboard
-// placeholder. Task 19 adds ErrorGroupDetail (a per-group page) below.
+// placeholder. Task 19 adds ErrorGroupDetail (a per-group page).
+// Task 35 adds public API docs page at /docs.
 function App() {
     return (
         <BrowserRouter>
             <Routes>
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
+                <Route path="/docs" element={<ApiDocsPage />} />
                 <Route
                     path="/dashboard"
                     element={

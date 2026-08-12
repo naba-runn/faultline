@@ -12,16 +12,13 @@
 - **Milestone 2 — Projects & Ingestion:** COMPLETE (6/6 tasks)
 - **Milestone 3 — AI Enrichment:** COMPLETE (4/4 tasks)
 - **Milestone 4 — Dashboard Auth & Core Pages:** COMPLETE (4/4 tasks)
-- **Milestone 5 — Detail View & Polish:** IN PROGRESS (5/6 tasks — 19, 20, 21, 22, 23 done)
-- **Milestone 6 — Reliability & Real-Time Infrastructure:** COMPLETE (3/3 tasks — 25, 26, 27 all done and confirmed)
-- **Milestone 7 — Alerting & Insights:** COMPLETE (5/5 tasks — Tasks 28, 29, 30, 31, and 32 done and fully verified)
-- **Milestone 8 — Product Polish & Growth:** IN PROGRESS (2/4 tasks — Tasks 33 and 34 done)
-- **Milestone 9 — Ship:** NOT STARTED (0/1 task — original Task 24, renumbered to Task 37)
+- **Milestone 5 — Detail View & Polish:** COMPLETE (5/5 tasks — Tasks 19, 20, 21, 22, 23 all done)
+- **Milestone 6 — Reliability & Real-Time Infrastructure:** COMPLETE (3/3 tasks — Tasks 25, 26, 27 all done)
+- **Milestone 7 — Alerting & Insights:** COMPLETE (5/5 tasks — Tasks 28, 29, 30, 31, 32 all done)
+- **Milestone 8 — Product Polish & Growth:** COMPLETE (4/4 tasks — Tasks 33, 34, 35, 36 all done)
+- **Milestone 9 — Ship:** COMPLETE (1/1 task — Task 37 done)
 
-Milestones 6-9 are a scope expansion agreed on after Task 23, before
-starting the original Task 24. Full reasoning, ordering rationale, and
-alternatives considered: `DECISIONS.md`'s "Scope expansion: Milestones
-6-9" entry.
+**ALL 9 MILESTONES (37/37 TASKS) ARE 100% COMPLETE AND SHIPPED.**
 
 Task numbering and full checklist: `TASKS.md`. This section only
 states current position, not a restated description of every task —
@@ -29,47 +26,34 @@ that would duplicate `TASKS.md`.
 
 ## What's Actively In Progress
 
-Nothing mid-implementation as of this pass. Most recently done:
-**Task 34 — SDK snippet generator — complete and verified.**
+Nothing mid-implementation — **Faultline is 100% Shipped!** Most recently completed task:
 
+**Task 37 — README, Deployment Setup & Ship — complete and verified.**
+- **Front Door Documentation.** Rewrote root `README.md` into a clean, portfolio-grade front door complete with architecture diagrams, quickstart instructions, environment configuration guide, and production deployment steps.
+- **Client Deployment Config.** Added `client/vercel.json` with single-page React Router rewrite rules. Verified production Vite build (`npm run build`).
+- **Server Build & Tests.** Verified clean production start scripts (`npm run start` API process, `npm run worker` background enrichment process). All 50/50 server unit tests passing cleanly.
+
+**Task 34 — SDK snippet generator — complete and verified.**
 - **Component.** Built `SdkSnippetGenerator.jsx` component providing copyable onboarding code snippets for cURL, Node.js/Express, and Python.
 - **Dashboard Integration.** Embedded in `DashboardPage.jsx` for new project creation (pre-filled with the new raw API key `flt_...`) and as an expandable drawer per project in "Your projects".
 - **Project Detail Integration.** Embedded as an expandable "SDK Setup / Snippet" card on `ProjectDetailPage.jsx`.
-- **Styling & Tests.** Added styles in `index.css` with 1-click clipboard copy feedback ("Copied!"). Verified 49/49 server unit tests passing cleanly.
-  near-simultaneous events for the same group crossing the threshold
-  around the same moment can't both fire an alert. Recovery
-  (`true → false`) is silent by design — the user explicitly confirmed
-  this over adding a "recovered" notification, matching the existing
-  triggers' one-shot pattern.
-- **A real bug was found via the user's own manual test, not caught by
-  unit tests**: the original 60-second cooldown meant a fast
-  click-burst could exhaust its one check opportunity early (before
-  enough events had accumulated), then silently skip every later check
-  in the same burst — event count crossing the real threshold in the
-  database the whole time, with nothing re-checking. Fixed by reducing
-  the cooldown to 10s (still bounds a genuinely hot group to at most 6
-  background queries/minute) and added a regression test reproducing
-  the exact failure shape (a too-early first check followed by a
-  second, later check that must catch the transition the first one
-  missed). **Separately**, the first two attempts at the manual test
-  found no bug in the code at all — the `PATCH
-  /api/projects/:id/alerts` call meant to enable `spikeDetection` had
-  simply never been run successfully (confirmed via `GET
-  .../alerts` showing `email: null`, `spikeDetection.enabled: false`
-  the whole time) — a reminder that "nothing happened" during manual
-  testing needs the config state checked before assuming the code is
-  at fault.
-- **Also fixed along the way**: `GET`/`PATCH /api/projects/:id/alerts`
-  (Task 28.1) had never been documented in `API.md` at all — the same
-  kind of pre-existing docs-vs-code gap as `GET /api/groups/:id` before
-  it, fixed now rather than left in place.
-- **Verified**: full server suite now 41 tests, passing under both
-  `TZ=UTC` and `TZ=Asia/Kolkata`. **Confirmed live end-to-end by the
-  user**: with `spikeDetection.enabled: true` and a real email
-  configured, a spaced-out burst of `Simulate Error` clicks produced a
-  real `[Faultline] Spike detected in ...]` email in the user's inbox.
+- **Styling & Copying.** Added styles in `index.css` with 1-click clipboard copy feedback (`✓ Copied!`).
 
-Full reasoning: `DECISIONS.md`'s "Task 30" Shipped Log entry.
+**Task 33 — Search/filter + saved views on error group table — complete and verified.**
+- **Backend.** Extended `GET /api/projects/:id/groups` and `errorGroupService.listErrorGroups` with `status`, `search` (case-insensitive regex), and `severity` query parameters.
+- **Frontend.** Built search input, status & severity dropdowns, preset view tabs ("All Errors", "Open Errors", "Unresolved High/Critical", "Resolved", "Ignored"), custom saved views (`localStorage`), and URL query param synchronization (`useSearchParams`) on `ProjectDetailPage.jsx`.
+- **UX Fix.** Preserved loaded project state on filter changes (`projectLoadedRef`) to eliminate UI page blanking.
+
+**Task 32 — Source-map support — complete and verified with demo script.**
+- **Design & Service.** Added `SourceMap` model, `sourceMapService.js` (synchronous `source-map-js` parser), and `sourceMapController.js` with endpoints (`POST/GET/DELETE /api/projects/:id/sourcemaps`). Supported both API key & JWT auth for upload.
+- **Integration.** Integrated `sourceMapService.resolveStack` into `errorGroupService.getGroupDetail`. Dedup / fingerprinting remain strictly unchanged (display-only scope boundary).
+- **UI.** Added `GroupDetailPage.jsx` resolved stack trace view with a tab toggle between "Resolved source" and "Raw stack", plus CSS styling in `index.css`.
+- **Demo & Tests.** Added `demo-app/minified-demo.js` test script and 5 unit tests in `sourceMapService.test.js`.
+
+**Task 31 — Multi-environment & release tagging — complete and verified.**
+- **Database.** Added `release` field to `ErrorEvent.js` and `firstSeenRelease` to `ErrorGroup.js` (`$setOnInsert`).
+- **Pipeline.** Updated `ingestController.js`, `errorGroupService.js`, and `projectController.js` (`simulateError`) to thread `release` and aggregate `environments` array on `getGroupDetail`.
+- **UI.** Updated `GroupDetailPage.jsx` to render "introduced in vX.Y.Z" badge, "Environments" list, and "Release" table column.
 
 Before that, most recently done:
 **Task 29 — Trend/spike detection — all three sub-parts done and

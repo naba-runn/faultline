@@ -11,6 +11,7 @@ const projectRoutes = require('./routes/projectRoutes');
 const ingestRoutes = require('./routes/ingestRoutes');
 const groupRoutes = require('./routes/groupRoutes');
 const sseRoutes = require('./routes/sseRoutes');
+const docsRoutes = require('./routes/docsRoutes');
 
 const app = express();
 
@@ -48,6 +49,7 @@ app.use('/api/groups', groupRoutes);
 // steal, unlike a long-lived, reusable JWT. See DECISIONS.md's "Task
 // 26" entry.
 app.use('/api/sse', sseRoutes);
+app.use('/api/docs', docsRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

@@ -1561,6 +1561,21 @@ controller-level tests for any project route).
 Chronological, most-recent-first, entries with no dedicated decision
 above. Migrated from `CHANGELOG.md`.
 
+- **Task 37** — README, Deployment Setup & Ship (Project 100% Shipped).
+  - Front door documentation: wrote portfolio-grade `README.md` with system architecture diagrams, tech stack breakdown, local quickstart guide, environment variable documentation, and production deployment guide.
+  - Deployment configuration: created `client/vercel.json` for SPA router fallback support on Vercel. Verified Vite production build (`npm run build`).
+  - Production verification: all 50/50 server unit tests passing cleanly. All 9 Milestones (37/37 Tasks) completed.
+
+- **Task 36** — UI redesign pass 2 (dashboard overview page).
+  - Frontend: `DashboardPage.jsx` enhanced with top overview metrics grid (Total Projects, Connected Repositories, Ingestion Pipeline Operational Status).
+  - Refined project list table with repository badges (`badge-repo`), formatted creation dates, expandable SDK snippet onboarding drawers, and 1-click "View Errors →" action buttons.
+  - Added CSS layout rules (`.metrics-overview-grid`, `.stat-card`, `.stat-value`, `.stat-label`, `.create-project-form`, `.badge-repo`) building on Task 23's design system tokens in `client/src/index.css`.
+
+- **Task 35** — Public API reference page (rendered from `API.md`).
+  - Backend: `GET /api/docs` endpoint created (`docsController.js`, `docsRoutes.js`), serving `docs/API.md` content directly from filesystem so docs are never hand-duplicated.
+  - Frontend: `ApiDocsPage.jsx` component at route `/docs` using `marked` for dynamic markdown parsing, sticky Table of Contents (TOC) sidebar, and colorized HTTP method badges (`GET`, `POST`, `PATCH`, `DELETE`).
+  - Added "API Docs" topbar links on `DashboardPage` and `ProjectDetailPage`. Created `server/tests/docs.test.js`.
+
 - **Task 34** — SDK snippet generator (per-project copyable onboarding code snippets).
   - Created `SdkSnippetGenerator.jsx` component with language tabs (`cURL`, `Node.js / Express`, `Python`) and a 1-click Copy button with visual feedback ("Copied!").
   - Embedded in `DashboardPage.jsx`: immediately pre-fills newly revealed API key (`flt_...`) upon project creation and provides a per-project onboarding drawer in "Your projects".

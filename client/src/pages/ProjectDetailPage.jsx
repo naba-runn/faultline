@@ -291,6 +291,8 @@ function ProjectDetailPage() {
             <header className="topbar">
                 <h1>{project.name}</h1>
                 <p className="topbar-meta mono">
+                    <Link to="/docs" style={{ color: 'var(--color-accent)' }}>API Docs</Link>
+                    {' · '}
                     {project.githubRepo || 'no repo linked'}
                     {' · '}
                     <span className={`live-indicator${liveConnected ? ' is-connected' : ''}`}>

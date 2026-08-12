@@ -732,3 +732,20 @@ ticket's originating project stops being relevant to that page.
 | 401 | Missing `ticket` query param | `{ "success": false, "error": "Missing ticket" }` |
 | 401 | Ticket invalid, already used, or expired | `{ "success": false, "error": "Invalid or expired ticket" }` |
 | 500 | Redis lookup failed | `{ "success": false, "error": "Failed to validate ticket" }` |
+
+## Documentation (Task 35)
+
+### `GET /api/docs`
+
+Public endpoint — no auth required. Reads raw `docs/API.md` content directly from the filesystem to power the web application's live API reference page at `/docs`.
+
+**Success (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "markdown": "# Faultline — API Reference\n...",
+    "updatedAt": "2026-08-13T02:47:43.000Z"
+  }
+}
+```

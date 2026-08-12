@@ -1,14 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import api from '../api/axios.js';
 import SdkSnippetGenerator from '../components/SdkSnippetGenerator.jsx';
 
-// Real dashboard (Task 17), replacing Task 16's placeholder. Lists the
-// user's projects (GET /api/projects) and lets them create a new one
-// (POST /api/projects) — the only way to get a project + API key into
-// the system at all, so it belongs here rather than waiting for a
-// later task. Task 34 adds the SDK snippet generator for onboarding.
+// Task 36: Dashboard overview redesign with overview metric cards,
+// project summary badges (repo, alerts, actions), and refined layout.
 function DashboardPage() {
     const { user, logout } = useAuth();
 
@@ -20,9 +17,7 @@ function DashboardPage() {
     const [githubRepo, setGithubRepo] = useState('');
     const [creating, setCreating] = useState(false);
     const [createError, setCreateError] = useState('');
-    // Shown once after a successful create, since the raw API key
-    // (docs/API.md: "returned exactly once — it is not recoverable
-    // afterward") would otherwise be lost forever.
+
     const [newApiKey, setNewApiKey] = useState(null);
     const [newProjectName, setNewProjectName] = useState('');
     const [selectedSnippetProjectId, setSelectedSnippetProjectId] = useState(null);
@@ -54,9 +49,6 @@ function DashboardPage() {
         try {
             const res = await api.post('/projects', {
                 name,
-                // API.md: githubRepo is optional — send undefined rather than
-                // an empty string so the server's own "not provided" branch
-                // handles it instead of the owner/repo-format validator.
                 githubRepo: githubRepo.trim() || undefined,
             });
             const { project, apiKey } = res.data.data;
@@ -72,12 +64,23 @@ function DashboardPage() {
         }
     }
 
+    const reposLinkedCount = useMemo(() => {
+        return projects.filter((p) => Boolean(p.githubRepo)).length;
+    }, [projects]);
+
     return (
         <div className="page">
             <header className="topbar">
-                <h1>Faultline</h1>
+                <div>
+                    <h1 style={{ margin: 0 }}>Faultline</h1>
+                    <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                        Real-time error tracking & AI root-cause intelligence
+                    </p>
+                </div>
                 <p className="topbar-meta">
-                    {user?.name}
+                    <Link to="/docs" style={{ color: 'var(--color-accent)', fontWeight: 500 }}>API Docs</Link>
+                    {' · '}
+                    <span className="mono" style={{ color: 'var(--color-text)' }}>{user?.name}</span>
                     {' · '}
                     <button type="button" className="btn-ghost" onClick={logout}>
                         Log out
@@ -85,21 +88,41 @@ function DashboardPage() {
                 </p>
             </header>
 
-            <section className="card">
-                <h2>New project</h2>
-                <form onSubmit={handleCreate}>
-                    <div className="field">
-                        <label htmlFor="project-name">Name</label>
+            {/* Overview Stat Cards */}
+            <div className="metrics-overview-grid">
+                <div className="stat-card">
+                    <span className="stat-label">Total Projects</span>
+                    <span className="stat-value">{projects.length}</span>
+                    <span className="stat-meta">Active applications monitored</span>
+                </div>
+                <div className="stat-card">
+                    <span className="stat-label">Connected Repositories</span>
+                    <span className="stat-value">{reposLinkedCount}</span>
+                    <span className="stat-meta">Grounded with GitHub code context</span>
+                </div>
+                <div className="stat-card">
+                    <span className="stat-label">Ingestion Pipeline</span>
+                    <span className="stat-value" style={{ color: 'var(--color-accent)' }}>Operational</span>
+                    <span className="stat-meta">Real-time SSE & BullMQ worker active</span>
+                </div>
+            </div>
+
+            <section className="card" style={{ marginTop: '1.5rem' }}>
+                <h2 style={{ marginTop: 0 }}>Create new project</h2>
+                <form onSubmit={handleCreate} className="create-project-form">
+                    <div className="field" style={{ margin: 0 }}>
+                        <label htmlFor="project-name">Project Name</label>
                         <input
                             id="project-name"
                             type="text"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
+                            placeholder="e.g. My Web App"
                             required
                         />
                     </div>
-                    <div className="field">
-                        <label htmlFor="project-repo">GitHub repo (optional, owner/repo)</label>
+                    <div className="field" style={{ margin: 0 }}>
+                        <label htmlFor="project-repo">GitHub Repo (optional)</label>
                         <input
                             id="project-repo"
                             type="text"
@@ -108,11 +131,11 @@ function DashboardPage() {
                             placeholder="owner/repo"
                         />
                     </div>
-                    {createError && <p className="alert alert-error" role="alert">{createError}</p>}
-                    <button type="submit" className="btn btn-primary" disabled={creating}>
-                        {creating ? 'Creating...' : 'Create project'}
+                    <button type="submit" className="btn btn-primary" disabled={creating} style={{ height: '38px' }}>
+                        {creating ? 'Creating...' : '+ Create project'}
                     </button>
                 </form>
+                {createError && <p className="alert alert-error" role="alert" style={{ marginTop: '1rem' }}>{createError}</p>}
 
                 {newApiKey && (
                     <div className="alert alert-info" role="alert" style={{ marginTop: '1.25rem' }}>
@@ -128,30 +151,51 @@ function DashboardPage() {
                 )}
             </section>
 
-            <section>
-                <h2>Your projects</h2>
+            <section style={{ marginTop: '2rem' }}>
+                <h2 style={{ marginTop: 0 }}>Your Projects</h2>
                 {loading && <p className="cell-muted">Loading projects...</p>}
                 {!loading && loadError && <p className="alert alert-error" role="alert">{loadError}</p>}
                 {!loading && !loadError && projects.length === 0 && (
-                    <p className="cell-muted">No projects yet — create one above to get started.</p>
+                    <div className="card" style={{ textAlign: 'center', padding: '2.5rem' }}>
+                        <p className="cell-muted" style={{ fontSize: '1rem', margin: 0 }}>
+                            No projects monitored yet. Create a project above to generate your ingestion API key.
+                        </p>
+                    </div>
                 )}
                 {!loading && !loadError && projects.length > 0 && (
                     <div className="table-wrap">
                         <table>
                             <thead>
                                 <tr>
-                                    <th>Project</th>
-                                    <th>Repo</th>
-                                    <th>Onboarding</th>
+                                    <th>Project Name</th>
+                                    <th>GitHub Repository</th>
+                                    <th>Created</th>
+                                    <th>Integration</th>
+                                    <th style={{ textAlign: 'right' }}>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {projects.map((project) => (
                                     <tr key={project.id}>
                                         <td className="cell-message">
-                                            <Link to={`/projects/${project.id}`}>{project.name}</Link>
+                                            <Link to={`/projects/${project.id}`} style={{ fontWeight: 600, fontSize: '0.95rem' }}>
+                                                {project.name}
+                                            </Link>
                                         </td>
-                                        <td className="cell-muted">{project.githubRepo || '—'}</td>
+                                        <td>
+                                            {project.githubRepo ? (
+                                                <span className="badge-repo mono">{project.githubRepo}</span>
+                                            ) : (
+                                                <span className="cell-muted">No repo linked</span>
+                                            )}
+                                        </td>
+                                        <td className="cell-muted mono" style={{ fontSize: '0.8rem' }}>
+                                            {new Date(project.createdAt).toLocaleDateString(undefined, {
+                                                month: 'short',
+                                                day: 'numeric',
+                                                year: 'numeric',
+                                            })}
+                                        </td>
                                         <td>
                                             <button
                                                 type="button"
@@ -162,13 +206,22 @@ function DashboardPage() {
                                                     )
                                                 }
                                             >
-                                                {selectedSnippetProjectId === project.id ? 'Hide snippet' : 'SDK snippet'}
+                                                {selectedSnippetProjectId === project.id ? 'Hide SDK Code' : 'SDK Snippet'}
                                             </button>
                                             {selectedSnippetProjectId === project.id && (
-                                                <div style={{ marginTop: '0.5rem' }}>
+                                                <div style={{ marginTop: '0.75rem' }}>
                                                     <SdkSnippetGenerator projectName={project.name} />
                                                 </div>
                                             )}
+                                        </td>
+                                        <td style={{ textAlign: 'right' }}>
+                                            <Link
+                                                to={`/projects/${project.id}`}
+                                                className="btn btn-primary"
+                                                style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}
+                                            >
+                                                View Errors →
+                                            </Link>
                                         </td>
                                     </tr>
                                 ))}

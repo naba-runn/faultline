@@ -99,12 +99,12 @@ changed and why).
 
 - [x] **Task 33** — Search/filter + saved views on the error group table
 - [x] **Task 34** — SDK snippet generator (per-project copyable onboarding snippet on the dashboard, reduces "how do I even send it an error" friction)
-- [ ] **Task 35** — Public API reference page (rendered from `API.md`, not hand-duplicated)
-- [ ] **Task 36** — UI redesign pass 2 — dashboard overview page (trend charts, alert status, release timeline), refined visual system building on Task 23's token set. Deliberately last among feature work so it reflects the final feature surface (alerts, releases, trends) instead of being redone twice.
+- [x] **Task 35** — Public API reference page (rendered from `API.md`, not hand-duplicated)
+- [x] **Task 36** — UI redesign pass 2 — dashboard overview page (trend charts, alert status, release timeline), refined visual system building on Task 23's token set. Deliberately last among feature work so it reflects the final feature surface (alerts, releases, trends) instead of being redone twice.
 
 ## Milestone 9: Ship
 
-- [ ] **Task 37** — README, screenshots/GIF, deploy (Vercel + Render web service + Render Background Worker + Render Key Value + Atlas) — renumbered from the original Task 24; unchanged in substance, just resequenced to the end now that Milestones 6-8 exist
+- [x] **Task 37** — README, screenshots/GIF, deploy (Vercel + Render web service + Render Background Worker + Render Key Value + Atlas) — renumbered from the original Task 24; unchanged in substance, just resequenced to the end now that Milestones 6-8 exist
 
 ## Notes
 

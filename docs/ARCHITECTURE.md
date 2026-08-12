@@ -4,17 +4,19 @@
 
 ```
 faultline/
-├── client/                 (Vite + React, Tasks 15-19)
+├── client/                 (Vite + React, Tasks 15-35)
 │   ├── src/
 │   │   ├── api/axios.js              (shared axios instance — request interceptor attaches JWT, response interceptor clears it on 401)
 │   │   ├── context/AuthContext.jsx   (user/token/loading state, login/register/logout, bootstraps via GET /api/auth/me)
 │   │   ├── components/ProtectedRoute.jsx (gates a route on AuthContext's isAuthenticated; redirects to /login)
+│   │   ├── components/SdkSnippetGenerator.jsx (Task 34 — cURL, Node.js, Python snippet tabs with 1-click copy)
 │   │   ├── pages/LoginPage.jsx       (email/password form → AuthContext.login)
 │   │   ├── pages/RegisterPage.jsx    (name/email/password form → AuthContext.register)
-│   │   ├── pages/DashboardPage.jsx   (project list + create-project form; GET/POST /api/projects)
-│   │   ├── pages/ProjectDetailPage.jsx (project info + error group table; GET /api/projects/:id + GET /api/projects/:id/groups)
-│   │   ├── pages/GroupDetailPage.jsx (AI summary checklist, event list, sparkline; GET /api/groups/:id, Task 19)
-│   │   ├── App.jsx                  (react-router-dom routes: /login, /register, /dashboard, /projects/:id, /groups/:id)
+│   │   ├── pages/DashboardPage.jsx   (project list + create-project form + SDK snippet drawer; GET/POST /api/projects)
+│   │   ├── pages/ProjectDetailPage.jsx (project info + filterable error group table + saved views + SDK setup; Tasks 17, 33, 34)
+│   │   ├── pages/GroupDetailPage.jsx (AI summary, event list, trend badge, resolved stack traces; Tasks 19, 29, 31, 32)
+│   │   ├── pages/ApiDocsPage.jsx     (Task 35 — public API reference viewer at /docs, marked parser + TOC sidebar)
+│   │   ├── App.jsx                  (react-router-dom routes: /login, /register, /docs, /dashboard, /projects/:id, /groups/:id)
 │   │   └── main.jsx
 │   └── README.md
 ├── server/
@@ -22,53 +24,68 @@ faultline/
 │   │   ├── env.js           (centralized env var loader)
 │   │   └── db.js             (Mongoose connection to Atlas)
 │   ├── controllers/
-│   │   ├── authController.js    (register, login, me)
-│   │   ├── projectController.js (createProject, listProjects, getProject, updateProject, deleteProject, listProjectGroups — name/githubRepo typeof-validated as of Task 20.3)
-│   │   ├── groupController.js   (getGroupDetail — Task 19; updateStatus — Task 18)
-│   │   └── ingestController.js  (ingestEvent — validates, persists via errorGroupService, 202s)
+│   │   ├── authController.js        (register, login, me)
+│   │   ├── projectController.js     (createProject, listProjects, getProject, updateProject, deleteProject, listProjectGroups, simulateError, mintSseTicket)
+│   │   ├── groupController.js       (getGroupDetail, updateStatus)
+│   │   ├── ingestController.js      (ingestEvent — validates, threads release/env, persists via errorGroupService, 202s)
+│   │   ├── sourceMapController.js   (uploadSourceMap, listSourceMaps, deleteSourceMap — Task 32)
+│   │   ├── alertConfigController.js (getAlertConfig, updateAlertConfig — Tasks 28/30)
+│   │   ├── docsController.js        (getDocs — reads API.md from filesystem, Task 35)
+│   │   └── sseController.js         (streamEvents — Task 26)
 │   ├── services/
-│   │   ├── authService.js    (register, login — business logic, no req/res)
-│   │   ├── projectService.js (create/list/get/update/delete — all ownership-scoped in the query itself)
-│   │   ├── fingerprintService.js (generateFingerprint, extractErrorType — pure, combines stackNormalizer's signature + parsed error type into the Task 9 dedup key)
-│   │   ├── errorGroupService.js  (recordEvent — atomic upsert dedup + ErrorEvent creation, Task 9.3; enrichErrorGroup — AI enrichment orchestration, Tasks 13/14; updateGroupStatus — Task 18; getGroupDetail — Task 19)
-│   │   ├── aiService.js          (buildPrompt/callGemini/parseAndValidate — pure except callGemini, Task 11)
-│   │   └── githubService.js      (fetchCodeSnippet/extractSnippet — GitHub Contents API grounding, Task 12)
+│   │   ├── authService.js         (register, login — business logic, no req/res)
+│   │   ├── projectService.js      (create/list/get/update/delete — all ownership-scoped in the query itself)
+│   │   ├── fingerprintService.js  (generateFingerprint, extractErrorType — pure, combines stackNormalizer signature + error type)
+│   │   ├── errorGroupService.js   (recordEvent, enrichErrorGroup, updateGroupStatus, getGroupDetail, listErrorGroups)
+│   │   ├── sourceMapService.js    (validateSourceMap, uploadSourceMap, listSourceMaps, deleteSourceMap, resolveStack — Task 32)
+│   │   ├── trendService.js        (computeTrend, getWindowBounds — baseline spike detection, Task 29)
+│   │   ├── alertService.js        (sendAlertEmail, evaluateSpike — Resend email alerts & spike engine, Tasks 28/30)
+│   │   ├── aiService.js           (buildPrompt/callGemini/parseAndValidate — Task 11)
+│   │   ├── githubService.js       (fetchCodeSnippet/extractSnippet — GitHub Contents API grounding, Task 12)
+│   │   └── sseHub.js              (publish, subscribe, disconnect — Redis pub/sub live fan-out, Task 26)
 │   ├── middleware/
-│   │   ├── authMiddleware.js    (JWT verification, attaches req.user)
-│   │   ├── apiKeyMiddleware.js  (API-key verification, attaches req.project — hot ingestion path)
-│   │   ├── rateLimiter.js       (loginLimiter, ingestLimiter — express-rate-limit)
-│   │   └── errorMiddleware.js   (centralized error handler, Task 20.1 — mounted last in app.js)
+│   │   ├── authMiddleware.js      (JWT verification, attaches req.user)
+│   │   ├── apiKeyMiddleware.js    (API-key verification, attaches req.project — hot ingestion path)
+│   │   ├── rateLimiter.js         (loginLimiter, ingestLimiter — express-rate-limit)
+│   │   └── errorMiddleware.js     (centralized error handler, Task 20.1)
 │   ├── routes/
-│   │   ├── authRoutes.js     (POST /register, POST /login, GET /me)
-│   │   ├── projectRoutes.js  (POST /, GET /, GET/PATCH/DELETE /:id, GET /:id/groups — all authMiddleware-guarded)
-│   │   ├── groupRoutes.js    (GET /:id, PATCH /:id/status — authMiddleware-guarded, Tasks 18/19)
-│   │   └── ingestRoutes.js   (POST / — apiKeyMiddleware + ingestLimiter-guarded, mounted at /api/events)
+│   │   ├── authRoutes.js        (POST /register, POST /login, GET /me)
+│   │   ├── projectRoutes.js     (POST /, GET /, GET/PATCH/DELETE /:id, GET /:id/groups, POST /:id/simulate, POST /:id/sse-ticket)
+│   │   ├── groupRoutes.js       (GET /:id, PATCH /:id/status)
+│   │   ├── ingestRoutes.js      (POST / — apiKeyMiddleware + ingestLimiter-guarded, mounted at /api/events)
+│   │   ├── sourceMapRoutes.js   (POST/GET/DELETE /api/projects/:id/sourcemaps — Task 32)
+│   │   ├── alertConfigRoutes.js (GET/PATCH /api/projects/:id/alerts — Tasks 28/30)
+│   │   ├── docsRoutes.js        (GET /api/docs — Task 35)
+│   │   └── sseRoutes.js         (GET /api/sse/stream — ticket-authenticated, Task 26)
 │   ├── models/
-│   │   ├── Project.js        (ownerId ref User, name, apiKeyHash unique-indexed, githubRepo validated, timestamps)
-│   │   ├── ErrorGroup.js     (projectId + fingerprint compound-unique index — the dedup backbone; firstSeen/lastSeen instead of timestamps; embedded aiSummary)
-│   │   ├── ErrorEvent.js     (errorGroupId ref, rawStack, env, metadata, receivedAt — one doc per occurrence, indexed for timeline queries)
-│   │   └── User.js           (name, email unique, passwordHash w/ bcrypt hook)
+│   │   ├── Project.js           (ownerId ref User, name, apiKeyHash unique-indexed, githubRepo validated)
+│   │   ├── ErrorGroup.js        (projectId + fingerprint compound-unique index; status, aiSummary, firstSeenRelease)
+│   │   ├── ErrorEvent.js        (errorGroupId ref, rawStack, env, release, metadata, receivedAt)
+│   │   ├── SourceMap.js         (projectId + release + filename compound-unique index, map v3 payload — Task 32)
+│   │   └── User.js              (name, email unique, passwordHash w/ bcrypt hook)
 │   ├── utils/
-│   │   ├── apiKey.js           (generateApiKey, hashApiKey — SHA-256, not bcrypt)
-│   │   ├── generateToken.js    (JWT signing helper)
-│   │   ├── httpResponse.js     (sendSuccess/sendError — response-shaping only)
-│   │   ├── stackNormalizer.js  (parseStackFrames, normalizeStack — pure, used by fingerprintService and Task 14's affectedFile/affectedFunction derivation)
-│   │   ├── AppError.js         (operational-error class, Task 20.1)
-│   │   └── catchAsync.js       (async-handler rejection wrapper, Task 20.1)
+│   │   ├── apiKey.js            (generateApiKey, hashApiKey — SHA-256)
+│   │   ├── generateToken.js     (JWT signing helper)
+│   │   ├── httpResponse.js      (sendSuccess/sendError — response-shaping helper)
+│   │   ├── stackNormalizer.js   (parseStackFrames, normalizeStack)
+│   │   ├── AppError.js          (operational-error class)
+│   │   └── catchAsync.js        (async-handler rejection wrapper)
 │   ├── tests/
-│   │   └── errorGroupService.test.js  (recordEvent dedup/retry-once cases; enrichErrorGroup grounded/ungrounded/failure cases, Tasks 13/14; updateGroupStatus cases, Task 18; getGroupDetail cases, Task 19)
-│   ├── app.js                 (Express app: middleware, /api/auth + /api/projects + /api/groups + /api/events routes, health check, 404, centralized errorMiddleware — Task 20.1)
-│   ├── server.js               (bootstrap: connects DB, starts listener, crash guards)
+│   │   ├── errorGroupService.test.js
+│   │   ├── sourceMapService.test.js
+│   │   ├── trendService.test.js
+│   │   ├── alertService.test.js
+│   │   └── docs.test.js
+│   ├── app.js                   (Express app bootstrapping)
+│   ├── server.js                (API process entrypoint)
+│   ├── worker.js                (BullMQ background worker process entrypoint — Task 25)
 │   ├── package.json
-│   ├── package-lock.json
 │   └── .env.example
-├── demo-app/                (Task 10 — throws sample errors at Faultline)
+├── demo-app/                   (Throws sample errors & tests minified source maps — Tasks 10, 32)
+│   ├── minified-demo.js
 │   ├── package.json
-│   ├── index.js
-│   ├── .env.example
 │   └── README.md
-├── docs/                    (this folder — permanent project memory)
-├── .gitignore
+├── docs/                       (Permanent project memory & live API docs)
 └── README.md
 ```
 
@@ -87,37 +104,38 @@ Rule of thumb enforced throughout: **controllers never touch Mongoose
 directly**, and **services never touch `req`/`res`**. This is what
 keeps services unit-testable without spinning up Express.
 
-Confirmed in practice through Milestone 1: `authController` calls
-`authService`, never `User` directly; `authService` never references
-`req`/`res`. `authMiddleware` is the one exception to "controllers
-don't touch models," which is expected — middleware sits outside the
-route/controller/service chain and legitimately needs its own DB
-lookup (loading the user for `req.user`).
-
-## Request Flow (current, through Task 20)
+## Request Flow
 
 ```
 Client → app.js middleware chain (helmet → cors → json → morgan)
        → /health route
-       → /api/auth/register  → authController.register → authService.register → User (bcrypt hook hashes password)
-       → /api/auth/login     → loginLimiter → authController.login → authService.login → User.comparePassword
-       → /api/auth/me        → authMiddleware (verifies JWT, loads req.user) → authController.me
-       → /api/projects (POST)                 → authMiddleware → projectController.createProject → projectService.createProject → Project (apiKeyHash persisted unique-indexed, raw key returned once)
-       → /api/projects (GET)                  → authMiddleware → projectController.listProjects  → projectService.listProjects  → Project
-       → /api/projects/:id (GET/PATCH/DELETE) → authMiddleware → projectController.{getProject,updateProject,deleteProject} → projectService.* → Project (ownership-scoped in the query itself; PATCH's name/githubRepo typeof-validated as of Task 20.3)
-       → /api/projects/:id/groups (GET)        → authMiddleware → projectController.listProjectGroups → errorGroupService.listErrorGroups
-       → /api/projects/:id/sse-ticket (POST)    → authMiddleware → projectController.mintSseTicket (ownership-scoped, mints a 30s single-use ticket in Redis — Task 26)
-       → /api/groups/:id (GET)                 → authMiddleware → groupController.getGroupDetail → errorGroupService.getGroupDetail (ownership-scoped, Task 19)
-       → /api/groups/:id/status (PATCH)        → authMiddleware → groupController.updateStatus → errorGroupService.updateGroupStatus (ownership-scoped, Task 18)
-                                                    → (not awaited) sseHub.publish(projectId, "status_changed", {...}) — Task 26
-       → /api/events (POST)  → apiKeyMiddleware (verifies API key hash, loads req.project) → ingestLimiter
-                              → ingestController.ingestEvent → errorGroupService.recordEvent
-                                  → fingerprintService.generateFingerprint (stackNormalizer under the hood)
-                                  → atomic upsert on ErrorGroup { projectId, fingerprint } (retry-once on 11000)
-                                  → ErrorEvent.create (per-occurrence record)
-                                  → responds 202 { received, projectId, errorGroupId, isNewGroup }
-                                  → (isNewGroup only, not awaited) sseHub.publish(projectId, "new_group", {...}) — Task 26
-                                  → (isNewGroup only, not awaited) enrichmentQueue.enqueueEnrichment
+       → /api/auth/register          → authController.register → authService.register → User (bcrypt hook)
+       → /api/auth/login             → loginLimiter → authController.login → authService.login → User.comparePassword
+       → /api/auth/me                → authMiddleware (verifies JWT, loads req.user) → authController.me
+       → /api/projects (POST)         → authMiddleware → projectController.createProject → projectService.createProject
+       → /api/projects (GET)          → authMiddleware → projectController.listProjects  → projectService.listProjects
+       → /api/projects/:id (GET/PATCH/DELETE) → authMiddleware → projectController.* → projectService.*
+       → /api/projects/:id/groups (GET) → authMiddleware → projectController.listProjectGroups → errorGroupService.listErrorGroups (search/filter/severity/pagination — Task 33)
+       → /api/projects/:id/sourcemaps (POST/GET/DELETE) → sourceMapController.* → sourceMapService.* (Task 32)
+       → /api/projects/:id/alerts (GET/PATCH) → alertConfigController.* → alertService.* (Tasks 28/30)
+       → /api/docs (GET)             → docsController.getDocs (reads API.md from filesystem — Task 35)
+       → /api/projects/:id/sse-ticket (POST) → authMiddleware → projectController.mintSseTicket (mints 30s single-use ticket in Redis — Task 26)
+       → /api/groups/:id (GET)         → authMiddleware → groupController.getGroupDetail → errorGroupService.getGroupDetail (source map resolution + trend computation — Tasks 19, 29, 32)
+       → /api/groups/:id/status (PATCH) → authMiddleware → groupController.updateStatus → errorGroupService.updateGroupStatus → sseHub.publish(projectId, "status_changed")
+       → /api/events (POST)          → apiKeyMiddleware (verifies API key hash, loads req.project) → ingestLimiter
+                                     → ingestController.ingestEvent → errorGroupService.recordEvent (supports env & release tags — Task 31)
+                                         → fingerprintService.generateFingerprint
+                                         → atomic upsert on ErrorGroup { projectId, fingerprint }
+                                         → ErrorEvent.create (per-occurrence record)
+                                         → responds 202 { received, projectId, errorGroupId, isNewGroup }
+                                         → (isNewGroup only) sseHub.publish(projectId, "new_group")
+                                         → (isNewGroup only) enrichmentQueue.enqueueEnrichment (BullMQ on Redis)
+                                         → (if alertConfig.spikeDetection enabled) alertService.evaluateSpike (Task 30)
+       → /api/projects/:id/simulate (POST) → authMiddleware → projectController.simulateError → errorGroupService.recordEvent
+       → /api/sse/stream (GET, ?ticket=...) → sseController.streamEvents (ticket-authenticated SSE connection — Task 26)
+       → (no match) 404 handler
+       → (thrown error) errorMiddleware.js — centralized AppError handler
+```→ (isNewGroup only, not awaited) enrichmentQueue.enqueueEnrichment
                                       → BullMQ job on Redis (Render Key Value) — see worker.js below, Task 25
        → /api/projects/:id/simulate (POST) → authMiddleware → projectController.simulateError → errorGroupService.recordEvent (same as above) → sseHub.publish + enrichmentQueue.enqueueEnrichment (same as above, Task 23/25/26)
        → /api/sse/stream (GET, ?ticket=...)     → sseController.streamEvents — deliberately NOT behind authMiddleware (see below, Task 26)
