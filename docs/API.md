@@ -183,6 +183,7 @@ collapse into the same 404 as every other project route.
         "count": 3,
         "firstSeen": "...",
         "lastSeen": "...",
+        "firstSeenRelease": "v1.4.2",
         "aiSummary": { "severity": "high", "rootCause": "..." }
       }
     ]
@@ -404,11 +405,13 @@ checked via a scoped `Project.findOne({ _id, ownerId })`.
       },
       "count": 12,
       "firstSeen": "...",
-      "lastSeen": "..."
+      "lastSeen": "...",
+      "firstSeenRelease": "v1.4.2"
     },
     "events": [
-      { "id": "...", "receivedAt": "...", "env": "production" }
+      { "id": "...", "receivedAt": "...", "env": "production", "release": "v1.4.2" }
     ],
+    "environments": ["production", "staging"],
     "trend": {
       "status": "ok",
       "isSpiking": false,
@@ -436,6 +439,22 @@ in-progress hour's raw count. Computed from a separate, time-bounded
 `ErrorEvent` query (not the `events` list above, which has no time
 bound and can be far narrower than 24h for a busy group) — see
 `DECISIONS.md`'s "Task 29.2" entry.
+
+`environments` — added in Task 31, a deduplicated, sorted array of
+distinct `env` values across the fetched events (e.g.
+`["production", "staging"]`). Surfaced at the group level so the
+client can show which deployments this error has been seen in without
+doing its own dedup. `null`/missing `env` values are filtered out.
+
+`firstSeenRelease` — added in Task 31 on the group shape, the
+`release` tag from the very first event that created this group
+(e.g. `"v1.4.2"`). `null` if no release tag was provided at
+creation time. Set once via `$setOnInsert`, never overwritten by
+later duplicate events.
+
+`release` — added in Task 31 on each event, the caller-supplied
+build/version tag for that specific occurrence (e.g. `"v1.4.2"`).
+`null` if the caller didn't provide one.
 
 **Errors:**
 | Status | Cause | Body |
@@ -524,13 +543,19 @@ pipeline and `DECISIONS.md`'s Task 13/14/25 entries.
   "message": "TypeError: cannot read property x of undefined",
   "stack": "at foo (/app/index.js:10:5)",
   "env": "production",
+  "release": "v1.4.2",
   "metadata": { "userId": "abc123" }
 }
 ```
-`message` and `stack` are required strings. `env` and `metadata` are
-optional, unvalidated, and stored as-is on the created `ErrorEvent`
-(`env` as a free-form string, `metadata` as a free-form object) — no
-shape is enforced, per `DATABASE.md`'s locked `ErrorEvent` design.
+`message` and `stack` are required strings. `env`, `metadata`, and
+`release` are optional. `env` is a free-form string label
+(e.g. `"production"`, `"staging"`); `release` is a free-form
+build/version tag (e.g. `"v1.4.2"`, `"abc123"`) — both stored as-is on
+the created `ErrorEvent`, no shape enforced, per `DATABASE.md`'s locked
+`ErrorEvent` design. `release` is additionally captured as
+`ErrorGroup.firstSeenRelease` (insert-only, never overwritten) when the
+event creates a brand-new group, powering the "introduced in vX.Y.Z"
+label on the group detail page. `metadata` is a free-form object.
 
 
 **Success (202):**

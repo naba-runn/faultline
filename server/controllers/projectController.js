@@ -256,6 +256,7 @@ const simulateError = catchAsync(async (req, res) => {
     stack: canned.stack,
     env: 'simulated',
     metadata: { source: 'dashboard-simulate-button' },
+    release: 'v0.0.1-simulated',
   });
 
   sendSuccess(res, 202, {

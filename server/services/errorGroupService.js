@@ -18,7 +18,7 @@ const trendService = require('./trendService');
  * so it can be retried in isolation (see the E11000 handling below)
  * without re-running fingerprinting or the ErrorEvent write.
  */
-async function upsertErrorGroup({ projectId, fingerprint, message, stack, now }) {
+async function upsertErrorGroup({ projectId, fingerprint, message, stack, release, now }) {
   return ErrorGroup.findOneAndUpdate(
     { projectId, fingerprint },
     {
@@ -28,6 +28,10 @@ async function upsertErrorGroup({ projectId, fingerprint, message, stack, now })
         message,
         stackSample: stack,
         firstSeen: now,
+        // Task 31: captured once at group creation, never overwritten by
+        // later duplicates (even if they carry a different release tag).
+        // Powers the "introduced in vX.Y.Z" label on the group detail page.
+        firstSeenRelease: release || null,
         status: 'open',
         statusHistory: [],
         aiSummary: null,
@@ -61,22 +65,23 @@ async function upsertErrorGroup({ projectId, fingerprint, message, stack, now })
  * retry-once on duplicate-key error") for the full reasoning on why
  * once (not a loop, not left unhandled).
  *
- * message/stackSample are only ever set on insert ($setOnInsert) —
- * they're the group's one representative sample, not overwritten by
- * later occurrences. count/lastSeen update on every call regardless.
+ * message/stackSample/firstSeenRelease are only ever set on insert
+ * ($setOnInsert) — they're the group's one representative sample, not
+ * overwritten by later occurrences. count/lastSeen update on every call
+ * regardless.
  */
-async function recordEvent({ projectId, message, stack, env, metadata }) {
+async function recordEvent({ projectId, message, stack, env, metadata, release }) {
   const fingerprint = generateFingerprint({ message, stack });
   const now = new Date();
 
   let result;
   try {
-    result = await upsertErrorGroup({ projectId, fingerprint, message, stack, now });
+    result = await upsertErrorGroup({ projectId, fingerprint, message, stack, release, now });
   } catch (err) {
     if (err.code === 11000) {
       // Retry exactly once — see the doc comment above and
       // DECISIONS.md for why one retry, not a loop or a silent skip.
-      result = await upsertErrorGroup({ projectId, fingerprint, message, stack, now });
+      result = await upsertErrorGroup({ projectId, fingerprint, message, stack, release, now });
     } else {
       throw err;
     }
@@ -90,6 +95,7 @@ async function recordEvent({ projectId, message, stack, env, metadata }) {
     rawStack: stack,
     env,
     metadata,
+    release,
     receivedAt: now,
   });
 
@@ -290,6 +296,10 @@ async function listErrorGroups(projectId, { limit, cursor } = {}) {
       count: group.count,
       firstSeen: group.firstSeen,
       lastSeen: group.lastSeen,
+      // Task 31: included here so the groups list can eventually show
+      // "introduced in vX.Y.Z" if the UI wants it (same additive-only
+      // shape change as aiSummary below — no existing consumer breaks).
+      firstSeenRelease: group.firstSeenRelease || null,
       aiSummary: group.aiSummary
         ? { severity: group.aiSummary.severity, rootCause: group.aiSummary.rootCause }
         : null,
@@ -527,6 +537,15 @@ async function getGroupDetail({ ownerId, groupId }) {
 
   const trend = await computeGroupTrend(group);
 
+  // Task 31: deduplicated list of distinct env values across the
+  // fetched events — surfaced at the group level so the UI can show
+  // "seen in: production, staging" without client-side dedup over the
+  // full events array. Nulls are filtered out (an event with no env
+  // shouldn't produce a visible "null" entry).
+  const environments = [...new Set(
+    events.map((e) => e.env).filter(Boolean)
+  )].sort();
+
   return {
     group: {
       id: group._id,
@@ -539,12 +558,15 @@ async function getGroupDetail({ ownerId, groupId }) {
       count: group.count,
       firstSeen: group.firstSeen,
       lastSeen: group.lastSeen,
+      firstSeenRelease: group.firstSeenRelease || null,
     },
     events: events.map((event) => ({
       id: event._id,
       receivedAt: event.receivedAt,
       env: event.env,
+      release: event.release || null,
     })),
+    environments,
     trend: {
       status: trend.status,
       isSpiking: trend.isSpiking,

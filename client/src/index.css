@@ -427,6 +427,18 @@ table select {
     color: var(--color-text-faint);
 }
 
+/* Task 31: release/environment badges on the group detail page —
+   same visual language as the severity/status/trend badges above. */
+.badge-release {
+    background: var(--color-accent-bg);
+    color: var(--color-accent-strong);
+}
+
+.badge-env {
+    background: var(--color-surface-raised);
+    color: var(--color-text-secondary);
+}
+
 /* ---------- Monospace data ---------- */
 
 .mono {

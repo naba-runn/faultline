@@ -181,6 +181,9 @@ function GroupDetailPage() {
     const [group, setGroup] = useState(null);
     const [events, setEvents] = useState([]);
     const [trend, setTrend] = useState(null);
+    // Task 31: deduplicated env values across all fetched events,
+    // computed server-side (e.g. ["production", "staging"]).
+    const [environments, setEnvironments] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
@@ -194,6 +197,7 @@ function GroupDetailPage() {
             setGroup(res.data.data.group);
             setEvents(res.data.data.events);
             setTrend(res.data.data.trend);
+            setEnvironments(res.data.data.environments || []);
         } catch (err) {
             // docs/API.md: 404 covers not-found, not-yours, and a malformed
             // :id identically — surfaced as-is, same as ProjectDetailPage.
@@ -261,6 +265,14 @@ function GroupDetailPage() {
                     <StatusBadge status={group.status} />
                     {' · '}Seen {group.count} time{group.count === 1 ? '' : 's'}
                     {' · '}First seen {formatDate(group.firstSeen)}
+                    {group.firstSeenRelease && (
+                        <>
+                            {' · '}
+                            <span className="badge badge-release">
+                                introduced in <span className="mono">{group.firstSeenRelease}</span>
+                            </span>
+                        </>
+                    )}
                     {' · '}Last seen {formatDate(group.lastSeen)}
                     {' · '}
                     <span className={`live-indicator${liveConnected ? ' is-connected' : ''}`}>
@@ -268,6 +280,17 @@ function GroupDetailPage() {
                         {liveConnected ? 'live' : 'connecting…'}
                     </span>
                 </p>
+                {environments.length > 0 && (
+                    <p className="topbar-meta">
+                        Environments:{' '}
+                        {environments.map((env, i) => (
+                            <span key={env}>
+                                {i > 0 && ', '}
+                                <span className="badge badge-env">{env}</span>
+                            </span>
+                        ))}
+                    </p>
+                )}
             </header>
 
             <section className="card">
@@ -329,6 +352,7 @@ function GroupDetailPage() {
                             <tr>
                                 <th>Received at</th>
                                 <th>Environment</th>
+                                <th>Release</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -336,6 +360,7 @@ function GroupDetailPage() {
                                 <tr key={event.id}>
                                     <td>{formatDate(event.receivedAt)}</td>
                                     <td className="cell-muted">{event.env || '—'}</td>
+                                    <td className="mono cell-muted">{event.release || '—'}</td>
                                 </tr>
                             ))}
                         </tbody>

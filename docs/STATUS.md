@@ -14,7 +14,7 @@
 - **Milestone 4 — Dashboard Auth & Core Pages:** COMPLETE (4/4 tasks)
 - **Milestone 5 — Detail View & Polish:** IN PROGRESS (5/6 tasks — 19, 20, 21, 22, 23 done)
 - **Milestone 6 — Reliability & Real-Time Infrastructure:** COMPLETE (3/3 tasks — 25, 26, 27 all done and confirmed)
-- **Milestone 7 — Alerting & Insights:** IN PROGRESS (3/5 tasks — Tasks 28, 29, and 30 done and fully verified live)
+- **Milestone 7 — Alerting & Insights:** IN PROGRESS (4/5 tasks — Tasks 28, 29, 30, and 31 done and fully verified)
 - **Milestone 8 — Product Polish & Growth:** NOT STARTED (0/4 tasks)
 - **Milestone 9 — Ship:** NOT STARTED (0/1 task — original Task 24, renumbered to Task 37)
 
@@ -30,24 +30,11 @@ that would duplicate `TASKS.md`.
 ## What's Actively In Progress
 
 Nothing mid-implementation as of this pass. Most recently done:
-**Task 30 — Spike-triggered alerts — confirmed live by the user
-against the real running app, including a real bug found and fixed
-mid-verification.**
+**Task 31 — Multi-environment / release tagging — complete and verified with automated tests and manual curl/simulate testing.**
 
-- **Design.** Extends Task 28's delivery infra (`alertQueue.js`,
-  `alertService.js`, `worker.js`'s `processAlertJob`) with Task 29's
-  `computeTrend` as a third trigger. Unlike new-group/severity-threshold
-  (each a clean one-shot event), spike detection has no natural trigger
-  point — `computeTrend` is a snapshot query, not an event. Chosen
-  design (four options considered and compared — see `DECISIONS.md`'s
-  "Task 30" entry for the full comparison, including why a
-  scheduled/polling job and Redis-based live counters were both
-  rejected): re-evaluate on every `ErrorEvent` write, fire-and-forget,
-  gated by a per-group cooldown (`ErrorGroup.trendLastCheckedAt`), with
-  persisted state (`ErrorGroup.isSpiking`) so an alert only fires on
-  the genuine `false → true` transition — never on every event while a
-  group stays above threshold. The transition check itself is an
-  atomic `findOneAndUpdate({ isSpiking: { $ne: true } })`, so two
+- **Design.** Uses `ErrorEvent.env` meaningfully (surfaced per-event and aggregated into `environments` array on group detail) and adds free-form `release` field (e.g. `"v1.4.2"`). First event creating an `ErrorGroup` captures `firstSeenRelease` via `$setOnInsert` (never overwritten).
+- **UI.** Surfaces "introduced in vX.Y.Z" badge in header, "Environments" list below header, and a "Release" column in recent events table on `GroupDetailPage.jsx`.
+- **Docs & Tests.** Documented in `API.md` and `DATABASE.md`. 3 new/updated unit tests in `errorGroupService.test.js` (all 30 tests passing). Verified end-to-end.
   near-simultaneous events for the same group crossing the threshold
   around the same moment can't both fire an alert. Recovery
   (`true → false`) is silent by design — the user explicitly confirmed

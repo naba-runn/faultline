@@ -30,6 +30,7 @@ function reportToFaultline(err) {
       message: err.message,
       stack: err.stack,
       env: process.env.NODE_ENV || 'development',
+      release: process.env.npm_package_version || '0.1.0',
       metadata: { source: 'demo-app' },
     }),
   })

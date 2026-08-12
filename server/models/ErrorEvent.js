@@ -19,11 +19,23 @@ const errorEventSchema = new mongoose.Schema(
       type: String,
       required: [true, 'rawStack is required'],
     },
-    // Accepted but unvalidated per API.md ("env and metadata are
-    // accepted but currently unused") — no enum locked in anywhere,
-    // so none is invented here. Free-form caller-supplied label
-    // (e.g. "production", "staging").
+    // Task 31: now actively used — surfaced on the group detail page's
+    // events table and aggregated into a per-group `environments`
+    // array. Still free-form, no enum — callers can send whatever
+    // label they use (e.g. "production", "staging", "canary").
     env: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: 50,
+    },
+    // Task 31: free-form build/version tag (e.g. "v1.4.2", "abc123",
+    // "2026.08.13"). `env` answers "which deployment," `release`
+    // answers "which build." Same constraints as env — no enum, no
+    // validation beyond maxlength. Surfaced per-event in the group
+    // detail page and, via ErrorGroup.firstSeenRelease, as "introduced
+    // in vX.Y.Z" on new groups.
+    release: {
       type: String,
       trim: true,
       default: null,

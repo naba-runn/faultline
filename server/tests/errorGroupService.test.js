@@ -396,13 +396,15 @@ test('enrichErrorGroup: Gemini call throws — propagates to the caller (Task 25
   );
 });
 
-test('recordEvent: message/stackSample only ever go through $setOnInsert, never $set', async () => {
+test('recordEvent: message/stackSample/firstSeenRelease only ever go through $setOnInsert, never $set', async () => {
   await withMockedModels(
     {
       findOneAndUpdate: async (filter, update) => {
         assert.equal(update.$set.message, undefined);
         assert.equal(update.$set.stackSample, undefined);
+        assert.equal(update.$set.firstSeenRelease, undefined);
         assert.equal(update.$setOnInsert.message, 'Error: only-on-insert check');
+        assert.equal(update.$setOnInsert.firstSeenRelease, 'v2.0.0');
         return {
           value: { _id: fakeObjectId('setoninsert-check'), count: 1 },
           lastErrorObject: { upserted: fakeObjectId('setoninsert-check') },
@@ -417,7 +419,80 @@ test('recordEvent: message/stackSample only ever go through $setOnInsert, never 
         stack: 'at qux (/app/server/index.js:4:4)',
         env: 'test',
         metadata: {},
+        release: 'v2.0.0',
       });
+    }
+  );
+});
+
+// --- Task 31: release flow ---
+
+test('recordEvent: release flows through to upsert ($setOnInsert.firstSeenRelease) and ErrorEvent.create', async () => {
+  const groupId = fakeObjectId('release-group');
+  let upsertUpdate = null;
+  let createdDoc = null;
+
+  await withMockedModels(
+    {
+      findOneAndUpdate: async (filter, update) => {
+        upsertUpdate = update;
+        return {
+          value: { _id: groupId, count: 1 },
+          lastErrorObject: { updatedExisting: false, upserted: groupId },
+        };
+      },
+      create: async (doc) => {
+        createdDoc = doc;
+        return { _id: fakeObjectId('event-release'), ...doc };
+      },
+    },
+    async () => {
+      await recordEvent({
+        projectId: 'project-1',
+        message: 'Error: release test',
+        stack: 'at baz (/app/server/index.js:5:5)',
+        env: 'staging',
+        metadata: {},
+        release: 'v1.4.2',
+      });
+
+      assert.equal(upsertUpdate.$setOnInsert.firstSeenRelease, 'v1.4.2');
+      assert.equal(createdDoc.release, 'v1.4.2');
+      assert.equal(createdDoc.env, 'staging');
+    }
+  );
+});
+
+test('recordEvent: release defaults to null in $setOnInsert when not provided', async () => {
+  const groupId = fakeObjectId('no-release-group');
+  let upsertUpdate = null;
+  let createdDoc = null;
+
+  await withMockedModels(
+    {
+      findOneAndUpdate: async (filter, update) => {
+        upsertUpdate = update;
+        return {
+          value: { _id: groupId, count: 1 },
+          lastErrorObject: { updatedExisting: false, upserted: groupId },
+        };
+      },
+      create: async (doc) => {
+        createdDoc = doc;
+        return { _id: fakeObjectId('event-no-release'), ...doc };
+      },
+    },
+    async () => {
+      await recordEvent({
+        projectId: 'project-1',
+        message: 'Error: no release test',
+        stack: 'at baz (/app/server/index.js:6:6)',
+        env: 'production',
+        metadata: {},
+      });
+
+      assert.equal(upsertUpdate.$setOnInsert.firstSeenRelease, null);
+      assert.equal(createdDoc.release, undefined, 'release should be undefined (not passed), falling to model default');
     }
   );
 });
@@ -493,6 +568,7 @@ test('listErrorGroups: shapes each group, omitting stackSample, nulls aiSummary 
       count: 3,
       firstSeen: new Date('2026-01-01'),
       lastSeen: new Date('2026-01-05'),
+      firstSeenRelease: null,
       aiSummary: null,
     });
     assert.equal('stackSample' in result.groups[0], false);
@@ -759,8 +835,8 @@ test('getGroupDetail: owned group — returns full group shape (incl. projectId 
     lastSeen: new Date('2026-01-03'),
   };
   const fakeEvents = [
-    { _id: fakeObjectId('event-2'), receivedAt: new Date('2026-01-03'), env: 'production', rawStack: 'irrelevant' },
-    { _id: fakeObjectId('event-1'), receivedAt: new Date('2026-01-01'), env: null, rawStack: 'irrelevant' },
+    { _id: fakeObjectId('event-2'), receivedAt: new Date('2026-01-03'), env: 'production', release: 'v1.0.0', rawStack: 'irrelevant' },
+    { _id: fakeObjectId('event-1'), receivedAt: new Date('2026-01-01'), env: null, release: null, rawStack: 'irrelevant' },
   ];
   // firstSeen (2026-01-01) is well over 24h before "now" in any real
   // test run, so this exercises the 'ok' branch (sufficient history),
@@ -831,12 +907,18 @@ test('getGroupDetail: owned group — returns full group shape (incl. projectId 
       assert.equal(result.group.aiSummary.confidence, 0.8);
       assert.equal(result.group.aiSummary.affectedFile, 'index.js');
       assert.equal(result.group.count, 3);
+      // Task 31: firstSeenRelease defaults to null when not on the fake group.
+      assert.equal(result.group.firstSeenRelease, null);
 
-      // Events shaped down to id/receivedAt/env — rawStack not exposed.
+      // Events shaped down to id/receivedAt/env/release — rawStack not exposed.
       assert.equal(result.events.length, 2);
       assert.equal(result.events[0].id, fakeObjectId('event-2'));
       assert.equal(result.events[0].env, 'production');
+      assert.equal(result.events[0].release, 'v1.0.0');
       assert.equal(result.events[0].rawStack, undefined);
+
+      // Task 31: environments — deduplicated, sorted, nulls filtered.
+      assert.deepEqual(result.environments, ['production']);
 
       // Trend: firstSeen is old enough (well over 24h before real
       // "now"), so this is a legitimate zero-event-window baseline —

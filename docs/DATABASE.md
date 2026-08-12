@@ -170,6 +170,11 @@ const errorGroupSchema = new mongoose.Schema(
       required: true,
       default: Date.now,
     },
+    firstSeenRelease: {
+      type: String,
+      trim: true,
+      default: null,
+    },
   },
   {
     // No { timestamps: true } — firstSeen/lastSeen already cover that
@@ -218,6 +223,12 @@ const errorEventSchema = new mongoose.Schema({
     required: [true, 'rawStack is required'],
   },
   env: {
+    type: String,
+    default: null,
+    trim: true,
+    maxlength: 50,
+  },
+  release: {
     type: String,
     default: null,
     trim: true,

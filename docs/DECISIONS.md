@@ -1561,6 +1561,12 @@ controller-level tests for any project route).
 Chronological, most-recent-first, entries with no dedicated decision
 above. Migrated from `CHANGELOG.md`.
 
+- **Task 31** — Multi-environment / release tagging (`env` answer "which deployment", `release` answers "which build").
+  - `ErrorEvent.release`: free-form string tag (e.g. `"v1.4.2"`).
+  - `ErrorGroup.firstSeenRelease`: set via `$setOnInsert` on group creation, never overwritten by subsequent duplicate events.
+  - `getGroupDetail`: returns `firstSeenRelease` on group, `release` per event, and server-side deduplicated/sorted `environments` array.
+  - `GroupDetailPage.jsx`: surfaces "introduced in vX.Y.Z" header badge, "Environments" list, and "Release" table column.
+
 - **Task 30** — Spike-triggered alerts, extending Task 28's delivery
   infra with Task 29's `computeTrend` as a third trigger.
   **Trigger design — four options considered:**

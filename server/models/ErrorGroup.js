@@ -82,6 +82,16 @@ const errorGroupSchema = new mongoose.Schema(
       required: true,
       default: Date.now,
     },
+    // Task 31: the release tag from the very first event that created
+    // this group — set via $setOnInsert in the upsert (same insert-only
+    // semantics as message/stackSample), never overwritten by later
+    // duplicate events that may carry a different release. Powers the
+    // "introduced in vX.Y.Z" label on the group detail page.
+    firstSeenRelease: {
+      type: String,
+      trim: true,
+      default: null,
+    },
     // Task 30: persisted spike-alert state — deliberately separate
     // from anything Task 29.2's on-demand trend badge reads (that
     // badge always computes fresh via trendService.computeTrend, never

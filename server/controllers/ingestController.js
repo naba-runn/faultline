@@ -28,7 +28,7 @@ const MAX_STACK_LENGTH = 10000;
  * in this file.
  */
 const ingestEvent = catchAsync(async (req, res) => {
-  const { message, stack, env, metadata } = req.body;
+  const { message, stack, env, metadata, release } = req.body;
 
   if (!message || typeof message !== 'string') {
     return sendError(res, 400, 'message is required and must be a string');
@@ -64,6 +64,7 @@ const ingestEvent = catchAsync(async (req, res) => {
       stack,
       env,
       metadata,
+      release,
     }));
   } catch (err) {
     // Local catch kept deliberately (not just a bare catchAsync
