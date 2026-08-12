@@ -39,9 +39,10 @@ function StatusBadge({ status }) {
 function TrendBadge({ trend }) {
     if (!trend || trend.status === 'insufficient_history') {
         return (
-            <span className="badge badge-trend-insufficient">
-                not enough history yet
-            </span>
+            <div className="trend-stat-row">
+                <span className="badge badge-trend-insufficient">Insufficient history</span>
+                <span className="cell-muted" style={{ fontSize: '0.78rem' }}>Collecting 24h baseline...</span>
+            </div>
         );
     }
 
@@ -50,23 +51,31 @@ function TrendBadge({ trend }) {
 
     if (trend.isSpiking) {
         return (
-            <span className="badge badge-trend-spiking">
-                spiking — {trend.currentHourCount} this hour vs {rateLabel}/hr baseline
-            </span>
+            <div className="trend-stat-row">
+                <span className="badge badge-trend-spiking">
+                    ⚡ SPIKING — {trend.currentHourCount} events this hour
+                </span>
+                <span className="cell-muted mono" style={{ fontSize: '0.78rem' }}>
+                    vs {rateLabel}/hr baseline
+                </span>
+            </div>
         );
     }
 
     return (
-        <span className="badge badge-trend-normal">
-            normal — {trend.currentHourCount} this hour vs {rateLabel}/hr baseline
-        </span>
+        <div className="trend-stat-row">
+            <span className="badge badge-trend-normal">
+                NORMAL — {trend.currentHourCount} events this hour
+            </span>
+            <span className="cell-muted mono" style={{ fontSize: '0.78rem' }}>
+                vs {rateLabel}/hr baseline
+            </span>
+        </div>
     );
 }
 
 // Buckets the (already-capped, most-recent-first) events by calendar
-// day, ascending, for the sparkline. This only ever sees the same
-// window of events the page already fetched — it does not requery the
-// server for the group's full lifetime history.
+// day, ascending, for the sparkline.
 function buildSparklineBuckets(events) {
     if (events.length === 0) return [];
 
@@ -81,11 +90,6 @@ function buildSparklineBuckets(events) {
         .map(([day, count]) => ({ day, count }));
 }
 
-// Minimal hand-rolled inline SVG line — no charting library added for
-// one sparkline (client/package.json has none; adding one would be
-// exactly the kind of unprompted dependency PROJECT_RULES.md §2 rules
-// out). Colors deliberately left to `currentColor`, which now resolves
-// to the accent teal via the .sparkline-wrap class (Task 23's theme).
 function Sparkline({ buckets }) {
     if (buckets.length === 0) {
         return <p className="cell-muted">No event data to chart yet.</p>;
@@ -93,39 +97,58 @@ function Sparkline({ buckets }) {
 
     if (buckets.length === 1) {
         return (
-            <p className="cell-muted">
-                Only one day of data in the current window ({buckets[0].count} event
-                {buckets[0].count === 1 ? '' : 's'} on {buckets[0].day}) — not enough to
-                show a trend line yet.
-            </p>
+            <div className="sparkline-single-day">
+                <span className="stat-value" style={{ fontSize: '1.4rem' }}>{buckets[0].count}</span>
+                <span className="cell-muted" style={{ fontSize: '0.8rem' }}>
+                    event{buckets[0].count === 1 ? '' : 's'} recorded on {buckets[0].day}
+                </span>
+            </div>
         );
     }
 
-    const width = 300;
-    const height = 60;
+    const width = 340;
+    const height = 90;
     const maxCount = Math.max(...buckets.map((bucket) => bucket.count));
     const stepX = width / (buckets.length - 1);
 
     const points = buckets
         .map((bucket, index) => {
             const x = index * stepX;
-            // Headroom so the max-value point isn't clipped at the top edge.
-            const y = height - (bucket.count / maxCount) * (height - 10) - 5;
+            const y = height - (bucket.count / maxCount) * (height - 18) - 8;
             return `${x},${y}`;
         })
         .join(' ');
 
+    const areaPoints = `0,${height} ${points} ${width},${height}`;
+
     return (
-        <div className="sparkline-wrap">
+        <div className="sparkline-enhanced-wrap">
+            <div className="sparkline-header-meta mono">
+                <span>Peak: <strong>{maxCount} events/day</strong></span>
+                <span>Range: <strong>{buckets.length} days</strong></span>
+            </div>
             <svg
                 viewBox={`0 0 ${width} ${height}`}
-                width={width}
+                width="100%"
                 height={height}
                 role="img"
                 aria-label="Event count per day"
+                className="sparkline-svg"
             >
-                <polyline points={points} fill="none" stroke="currentColor" strokeWidth="2" />
+                <defs>
+                    <linearGradient id="sparkline-grad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="var(--color-accent)" stopOpacity="0.25" />
+                        <stop offset="100%" stopColor="var(--color-accent)" stopOpacity="0.0" />
+                    </linearGradient>
+                </defs>
+                <line x1="0" y1={height - 1} x2={width} y2={height - 1} stroke="var(--color-border)" strokeWidth="1" />
+                <polygon points={areaPoints} fill="url(#sparkline-grad)" />
+                <polyline points={points} fill="none" stroke="var(--color-accent)" strokeWidth="2.5" />
             </svg>
+            <div className="sparkline-footer-meta mono cell-muted">
+                <span>{buckets[0].day}</span>
+                <span>{buckets[buckets.length - 1].day}</span>
+            </div>
         </div>
     );
 }
@@ -289,63 +312,63 @@ function GroupDetailPage() {
                 </div>
             </header>
 
-            {/* AI Analysis Hero Section */}
-            <section className="card card-ai-hero">
-                <div className="card-header-bar">
-                    <h2>🧠 AI Root-Cause Intelligence</h2>
-                    {aiSummary && (
-                        <div className="ai-confidence-pill mono">
-                            <span>Confidence: <strong>{typeof aiSummary.confidence === 'number' ? `${Math.round(aiSummary.confidence * 100)}%` : '—'}</strong></span>
+            {/* 2-Column Top Viewport Grid for AI Intelligence & Event Trend */}
+            <div className="group-detail-top-grid">
+                {/* AI Analysis Hero Section */}
+                <section className="card card-ai-hero" style={{ margin: 0 }}>
+                    <div className="card-header-bar">
+                        <h2>🧠 AI Root-Cause Intelligence</h2>
+                        {aiSummary && (
+                            <div className="ai-confidence-pill mono">
+                                <span>Confidence: <strong>{typeof aiSummary.confidence === 'number' ? `${Math.round(aiSummary.confidence * 100)}%` : '—'}</strong></span>
+                            </div>
+                        )}
+                    </div>
+
+                    {aiSummary ? (
+                        <div className="ai-content">
+                            {aiSummary.affectedFile && (
+                                <div className="ai-target-box mono">
+                                    <span className="target-label">GROUNDED CODE TARGET:</span>
+                                    <span className="target-file">{aiSummary.affectedFile}</span>
+                                    {aiSummary.affectedFunction && <span className="target-func">({aiSummary.affectedFunction})</span>}
+                                </div>
+                            )}
+                            
+                            <div className="ai-root-cause">
+                                <h3 className="sub-heading">Root Cause Summary</h3>
+                                <p className="root-cause-text">{aiSummary.rootCause}</p>
+                            </div>
+
+                            {aiSummary.suggestedFix && aiSummary.suggestedFix.length > 0 && (
+                                <div className="ai-checklist-wrap" style={{ marginTop: '1.25rem' }}>
+                                    <h3 className="sub-heading">Suggested Remediation Checklist</h3>
+                                    <AiChecklist suggestedFix={aiSummary.suggestedFix} />
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="ai-loading-skeleton">
+                            <span className="live-indicator-dot" style={{ background: 'var(--color-warning)' }} />
+                            <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
+                                <strong>AI Analysis Enqueued</strong> — Background worker process is analyzing stack trace and grounding with GitHub code context...
+                            </p>
                         </div>
                     )}
-                </div>
+                </section>
 
-                {aiSummary ? (
-                    <div className="ai-content">
-                        {aiSummary.affectedFile && (
-                            <div className="ai-target-box mono">
-                                <span className="target-label">AFFECTED LOCATION:</span>
-                                <span className="target-file">{aiSummary.affectedFile}</span>
-                                {aiSummary.affectedFunction && <span className="target-func">({aiSummary.affectedFunction})</span>}
-                            </div>
-                        )}
-                        
-                        <div className="ai-root-cause">
-                            <h3 className="sub-heading">Root Cause Summary</h3>
-                            <p className="root-cause-text">{aiSummary.rootCause}</p>
-                        </div>
-
-                        {aiSummary.suggestedFix && aiSummary.suggestedFix.length > 0 && (
-                            <div className="ai-checklist-wrap" style={{ marginTop: '1.25rem' }}>
-                                <h3 className="sub-heading">Suggested Remediation Checklist</h3>
-                                <AiChecklist suggestedFix={aiSummary.suggestedFix} />
-                                <p className="cell-muted" style={{ fontSize: '0.78rem', marginTop: '0.6rem' }}>
-                                    <em>Checklist state is local to this session — interactive helper tool.</em>
-                                </p>
-                            </div>
-                        )}
+                {/* Activity & Trend Section */}
+                <section className="card" style={{ margin: 0 }}>
+                    <div className="card-header-bar">
+                        <h2>📈 Event Volume & Trend</h2>
+                        <TrendBadge trend={trend} />
                     </div>
-                ) : (
-                    <div className="ai-loading-skeleton">
-                        <span className="live-indicator-dot" style={{ background: 'var(--color-warning)' }} />
-                        <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
-                            <strong>AI Analysis Enqueued</strong> — Background worker process is analyzing stack trace and grounding with GitHub code context...
-                        </p>
-                    </div>
-                )}
-            </section>
-
-            {/* Activity & Trend Section */}
-            <section className="card">
-                <div className="card-header-bar">
-                    <h2>📈 Event Volume & Anomaly Trend</h2>
-                    <TrendBadge trend={trend} />
-                </div>
-                <p className="cell-muted" style={{ fontSize: '0.82rem', marginBottom: '1rem' }}>
-                    Trailing 24-hour event frequency evaluation — showing last {events.length} occurrence{events.length === 1 ? '' : 's'} fetched.
-                </p>
-                <Sparkline buckets={buckets} />
-            </section>
+                    <p className="cell-muted" style={{ fontSize: '0.82rem', marginBottom: '1rem' }}>
+                        Trailing 24-hour event frequency evaluation — showing last {events.length} occurrence{events.length === 1 ? '' : 's'} fetched.
+                    </p>
+                    <Sparkline buckets={buckets} />
+                </section>
+            </div>
 
             {/* Stack Trace Section */}
             {(() => {

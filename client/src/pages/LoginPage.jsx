@@ -74,12 +74,6 @@ function LoginPage() {
                 <div className="auth-footer">
                     <span>Don't have an account?</span> <Link to="/register" className="auth-link">Register</Link>
                 </div>
-
-                <div className="auth-features">
-                    <span className="feature-pill">⚡ Real-time Ingestion</span>
-                    <span className="feature-pill">🧠 AI Root-Cause</span>
-                    <span className="feature-pill">📡 Live SSE Stream</span>
-                </div>
             </div>
         </div>
     );

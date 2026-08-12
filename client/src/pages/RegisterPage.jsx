@@ -84,12 +84,6 @@ function RegisterPage() {
                 <div className="auth-footer">
                     <span>Already have an account?</span> <Link to="/login" className="auth-link">Log in</Link>
                 </div>
-
-                <div className="auth-features">
-                    <span className="feature-pill">⚡ Real-time Ingestion</span>
-                    <span className="feature-pill">🧠 AI Root-Cause</span>
-                    <span className="feature-pill">📡 Live SSE Stream</span>
-                </div>
             </div>
         </div>
     );
