@@ -184,6 +184,8 @@ function GroupDetailPage() {
     // Task 31: deduplicated env values across all fetched events,
     // computed server-side (e.g. ["production", "staging"]).
     const [environments, setEnvironments] = useState([]);
+    // Task 32: toggle between resolved source stack trace and raw minified stack
+    const [showRawStack, setShowRawStack] = useState(false);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
@@ -368,8 +370,58 @@ function GroupDetailPage() {
                 </div>
             )}
 
-            <h2>Stack sample</h2>
-            <pre className="stack-sample">{group.stackSample}</pre>
+            {(() => {
+                const hasResolvedFrames = group.resolvedStack && group.resolvedStack.some((f) => f.resolved);
+                return (
+                    <section className="card stack-card">
+                        <div className="stack-header">
+                            <h2>Stack sample</h2>
+                            {hasResolvedFrames && (
+                                <div className="stack-toggle">
+                                    <span className="badge badge-sourcemap">Source map resolved</span>
+                                    <button
+                                        type="button"
+                                        className={`btn-tab ${!showRawStack ? 'active' : ''}`}
+                                        onClick={() => setShowRawStack(false)}
+                                    >
+                                        Resolved source
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={`btn-tab ${showRawStack ? 'active' : ''}`}
+                                        onClick={() => setShowRawStack(true)}
+                                    >
+                                        Raw stack
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        {!showRawStack && hasResolvedFrames ? (
+                            <div className="resolved-stack-wrap">
+                                {group.resolvedStack.map((frame, idx) => (
+                                    <div key={idx} className={`resolved-frame ${frame.resolved ? 'is-resolved' : 'is-unresolved'}`}>
+                                        {frame.resolved ? (
+                                            <>
+                                                <span className="frame-func">at {frame.originalFunctionName || 'anonymous'}</span>
+                                                <span className="frame-loc">({frame.originalFile}:{frame.originalLine}:{frame.originalColumn})</span>
+                                                <span className="frame-raw-muted">from {frame.file}:{frame.line}:{frame.column}</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <span className="frame-func">at {frame.functionName || 'anonymous'}</span>
+                                                <span className="frame-loc">({frame.file}:{frame.line}:{frame.column})</span>
+                                            </>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <pre className="stack-sample">{group.stackSample}</pre>
+                        )}
+                    </section>
+                );
+            })()}
         </div>
     );
 }

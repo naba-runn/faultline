@@ -14,8 +14,8 @@
 - **Milestone 4 — Dashboard Auth & Core Pages:** COMPLETE (4/4 tasks)
 - **Milestone 5 — Detail View & Polish:** IN PROGRESS (5/6 tasks — 19, 20, 21, 22, 23 done)
 - **Milestone 6 — Reliability & Real-Time Infrastructure:** COMPLETE (3/3 tasks — 25, 26, 27 all done and confirmed)
-- **Milestone 7 — Alerting & Insights:** IN PROGRESS (4/5 tasks — Tasks 28, 29, 30, and 31 done and fully verified)
-- **Milestone 8 — Product Polish & Growth:** NOT STARTED (0/4 tasks)
+- **Milestone 7 — Alerting & Insights:** COMPLETE (5/5 tasks — Tasks 28, 29, 30, 31, and 32 done and fully verified)
+- **Milestone 8 — Product Polish & Growth:** IN PROGRESS (2/4 tasks — Tasks 33 and 34 done)
 - **Milestone 9 — Ship:** NOT STARTED (0/1 task — original Task 24, renumbered to Task 37)
 
 Milestones 6-9 are a scope expansion agreed on after Task 23, before
@@ -30,11 +30,12 @@ that would duplicate `TASKS.md`.
 ## What's Actively In Progress
 
 Nothing mid-implementation as of this pass. Most recently done:
-**Task 31 — Multi-environment / release tagging — complete and verified with automated tests and manual curl/simulate testing.**
+**Task 34 — SDK snippet generator — complete and verified.**
 
-- **Design.** Uses `ErrorEvent.env` meaningfully (surfaced per-event and aggregated into `environments` array on group detail) and adds free-form `release` field (e.g. `"v1.4.2"`). First event creating an `ErrorGroup` captures `firstSeenRelease` via `$setOnInsert` (never overwritten).
-- **UI.** Surfaces "introduced in vX.Y.Z" badge in header, "Environments" list below header, and a "Release" column in recent events table on `GroupDetailPage.jsx`.
-- **Docs & Tests.** Documented in `API.md` and `DATABASE.md`. 3 new/updated unit tests in `errorGroupService.test.js` (all 30 tests passing). Verified end-to-end.
+- **Component.** Built `SdkSnippetGenerator.jsx` component providing copyable onboarding code snippets for cURL, Node.js/Express, and Python.
+- **Dashboard Integration.** Embedded in `DashboardPage.jsx` for new project creation (pre-filled with the new raw API key `flt_...`) and as an expandable drawer per project in "Your projects".
+- **Project Detail Integration.** Embedded as an expandable "SDK Setup / Snippet" card on `ProjectDetailPage.jsx`.
+- **Styling & Tests.** Added styles in `index.css` with 1-click clipboard copy feedback ("Copied!"). Verified 49/49 server unit tests passing cleanly.
   near-simultaneous events for the same group crossing the threshold
   around the same moment can't both fire an alert. Recovery
   (`true → false`) is silent by design — the user explicitly confirmed

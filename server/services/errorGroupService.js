@@ -4,6 +4,7 @@ const ErrorEvent = require('../models/ErrorEvent');
 const Project = require('../models/Project');
 const { generateFingerprint } = require('./fingerprintService');
 const { normalizeStack } = require('../utils/stackNormalizer');
+const sourceMapService = require('./sourceMapService');
 // Required as namespace objects, not destructured — same reasoning as
 // ErrorGroup/ErrorEvent above: tests mock these by reassigning the
 // object's own methods, which only works if this file calls through
@@ -253,7 +254,7 @@ function decodeCursor(cursor) {
  * pages. `_id` is guaranteed unique and monotonically ordered by
  * insertion, so it's a correct tie-breaker.
  */
-async function listErrorGroups(projectId, { limit, cursor } = {}) {
+async function listErrorGroups(projectId, { limit, cursor, status, search, severity } = {}) {
   let pageSize = DEFAULT_PAGE_SIZE;
   if (limit !== undefined) {
     const parsedLimit = Number(limit);
@@ -264,6 +265,22 @@ async function listErrorGroups(projectId, { limit, cursor } = {}) {
   }
 
   const filter = { projectId };
+
+  // Task 33: Filter by status ('open', 'resolved', 'ignored')
+  if (status && status !== 'all') {
+    filter.status = status;
+  }
+
+  // Task 33: Filter by severity ('low', 'medium', 'high', 'critical')
+  if (severity && severity !== 'all') {
+    filter['aiSummary.severity'] = severity;
+  }
+
+  // Task 33: Search filter matching error message (case-insensitive)
+  if (search && typeof search === 'string' && search.trim() !== '') {
+    const escapedSearch = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    filter.message = { $regex: escapedSearch, $options: 'i' };
+  }
 
   if (cursor !== undefined) {
     const { lastSeen, id } = decodeCursor(cursor);
@@ -537,6 +554,14 @@ async function getGroupDetail({ ownerId, groupId }) {
 
   const trend = await computeGroupTrend(group);
 
+  // Task 32: resolve stack trace using any uploaded source maps for this project/release.
+  // Display-only — raw stackSample and fingerprinting remain unchanged.
+  const resolvedStack = await sourceMapService.resolveStack({
+    projectId: group.projectId,
+    stack: group.stackSample,
+    release: group.firstSeenRelease,
+  });
+
   // Task 31: deduplicated list of distinct env values across the
   // fetched events — surfaced at the group level so the UI can show
   // "seen in: production, staging" without client-side dedup over the
@@ -559,6 +584,7 @@ async function getGroupDetail({ ownerId, groupId }) {
       firstSeen: group.firstSeen,
       lastSeen: group.lastSeen,
       firstSeenRelease: group.firstSeenRelease || null,
+      resolvedStack,
     },
     events: events.map((event) => ({
       id: event._id,

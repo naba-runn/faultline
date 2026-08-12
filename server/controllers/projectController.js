@@ -194,6 +194,9 @@ const listProjectGroups = catchAsync(async (req, res) => {
     result = await errorGroupService.listErrorGroups(req.params.id, {
       limit: req.query.limit,
       cursor: req.query.cursor,
+      status: req.query.status,
+      search: req.query.search || req.query.query,
+      severity: req.query.severity,
     });
   } catch (err) {
     if (err.message === 'INVALID_CURSOR') {

@@ -2,12 +2,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import api from '../api/axios.js';
+import SdkSnippetGenerator from '../components/SdkSnippetGenerator.jsx';
 
 // Real dashboard (Task 17), replacing Task 16's placeholder. Lists the
 // user's projects (GET /api/projects) and lets them create a new one
 // (POST /api/projects) — the only way to get a project + API key into
 // the system at all, so it belongs here rather than waiting for a
-// later task.
+// later task. Task 34 adds the SDK snippet generator for onboarding.
 function DashboardPage() {
     const { user, logout } = useAuth();
 
@@ -23,6 +24,8 @@ function DashboardPage() {
     // (docs/API.md: "returned exactly once — it is not recoverable
     // afterward") would otherwise be lost forever.
     const [newApiKey, setNewApiKey] = useState(null);
+    const [newProjectName, setNewProjectName] = useState('');
+    const [selectedSnippetProjectId, setSelectedSnippetProjectId] = useState(null);
 
     const fetchProjects = useCallback(async () => {
         setLoading(true);
@@ -46,6 +49,7 @@ function DashboardPage() {
         setCreateError('');
         setCreating(true);
         setNewApiKey(null);
+        setNewProjectName('');
 
         try {
             const res = await api.post('/projects', {
@@ -58,6 +62,7 @@ function DashboardPage() {
             const { project, apiKey } = res.data.data;
             setProjects((prev) => [project, ...prev]);
             setNewApiKey(apiKey);
+            setNewProjectName(project.name);
             setName('');
             setGithubRepo('');
         } catch (err) {
@@ -110,9 +115,15 @@ function DashboardPage() {
                 </form>
 
                 {newApiKey && (
-                    <div className="alert alert-info" role="alert">
-                        <strong>Save this API key now — it will not be shown again:</strong>
+                    <div className="alert alert-info" role="alert" style={{ marginTop: '1.25rem' }}>
+                        <p style={{ margin: '0 0 0.5rem 0' }}>
+                            <strong>Save this API key now — it will not be shown again:</strong>
+                        </p>
                         <code className="api-key-reveal">{newApiKey}</code>
+                        <div style={{ marginTop: '1rem' }}>
+                            <strong>SDK Setup Snippet:</strong>
+                            <SdkSnippetGenerator apiKey={newApiKey} projectName={newProjectName} />
+                        </div>
                     </div>
                 )}
             </section>
@@ -131,6 +142,7 @@ function DashboardPage() {
                                 <tr>
                                     <th>Project</th>
                                     <th>Repo</th>
+                                    <th>Onboarding</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -140,6 +152,24 @@ function DashboardPage() {
                                             <Link to={`/projects/${project.id}`}>{project.name}</Link>
                                         </td>
                                         <td className="cell-muted">{project.githubRepo || '—'}</td>
+                                        <td>
+                                            <button
+                                                type="button"
+                                                className="btn-tab"
+                                                onClick={() =>
+                                                    setSelectedSnippetProjectId(
+                                                        selectedSnippetProjectId === project.id ? null : project.id
+                                                    )
+                                                }
+                                            >
+                                                {selectedSnippetProjectId === project.id ? 'Hide snippet' : 'SDK snippet'}
+                                            </button>
+                                            {selectedSnippetProjectId === project.id && (
+                                                <div style={{ marginTop: '0.5rem' }}>
+                                                    <SdkSnippetGenerator projectName={project.name} />
+                                                </div>
+                                            )}
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>

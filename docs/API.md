@@ -160,6 +160,69 @@ Requires auth: `Authorization: Bearer <token>`.
 |---|---|---|
 | 404 | Same three cases as GET | `{ "success": false, "error": "Project not found" }` |
 
+### `POST /api/projects/:id/sourcemaps`
+
+Task 32: Uploads or updates a source map for a project.
+Requires auth: `Authorization: Bearer <token>` (JWT dashboard user) OR `Authorization: Bearer <apiKey>` (API key).
+
+**Request body:**
+```json
+{
+  "filename": "app.min.js",
+  "release": "v1.4.2",
+  "map": {
+    "version": 3,
+    "sources": ["src/utils/calculator.js"],
+    "names": ["addNumbers"],
+    "mappings": "yBAaQA",
+    "file": "app.min.js"
+  }
+}
+```
+`filename` and `map` (valid Source Map v3 object or JSON string) are required. `release` is optional.
+
+**Success (201):**
+```json
+{
+  "success": true,
+  "data": {
+    "sourceMap": {
+      "id": "...",
+      "filename": "app.min.js",
+      "release": "v1.4.2",
+      "uploadedAt": "..."
+    }
+  }
+}
+```
+
+### `GET /api/projects/:id/sourcemaps`
+
+Task 32: Lists metadata of all uploaded source maps for a project.
+Requires auth: `Authorization: Bearer <token>` (JWT).
+
+**Success (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "sourceMaps": [
+      { "id": "...", "filename": "app.min.js", "release": "v1.4.2", "uploadedAt": "..." }
+    ]
+  }
+}
+```
+
+### `DELETE /api/projects/:id/sourcemaps/:mapId`
+
+Task 32: Deletes an uploaded source map by ID.
+Requires auth: `Authorization: Bearer <token>` (JWT).
+
+**Success (200):**
+```json
+{ "success": true, "data": { "deleted": true } }
+```
+
 ### `GET /api/projects/:id/groups`
 
 Requires auth: `Authorization: Bearer <token>`. Added in Task 17
@@ -169,6 +232,13 @@ client-side error group table turned out to need it).
 Ownership checked the same way as `GET /api/projects/:id` — reuses
 `projectService.getProject`, so the three not-found-or-not-yours cases
 collapse into the same 404 as every other project route.
+
+**Query Parameters (optional):**
+- `limit` (number): max number of groups to return (default 20, max 100).
+- `cursor` (string): pagination cursor.
+- `status` (string): filter by status (`open`, `resolved`, `ignored`, or `all`).
+- `search` or `query` (string): case-insensitive search matching error message.
+- `severity` (string): filter by AI severity (`low`, `medium`, `high`, `critical`, or `all`).
 
 **Success (200):**
 ```json
@@ -406,7 +476,21 @@ checked via a scoped `Project.findOne({ _id, ownerId })`.
       "count": 12,
       "firstSeen": "...",
       "lastSeen": "...",
-      "firstSeenRelease": "v1.4.2"
+      "firstSeenRelease": "v1.4.2",
+      "resolvedStack": [
+        {
+          "raw": "at a (app.min.js:1:25)",
+          "file": "app.min.js",
+          "line": 1,
+          "column": 25,
+          "functionName": "a",
+          "resolved": true,
+          "originalFile": "src/utils/calculator.js",
+          "originalLine": 14,
+          "originalColumn": 8,
+          "originalFunctionName": "addNumbers"
+        }
+      ]
     },
     "events": [
       { "id": "...", "receivedAt": "...", "env": "production", "release": "v1.4.2" }
@@ -451,6 +535,14 @@ doing its own dedup. `null`/missing `env` values are filtered out.
 (e.g. `"v1.4.2"`). `null` if no release tag was provided at
 creation time. Set once via `$setOnInsert`, never overwritten by
 later duplicate events.
+
+`resolvedStack` — added in Task 32 on the group shape, an array of
+parsed stack frames resolved against uploaded source maps for this
+project/release. For each frame, if a matching source map exists,
+`resolved` is `true` and `originalFile`, `originalLine`,
+`originalColumn`, `originalFunctionName` contain the original source
+location; otherwise `resolved` is `false`. Display-only — does not alter
+raw `stackSample` or error fingerprinting.
 
 `release` — added in Task 31 on each event, the caller-supplied
 build/version tag for that specific occurrence (e.g. `"v1.4.2"`).

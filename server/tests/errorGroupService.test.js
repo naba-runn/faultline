@@ -30,6 +30,7 @@ const assert = require('node:assert/strict');
 const ErrorGroup = require('../models/ErrorGroup');
 const ErrorEvent = require('../models/ErrorEvent');
 const Project = require('../models/Project');
+const SourceMap = require('../models/SourceMap');
 const githubService = require('../services/githubService');
 const aiService = require('../services/aiService');
 const {
@@ -544,6 +545,22 @@ test('listErrorGroups: filters by projectId (no cursor), sorts by lastSeen+_id d
   });
 });
 
+test('listErrorGroups: Task 33 status, search, and severity filters build correct Mongoose query', async () => {
+  await withMockedFind([], async (getCaptured) => {
+    await listErrorGroups('project-42', {
+      status: 'open',
+      severity: 'high',
+      search: 'TypeError: undefined',
+    });
+    const { filter } = getCaptured();
+    assert.equal(filter.projectId, 'project-42');
+    assert.equal(filter.status, 'open');
+    assert.equal(filter['aiSummary.severity'], 'high');
+    assert.equal(filter.message.$regex, 'TypeError: undefined');
+    assert.equal(filter.message.$options, 'i');
+  });
+});
+
 test('listErrorGroups: shapes each group, omitting stackSample, nulls aiSummary when absent, and returns nextCursor: null when under a page', async () => {
   const fakeGroups = [
     {
@@ -790,15 +807,18 @@ function withMockedDetailDeps(mocks, fn) {
   const originalFindById = ErrorGroup.findById;
   const originalProjectFindOne = Project.findOne;
   const originalEventFind = ErrorEvent.find;
+  const originalSourceMapFind = SourceMap.find;
 
   ErrorGroup.findById = mocks.findById;
   Project.findOne = mocks.findOne;
   ErrorEvent.find = mocks.find;
+  SourceMap.find = mocks.sourceMapFind || (async () => []);
 
   return fn().finally(() => {
     ErrorGroup.findById = originalFindById;
     Project.findOne = originalProjectFindOne;
     ErrorEvent.find = originalEventFind;
+    SourceMap.find = originalSourceMapFind;
   });
 }
 
@@ -909,6 +929,8 @@ test('getGroupDetail: owned group — returns full group shape (incl. projectId 
       assert.equal(result.group.count, 3);
       // Task 31: firstSeenRelease defaults to null when not on the fake group.
       assert.equal(result.group.firstSeenRelease, null);
+      // Task 32: resolvedStack is attached to group detail shape.
+      assert.ok(Array.isArray(result.group.resolvedStack));
 
       // Events shaped down to id/receivedAt/env/release — rawStack not exposed.
       assert.equal(result.events.length, 2);

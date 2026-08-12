@@ -261,6 +261,39 @@ Verified manually (`validateSync()`): valid doc clean, missing
 `errorGroupId` rejected, missing `rawStack` rejected, defaults
 (`env: null`, `metadata: {}`, real `receivedAt`) all correct.
 
+### SourceMap (`server/models/SourceMap.js`)
+```javascript
+const sourceMapSchema = new mongoose.Schema({
+  projectId: {
+    type: mongoose.Schema.Types.Mixed,
+    required: [true, 'projectId is required'],
+    index: true,
+  },
+  filename: {
+    type: String,
+    required: [true, 'filename is required'],
+    trim: true,
+  },
+  release: {
+    type: String,
+    trim: true,
+    default: null,
+  },
+  map: {
+    type: mongoose.Schema.Types.Mixed,
+    required: [true, 'map is required'],
+  },
+  uploadedAt: {
+    type: Date,
+    required: true,
+    default: Date.now,
+  },
+});
+
+sourceMapSchema.index({ projectId: 1, release: 1, filename: 1 }, { unique: true });
+```
+Verified via unit tests (`server/tests/sourceMapService.test.js`).
+
 ## Key Design Decisions (locked in, implement as-is)
 
 - **Compound index on `{ projectId, fingerprint }`**, unique. This is

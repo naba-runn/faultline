@@ -1,10 +1,29 @@
 const express = require('express');
 const projectController = require('../controllers/projectController');
+const sourceMapController = require('../controllers/sourceMapController');
 const authMiddleware = require('../middleware/authMiddleware');
+const apiKeyMiddleware = require('../middleware/apiKeyMiddleware');
 
 const router = express.Router();
 
-// Every project route requires a logged-in dashboard user (JWT),
+// Flexible auth for sourcemap upload: accepts API key (flt_...) or JWT token
+async function sourcemapUploadAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    if (token && token.startsWith('flt_')) {
+      return apiKeyMiddleware(req, res, next);
+    }
+  }
+  return authMiddleware(req, res, next);
+}
+
+// Task 32: Source-map routes (placed before router.use(authMiddleware) for flexible auth)
+router.post('/:id/sourcemaps', sourcemapUploadAuth, sourceMapController.uploadSourceMap);
+router.get('/:id/sourcemaps', authMiddleware, sourceMapController.listSourceMaps);
+router.delete('/:id/sourcemaps/:mapId', authMiddleware, sourceMapController.deleteSourceMap);
+
+// Every project route below requires a logged-in dashboard user (JWT),
 // not an API key — API-key auth is for the ingestion endpoint only
 // (Task 6), a deliberately separate middleware. See DECISIONS.md.
 router.use(authMiddleware);

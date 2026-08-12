@@ -1561,6 +1561,23 @@ controller-level tests for any project route).
 Chronological, most-recent-first, entries with no dedicated decision
 above. Migrated from `CHANGELOG.md`.
 
+- **Task 34** — SDK snippet generator (per-project copyable onboarding code snippets).
+  - Created `SdkSnippetGenerator.jsx` component with language tabs (`cURL`, `Node.js / Express`, `Python`) and a 1-click Copy button with visual feedback ("Copied!").
+  - Embedded in `DashboardPage.jsx`: immediately pre-fills newly revealed API key (`flt_...`) upon project creation and provides a per-project onboarding drawer in "Your projects".
+  - Embedded in `ProjectDetailPage.jsx`: provides an expandable "SDK Setup / Snippet" section.
+
+- **Task 33** — Search/filter + saved views on the error group table.
+  - Backend: `GET /api/projects/:id/groups` accepts optional `status`, `search` / `query`, and `severity` query params.
+  - `errorGroupService.listErrorGroups`: builds MongoDB filters for `status`, `aiSummary.severity`, and case-insensitive `$regex` matching error message.
+  - `ProjectDetailPage.jsx`: Filter card with search box, status dropdown, severity dropdown, quick preset pills ("All Errors", "Open Errors", "Unresolved High/Critical", etc.), custom saved views (`localStorage`), and URL query string sync (`useSearchParams`).
+
+- **Task 32** — Source-map support (display-only stack resolution).
+  - Scope boundary strictly enforced: fingerprinting and dedup remain unchanged.
+  - `SourceMap.js` model & `POST/GET/DELETE /api/projects/:id/sourcemaps` endpoints created (flexible JWT or API Key authentication).
+  - `sourceMapService.js`: uses `source-map-js` for synchronous Source Map v3 resolution.
+  - `GroupDetailPage.jsx`: surfaces resolved stack trace with a tab toggle between "Resolved source" and "Raw stack".
+  - `demo-app/minified-demo.js`: demo script for source map upload and minified error ingestion.
+
 - **Task 31** — Multi-environment / release tagging (`env` answer "which deployment", `release` answers "which build").
   - `ErrorEvent.release`: free-form string tag (e.g. `"v1.4.2"`).
   - `ErrorGroup.firstSeenRelease`: set via `$setOnInsert` on group creation, never overwritten by subsequent duplicate events.

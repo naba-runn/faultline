@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import api from '../api/axios.js';
 import { useProjectSSE } from '../hooks/useProjectSSE.js';
+import SdkSnippetGenerator from '../components/SdkSnippetGenerator.jsx';
 
 // Severity/status badge classes live in index.css (.badge-severity-*,
 // .badge-status-*) — Task 23's dark theme pass. Label maps stay here
@@ -17,6 +18,15 @@ const SEVERITY_LABEL = {
 // (server/models/ErrorGroup.js) — a plain <select>, not a fancier
 // control; polish is Milestone 5's job (Task 23), not this task's.
 const STATUS_OPTIONS = ['open', 'resolved', 'ignored'];
+
+// Task 33: Filter presets for error groups list
+const PRESETS = [
+    { id: 'all', label: 'All Errors', status: 'all', severity: 'all', search: '' },
+    { id: 'open', label: 'Open Errors', status: 'open', severity: 'all', search: '' },
+    { id: 'unresolved_high', label: 'Unresolved High/Critical', status: 'open', severity: 'high', search: '' },
+    { id: 'resolved', label: 'Resolved', status: 'resolved', severity: 'all', search: '' },
+    { id: 'ignored', label: 'Ignored', status: 'ignored', severity: 'all', search: '' },
+];
 
 function formatDate(iso) {
     return new Date(iso).toLocaleString();
@@ -40,9 +50,11 @@ function SeverityBadge({ severity }) {
 // JWT-authed endpoint rather than reusing the API-key-only ingestion
 // route). Task 26 adds a live "connected" indicator and a silent
 // background refetch whenever the SSE stream reports a relevant event
-// for this project (see hooks/useProjectSSE.js).
+// for this project (see hooks/useProjectSSE.js). Task 33 adds search,
+// status, severity filters, URL sync, and custom saved views.
 function ProjectDetailPage() {
     const { id } = useParams();
+    const [searchParams, setSearchParams] = useSearchParams();
 
     const [project, setProject] = useState(null);
     const [groups, setGroups] = useState([]);
@@ -61,13 +73,84 @@ function ProjectDetailPage() {
     const [simulateResult, setSimulateResult] = useState(null);
     const [simulateError, setSimulateErrorMsg] = useState('');
 
+    // Task 34: Onboarding SDK Snippet toggle state
+    const [showSdkSnippet, setShowSdkSnippet] = useState(false);
+
+    // Task 33: Search, filter, and saved views state synced with URL search params
+    const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || 'all');
+    const [severityFilter, setSeverityFilter] = useState(searchParams.get('severity') || 'all');
+    const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
+
+    const storageKey = `faultline_saved_views_${id}`;
+    const [savedViews, setSavedViews] = useState(() => {
+        try {
+            const raw = localStorage.getItem(storageKey);
+            return raw ? JSON.parse(raw) : [];
+        } catch {
+            return [];
+        }
+    });
+
+    const updateUrlParams = (newStatus, newSeverity, newSearch) => {
+        const params = {};
+        if (newStatus && newStatus !== 'all') params.status = newStatus;
+        if (newSeverity && newSeverity !== 'all') params.severity = newSeverity;
+        if (newSearch && newSearch.trim()) params.search = newSearch.trim();
+        setSearchParams(params, { replace: true });
+    };
+
+    const applyFilters = (status, severity, search) => {
+        setStatusFilter(status);
+        setSeverityFilter(severity);
+        setSearchQuery(search);
+        updateUrlParams(status, severity, search);
+    };
+
+    const handleSaveCustomView = () => {
+        const name = prompt('Enter a name for this custom saved view:');
+        if (!name || !name.trim()) return;
+        const newView = {
+            id: 'custom_' + Date.now(),
+            name: name.trim(),
+            status: statusFilter,
+            severity: severityFilter,
+            search: searchQuery,
+        };
+        const updated = [...savedViews, newView];
+        setSavedViews(updated);
+        try {
+            localStorage.setItem(storageKey, JSON.stringify(updated));
+        } catch (err) {
+            console.error('Failed to save custom view', err);
+        }
+    };
+
+    const handleDeleteCustomView = (viewId, e) => {
+        e.stopPropagation();
+        const updated = savedViews.filter((v) => v.id !== viewId);
+        setSavedViews(updated);
+        try {
+            localStorage.setItem(storageKey, JSON.stringify(updated));
+        } catch (err) {
+            console.error('Failed to update saved views', err);
+        }
+    };
+
+    const projectLoadedRef = useRef(false);
+
+    // Reset projectLoadedRef when project ID changes so navigating between projects
+    // shows initial loading screen for the new project.
+    useEffect(() => {
+        projectLoadedRef.current = false;
+    }, [id]);
+
     const fetchData = useCallback(async (silent = false) => {
-        // silent=true is used for SSE-triggered refetches (Task 26) —
-        // toggling `loading` on every live push would blank the whole
-        // table each time an event arrives, which defeats the purpose
-        // of a *live*, non-disruptive update. The initial page-load
-        // call below still uses the default (silent=false).
-        if (!silent) setLoading(true);
+        // Only trigger full-page loading screen on initial project load.
+        // Subsequent filter changes & refetches update groups silently in-place
+        // without blanking the page UI.
+        if (!projectLoadedRef.current && !silent) {
+            setLoading(true);
+        }
         setError('');
         try {
             // Two independent GETs rather than relying on one endpoint to
@@ -76,19 +159,26 @@ function ProjectDetailPage() {
             // separate endpoints; see docs/API.md).
             const [projectRes, groupsRes] = await Promise.all([
                 api.get(`/projects/${id}`),
-                api.get(`/projects/${id}/groups`),
+                api.get(`/projects/${id}/groups`, {
+                    params: {
+                        status: statusFilter,
+                        severity: severityFilter,
+                        search: searchQuery,
+                    },
+                }),
             ]);
             setProject(projectRes.data.data.project);
             setGroups(groupsRes.data.data.groups);
+            projectLoadedRef.current = true;
         } catch (err) {
             // docs/API.md: GET /projects/:id 404s identically whether the
             // project doesn't exist, belongs to someone else, or :id is
             // malformed — surfaced here as-is, no attempt to distinguish.
             setError(err.response?.data?.error || 'Failed to load project.');
         } finally {
-            if (!silent) setLoading(false);
+            setLoading(false);
         }
-    }, [id]);
+    }, [id, statusFilter, severityFilter, searchQuery]);
 
     useEffect(() => {
         fetchData();
@@ -211,8 +301,17 @@ function ProjectDetailPage() {
             </header>
 
             <section className="card">
-                <h2>Simulate error</h2>
-                <div className="simulate-panel">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h2 style={{ margin: 0 }}>Simulate error</h2>
+                    <button
+                        type="button"
+                        className="btn-tab"
+                        onClick={() => setShowSdkSnippet(!showSdkSnippet)}
+                    >
+                        {showSdkSnippet ? 'Hide SDK Setup' : 'SDK Setup / Snippet'}
+                    </button>
+                </div>
+                <div className="simulate-panel" style={{ marginTop: '0.75rem' }}>
                     <button
                         type="button"
                         className="simulate-btn"
@@ -237,6 +336,117 @@ function ProjectDetailPage() {
                         </span>
                     )}
                     {simulateError && <span className="simulate-result">{simulateError}</span>}
+                </div>
+                {showSdkSnippet && (
+                    <div style={{ marginTop: '1rem' }}>
+                        <SdkSnippetGenerator projectName={project.name} />
+                    </div>
+                )}
+            </section>
+
+            <section className="card filter-card">
+                <div className="filter-presets">
+                    <span className="filter-label">Views:</span>
+                    {PRESETS.map((p) => {
+                        const isActive =
+                            statusFilter === p.status &&
+                            severityFilter === p.severity &&
+                            searchQuery === p.search;
+                        return (
+                            <button
+                                key={p.id}
+                                type="button"
+                                className={`preset-pill ${isActive ? 'active' : ''}`}
+                                onClick={() => applyFilters(p.status, p.severity, p.search)}
+                            >
+                                {p.label}
+                            </button>
+                        );
+                    })}
+                    {savedViews.map((sv) => {
+                        const isActive =
+                            statusFilter === sv.status &&
+                            severityFilter === sv.severity &&
+                            searchQuery === sv.search;
+                        return (
+                            <span
+                                key={sv.id}
+                                className={`preset-pill custom ${isActive ? 'active' : ''}`}
+                                onClick={() => applyFilters(sv.status, sv.severity, sv.search)}
+                            >
+                                {sv.name}
+                                <button
+                                    type="button"
+                                    className="delete-view-btn"
+                                    onClick={(e) => handleDeleteCustomView(sv.id, e)}
+                                    title="Delete saved view"
+                                >
+                                    ×
+                                </button>
+                            </span>
+                        );
+                    })}
+                    <button type="button" className="btn-secondary btn-sm" onClick={handleSaveCustomView}>
+                        + Save View
+                    </button>
+                </div>
+
+                <div className="filter-controls">
+                    <div className="filter-field">
+                        <label htmlFor="search-input">Search message</label>
+                        <input
+                            id="search-input"
+                            type="text"
+                            placeholder="Filter by error message..."
+                            value={searchQuery}
+                            onChange={(e) => {
+                                setSearchQuery(e.target.value);
+                                updateUrlParams(statusFilter, severityFilter, e.target.value);
+                            }}
+                        />
+                    </div>
+                    <div className="filter-field">
+                        <label htmlFor="status-filter">Status</label>
+                        <select
+                            id="status-filter"
+                            value={statusFilter}
+                            onChange={(e) => {
+                                setStatusFilter(e.target.value);
+                                updateUrlParams(e.target.value, severityFilter, searchQuery);
+                            }}
+                        >
+                            <option value="all">All Statuses</option>
+                            <option value="open">open</option>
+                            <option value="resolved">resolved</option>
+                            <option value="ignored">ignored</option>
+                        </select>
+                    </div>
+                    <div className="filter-field">
+                        <label htmlFor="severity-filter">Severity</label>
+                        <select
+                            id="severity-filter"
+                            value={severityFilter}
+                            onChange={(e) => {
+                                setSeverityFilter(e.target.value);
+                                updateUrlParams(statusFilter, e.target.value, searchQuery);
+                            }}
+                        >
+                            <option value="all">All Severities</option>
+                            <option value="low">low</option>
+                            <option value="medium">medium</option>
+                            <option value="high">high</option>
+                            <option value="critical">critical</option>
+                        </select>
+                    </div>
+                    {(statusFilter !== 'all' || severityFilter !== 'all' || searchQuery !== '') && (
+                        <button
+                            type="button"
+                            className="btn-link"
+                            onClick={() => applyFilters('all', 'all', '')}
+                        >
+                            Reset filters
+                        </button>
+                    )}
                 </div>
             </section>
 
