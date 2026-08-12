@@ -261,121 +261,99 @@ function GroupDetailPage() {
         <div className="page">
             <Link to={`/projects/${group.projectId}`} className="back-link">← Back to project</Link>
 
-            <header>
-                <h1 className="mono">{group.message}</h1>
-                <p className="topbar-meta">
+            <header className="group-detail-header">
+                <div className="group-header-top">
+                    <h1 className="mono group-title">{group.message}</h1>
+                </div>
+                <div className="group-meta-bar">
                     <StatusBadge status={group.status} />
-                    {' · '}Seen {group.count} time{group.count === 1 ? '' : 's'}
-                    {' · '}First seen {formatDate(group.firstSeen)}
+                    <SeverityBadge severity={aiSummary?.severity} />
+                    <span className="badge badge-env">Seen {group.count} time{group.count === 1 ? '' : 's'}</span>
                     {group.firstSeenRelease && (
-                        <>
-                            {' · '}
-                            <span className="badge badge-release">
-                                introduced in <span className="mono">{group.firstSeenRelease}</span>
-                            </span>
-                        </>
+                        <span className="badge badge-release">
+                            introduced in <span className="mono">{group.firstSeenRelease}</span>
+                        </span>
                     )}
-                    {' · '}Last seen {formatDate(group.lastSeen)}
-                    {' · '}
+                    {environments.map((env) => (
+                        <span key={env} className="badge badge-env">{env}</span>
+                    ))}
                     <span className={`live-indicator${liveConnected ? ' is-connected' : ''}`}>
                         <span className="live-indicator-dot" />
-                        {liveConnected ? 'live' : 'connecting…'}
+                        {liveConnected ? 'Live' : 'Connecting…'}
                     </span>
-                </p>
-                {environments.length > 0 && (
-                    <p className="topbar-meta">
-                        Environments:{' '}
-                        {environments.map((env, i) => (
-                            <span key={env}>
-                                {i > 0 && ', '}
-                                <span className="badge badge-env">{env}</span>
-                            </span>
-                        ))}
-                    </p>
-                )}
+                </div>
+                <div className="group-timestamps cell-muted mono" style={{ fontSize: '0.8rem', marginTop: '0.6rem' }}>
+                    <span>First seen: {formatDate(group.firstSeen)}</span>
+                    <span style={{ margin: '0 0.5rem' }}>·</span>
+                    <span>Last seen: {formatDate(group.lastSeen)}</span>
+                </div>
             </header>
 
-            <section className="card">
-                <h2>AI analysis</h2>
+            {/* AI Analysis Hero Section */}
+            <section className="card card-ai-hero">
+                <div className="card-header-bar">
+                    <h2>🧠 AI Root-Cause Intelligence</h2>
+                    {aiSummary && (
+                        <div className="ai-confidence-pill mono">
+                            <span>Confidence: <strong>{typeof aiSummary.confidence === 'number' ? `${Math.round(aiSummary.confidence * 100)}%` : '—'}</strong></span>
+                        </div>
+                    )}
+                </div>
+
                 {aiSummary ? (
-                    <div>
-                        <p>
-                            <SeverityBadge severity={aiSummary.severity} />
-                            {' · '}
-                            Confidence:{' '}
-                            <span className="mono">
-                                {typeof aiSummary.confidence === 'number'
-                                    ? `${Math.round(aiSummary.confidence * 100)}%`
-                                    : '—'}
-                            </span>
-                            {aiSummary.affectedFile && (
-                                <>
-                                    {' · '}
-                                    <span className="mono cell-muted">
-                                        {aiSummary.affectedFile}
-                                        {aiSummary.affectedFunction ? ` (${aiSummary.affectedFunction})` : ''}
-                                    </span>
-                                </>
-                            )}
-                        </p>
-                        <p>{aiSummary.rootCause}</p>
+                    <div className="ai-content">
+                        {aiSummary.affectedFile && (
+                            <div className="ai-target-box mono">
+                                <span className="target-label">AFFECTED LOCATION:</span>
+                                <span className="target-file">{aiSummary.affectedFile}</span>
+                                {aiSummary.affectedFunction && <span className="target-func">({aiSummary.affectedFunction})</span>}
+                            </div>
+                        )}
+                        
+                        <div className="ai-root-cause">
+                            <h3 className="sub-heading">Root Cause Summary</h3>
+                            <p className="root-cause-text">{aiSummary.rootCause}</p>
+                        </div>
+
                         {aiSummary.suggestedFix && aiSummary.suggestedFix.length > 0 && (
-                            <>
-                                <h2>Suggested fix</h2>
+                            <div className="ai-checklist-wrap" style={{ marginTop: '1.25rem' }}>
+                                <h3 className="sub-heading">Suggested Remediation Checklist</h3>
                                 <AiChecklist suggestedFix={aiSummary.suggestedFix} />
-                                <p className="cell-muted">
-                                    <em>Checklist state is local to this page view — it isn't saved.</em>
+                                <p className="cell-muted" style={{ fontSize: '0.78rem', marginTop: '0.6rem' }}>
+                                    <em>Checklist state is local to this session — interactive helper tool.</em>
                                 </p>
-                            </>
+                            </div>
                         )}
                     </div>
                 ) : (
-                    <p className="cell-muted">No AI analysis available yet for this error group.</p>
+                    <div className="ai-loading-skeleton">
+                        <span className="live-indicator-dot" style={{ background: 'var(--color-warning)' }} />
+                        <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
+                            <strong>AI Analysis Enqueued</strong> — Background worker process is analyzing stack trace and grounding with GitHub code context...
+                        </p>
+                    </div>
                 )}
             </section>
 
+            {/* Activity & Trend Section */}
             <section className="card">
-                <h2>Activity</h2>
-                <p className="cell-muted">
-                    Event volume — last {events.length} occurrence{events.length === 1 ? '' : 's'} fetched
-                    {group.count > events.length ? ` (of ${group.count} total)` : ''}.
+                <div className="card-header-bar">
+                    <h2>📈 Event Volume & Anomaly Trend</h2>
+                    <TrendBadge trend={trend} />
+                </div>
+                <p className="cell-muted" style={{ fontSize: '0.82rem', marginBottom: '1rem' }}>
+                    Trailing 24-hour event frequency evaluation — showing last {events.length} occurrence{events.length === 1 ? '' : 's'} fetched.
                 </p>
-                <p><TrendBadge trend={trend} /></p>
                 <Sparkline buckets={buckets} />
             </section>
 
-            <h2>Recent events</h2>
-            {events.length === 0 ? (
-                <p className="cell-muted">No events recorded yet.</p>
-            ) : (
-                <div className="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Received at</th>
-                                <th>Environment</th>
-                                <th>Release</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {events.map((event) => (
-                                <tr key={event.id}>
-                                    <td>{formatDate(event.receivedAt)}</td>
-                                    <td className="cell-muted">{event.env || '—'}</td>
-                                    <td className="mono cell-muted">{event.release || '—'}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            )}
-
+            {/* Stack Trace Section */}
             {(() => {
                 const hasResolvedFrames = group.resolvedStack && group.resolvedStack.some((f) => f.resolved);
                 return (
                     <section className="card stack-card">
                         <div className="stack-header">
-                            <h2>Stack sample</h2>
+                            <h2>Stack Trace</h2>
                             {hasResolvedFrames && (
                                 <div className="stack-toggle">
                                     <span className="badge badge-sourcemap">Source map resolved</span>
@@ -405,7 +383,7 @@ function GroupDetailPage() {
                                             <>
                                                 <span className="frame-func">at {frame.originalFunctionName || 'anonymous'}</span>
                                                 <span className="frame-loc">({frame.originalFile}:{frame.originalLine}:{frame.originalColumn})</span>
-                                                <span className="frame-raw-muted">from {frame.file}:{frame.line}:{frame.column}</span>
+                                                <span className="frame-raw-muted">mapped from {frame.file}:{frame.line}:{frame.column}</span>
                                             </>
                                         ) : (
                                             <>
@@ -417,11 +395,50 @@ function GroupDetailPage() {
                                 ))}
                             </div>
                         ) : (
-                            <pre className="stack-sample">{group.stackSample}</pre>
+                            <pre className="stack-sample mono">{group.stackSample}</pre>
                         )}
                     </section>
                 );
             })()}
+
+            {/* Recent Events Table */}
+            <div className="section-header-inline" style={{ marginTop: '2.25rem' }}>
+                <h2>Recent Incident Occurrences</h2>
+                <span className="mono-count">{events.length} fetched</span>
+            </div>
+
+            {events.length === 0 ? (
+                <p className="cell-muted">No events recorded yet.</p>
+            ) : (
+                <div className="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>RECEIVED AT</th>
+                                <th>ENVIRONMENT</th>
+                                <th>RELEASE BUILD</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {events.map((event) => (
+                                <tr key={event.id} className="row-hoverable">
+                                    <td className="mono" style={{ fontSize: '0.85rem' }}>{formatDate(event.receivedAt)}</td>
+                                    <td>
+                                        <span className="badge badge-env">{event.env || 'simulated'}</span>
+                                    </td>
+                                    <td className="mono">
+                                        {event.release ? (
+                                            <span className="badge badge-release">{event.release}</span>
+                                        ) : (
+                                            <span className="cell-muted">—</span>
+                                        )}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
         </div>
     );
 }

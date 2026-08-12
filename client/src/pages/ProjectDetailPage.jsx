@@ -289,22 +289,33 @@ function ProjectDetailPage() {
         <div className="page">
             <Link to="/dashboard" className="back-link">← Back to dashboard</Link>
             <header className="topbar">
-                <h1>{project.name}</h1>
-                <p className="topbar-meta mono">
-                    <Link to="/docs" style={{ color: 'var(--color-accent)' }}>API Docs</Link>
-                    {' · '}
-                    {project.githubRepo || 'no repo linked'}
-                    {' · '}
+                <div className="topbar-brand">
+                    <h1 style={{ margin: 0 }}>{project.name}</h1>
+                </div>
+                <div className="topbar-meta mono">
+                    <Link to="/docs" className="topbar-link">API Docs</Link>
+                    <span className="topbar-divider">/</span>
+                    {project.githubRepo ? (
+                        <span className="badge-repo mono">{project.githubRepo}</span>
+                    ) : (
+                        <span className="cell-muted" style={{ fontSize: '0.8rem' }}>no repo linked</span>
+                    )}
+                    <span className="topbar-divider">/</span>
                     <span className={`live-indicator${liveConnected ? ' is-connected' : ''}`}>
                         <span className="live-indicator-dot" />
-                        {liveConnected ? 'live' : 'connecting…'}
+                        {liveConnected ? 'Live' : 'Connecting…'}
                     </span>
-                </p>
+                </div>
             </header>
 
-            <section className="card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h2 style={{ margin: 0 }}>Simulate error</h2>
+            <section className="card card-accented simulate-card">
+                <div className="simulate-card-header">
+                    <div>
+                        <h2 style={{ margin: 0, fontSize: '1rem', color: 'var(--color-text)' }}>Simulate Runtime Error</h2>
+                        <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>
+                            Trigger a synthetic runtime exception to test live ingestion, fingerprint deduplication, and AI root-cause analysis.
+                        </p>
+                    </div>
                     <button
                         type="button"
                         className="btn-tab"
@@ -313,34 +324,34 @@ function ProjectDetailPage() {
                         {showSdkSnippet ? 'Hide SDK Setup' : 'SDK Setup / Snippet'}
                     </button>
                 </div>
-                <div className="simulate-panel" style={{ marginTop: '0.75rem' }}>
+
+                <div className="simulate-panel" style={{ marginTop: '1rem' }}>
                     <button
                         type="button"
-                        className="simulate-btn"
+                        className="btn btn-primary"
                         onClick={handleSimulate}
                         disabled={simulating}
                     >
-                        {simulating ? 'simulating...' : 'simulate-error'}
+                        {simulating ? 'Simulating Exception...' : '⚡ Simulate Error →'}
                     </button>
                     {simulateResult && (
-                        <span className="simulate-result">
+                        <div className="simulate-result">
                             {simulateResult.isNewGroup ? (
-                                <>
-                                    <strong>new group created</strong> — AI analysis will appear on its
-                                    detail page shortly.
-                                </>
+                                <span className="alert alert-info" style={{ display: 'inline-block', margin: 0, padding: '0.4rem 0.8rem' }}>
+                                    ✨ <strong>New Group Created</strong> — AI analysis worker has been enqueued.
+                                </span>
                             ) : (
-                                <>
-                                    <strong>duplicate recorded</strong> — matched an existing group,
-                                    count incremented.
-                                </>
+                                <span className="alert alert-info" style={{ display: 'inline-block', margin: 0, padding: '0.4rem 0.8rem' }}>
+                                    🔄 <strong>Duplicate Recorded</strong> — Existing group matched, count incremented.
+                                </span>
                             )}
-                        </span>
+                        </div>
                     )}
-                    {simulateError && <span className="simulate-result">{simulateError}</span>}
+                    {simulateError && <p className="alert alert-error" style={{ display: 'inline-block', margin: 0 }}>{simulateError}</p>}
                 </div>
+
                 {showSdkSnippet && (
-                    <div style={{ marginTop: '1rem' }}>
+                    <div style={{ marginTop: '1.25rem' }}>
                         <SdkSnippetGenerator projectName={project.name} />
                     </div>
                 )}
@@ -399,7 +410,7 @@ function ProjectDetailPage() {
                         <input
                             id="search-input"
                             type="text"
-                            placeholder="Filter by error message..."
+                            placeholder="Filter by error message or stack..."
                             value={searchQuery}
                             onChange={(e) => {
                                 setSearchQuery(e.target.value);
@@ -443,8 +454,9 @@ function ProjectDetailPage() {
                     {(statusFilter !== 'all' || severityFilter !== 'all' || searchQuery !== '') && (
                         <button
                             type="button"
-                            className="btn-link"
+                            className="btn-ghost btn-sm"
                             onClick={() => applyFilters('all', 'all', '')}
+                            style={{ alignSelf: 'flex-end', marginBottom: '4px' }}
                         >
                             Reset filters
                         </button>
@@ -452,27 +464,38 @@ function ProjectDetailPage() {
                 </div>
             </section>
 
-            <h2>Error groups</h2>
+            <div className="section-header-inline" style={{ marginTop: '2.25rem' }}>
+                <h2>Reported Error Groups</h2>
+                <span className="mono-count">{groups.length} groups</span>
+            </div>
+
             {statusError && <p className="alert alert-error" role="alert">{statusError}</p>}
             {groups.length === 0 ? (
-                <p className="cell-muted">No errors reported yet for this project.</p>
+                <div className="card empty-state-card">
+                    <h3>No error groups recorded yet</h3>
+                    <p className="cell-muted">
+                        Connect your app using your API key or click <strong style={{ color: 'var(--color-text)' }}>Simulate Error</strong> above to test the ingestion pipeline.
+                    </p>
+                </div>
             ) : (
                 <div className="table-wrap">
                     <table>
                         <thead>
                             <tr>
-                                <th>Message</th>
-                                <th>Status</th>
-                                <th>Severity</th>
-                                <th>Count</th>
-                                <th>Last seen</th>
+                                <th>INCIDENT / MESSAGE</th>
+                                <th>STATUS</th>
+                                <th>SEVERITY</th>
+                                <th style={{ textAlign: 'center' }}>COUNT</th>
+                                <th>LAST SEEN</th>
                             </tr>
                         </thead>
                         <tbody>
                             {groups.map((group) => (
-                                <tr key={group.id}>
+                                <tr key={group.id} className="row-hoverable">
                                     <td className="cell-message">
-                                        <Link to={`/groups/${group.id}`}>{group.message}</Link>
+                                        <Link to={`/groups/${group.id}`} className="group-title-link">
+                                            {group.message}
+                                        </Link>
                                     </td>
                                     <td>
                                         <select
@@ -482,6 +505,7 @@ function ProjectDetailPage() {
                                             value={group.status}
                                             disabled={updatingGroupId === group.id}
                                             onChange={(e) => handleStatusChange(group.id, e.target.value)}
+                                            className={`select-status badge-status-${group.status}`}
                                         >
                                             {STATUS_OPTIONS.map((status) => (
                                                 <option key={status} value={status}>
@@ -493,8 +517,12 @@ function ProjectDetailPage() {
                                     <td>
                                         <SeverityBadge severity={group.aiSummary?.severity} />
                                     </td>
-                                    <td>{group.count}</td>
-                                    <td className="cell-muted">{formatDate(group.lastSeen)}</td>
+                                    <td style={{ textAlign: 'center' }}>
+                                        <span className="count-pill mono">{group.count}</span>
+                                    </td>
+                                    <td className="cell-muted mono" style={{ fontSize: '0.8rem' }}>
+                                        {formatDate(group.lastSeen)}
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>

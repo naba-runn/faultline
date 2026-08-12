@@ -71,44 +71,52 @@ function DashboardPage() {
     return (
         <div className="page">
             <header className="topbar">
-                <div>
-                    <h1 style={{ margin: 0 }}>Faultline</h1>
-                    <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-                        Real-time error tracking & AI root-cause intelligence
-                    </p>
+                <div className="topbar-brand">
+                    <span className="brand-dot" />
+                    <div>
+                        <h1 style={{ margin: 0 }}>FAULTLINE</h1>
+                        <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>
+                            Real-time error tracking & AI root-cause intelligence
+                        </p>
+                    </div>
                 </div>
-                <p className="topbar-meta">
-                    <Link to="/docs" style={{ color: 'var(--color-accent)', fontWeight: 500 }}>API Docs</Link>
-                    {' · '}
-                    <span className="mono" style={{ color: 'var(--color-text)' }}>{user?.name}</span>
-                    {' · '}
+                <div className="topbar-meta">
+                    <Link to="/docs" className="topbar-link">API Docs</Link>
+                    <span className="topbar-divider">/</span>
+                    <span className="mono topbar-user">{user?.name}</span>
+                    <span className="topbar-divider">/</span>
                     <button type="button" className="btn-ghost" onClick={logout}>
                         Log out
                     </button>
-                </p>
+                </div>
             </header>
 
             {/* Overview Stat Cards */}
             <div className="metrics-overview-grid">
                 <div className="stat-card">
-                    <span className="stat-label">Total Projects</span>
+                    <span className="stat-label">Monitored Projects</span>
                     <span className="stat-value">{projects.length}</span>
-                    <span className="stat-meta">Active applications monitored</span>
+                    <span className="stat-meta">Active applications</span>
                 </div>
                 <div className="stat-card">
-                    <span className="stat-label">Connected Repositories</span>
-                    <span className="stat-value">{reposLinkedCount}</span>
-                    <span className="stat-meta">Grounded with GitHub code context</span>
+                    <span className="stat-label">GitHub Grounding</span>
+                    <span className="stat-value">{reposLinkedCount} <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>/ {projects.length}</span></span>
+                    <span className="stat-meta">Code snippet context enabled</span>
                 </div>
                 <div className="stat-card">
-                    <span className="stat-label">Ingestion Pipeline</span>
-                    <span className="stat-value" style={{ color: 'var(--color-accent)' }}>Operational</span>
-                    <span className="stat-meta">Real-time SSE & BullMQ worker active</span>
+                    <span className="stat-label">Ingestion System</span>
+                    <span className="stat-value text-accent" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <span className="live-indicator-dot" style={{ background: 'var(--color-accent)' }} /> Operational
+                    </span>
+                    <span className="stat-meta">Real-time SSE & Queue worker ready</span>
                 </div>
             </div>
 
-            <section className="card" style={{ marginTop: '1.5rem' }}>
-                <h2 style={{ marginTop: 0 }}>Create new project</h2>
+            <section className="card card-accented" style={{ marginTop: '1.75rem' }}>
+                <div className="section-header">
+                    <h2>Connect an Application</h2>
+                    <p className="section-subtitle">Create a project to generate your ingestion API key and begin capturing runtime errors.</p>
+                </div>
                 <form onSubmit={handleCreate} className="create-project-form">
                     <div className="field" style={{ margin: 0 }}>
                         <label htmlFor="project-name">Project Name</label>
@@ -117,12 +125,12 @@ function DashboardPage() {
                             type="text"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
-                            placeholder="e.g. My Web App"
+                            placeholder="e.g. Payments Microservice"
                             required
                         />
                     </div>
                     <div className="field" style={{ margin: 0 }}>
-                        <label htmlFor="project-repo">GitHub Repo (optional)</label>
+                        <label htmlFor="project-repo">GitHub Repository <span className="label-opt">(optional)</span></label>
                         <input
                             id="project-repo"
                             type="text"
@@ -144,21 +152,26 @@ function DashboardPage() {
                         </p>
                         <code className="api-key-reveal">{newApiKey}</code>
                         <div style={{ marginTop: '1rem' }}>
-                            <strong>SDK Setup Snippet:</strong>
+                            <strong>SDK Onboarding Snippet:</strong>
                             <SdkSnippetGenerator apiKey={newApiKey} projectName={newProjectName} />
                         </div>
                     </div>
                 )}
             </section>
 
-            <section style={{ marginTop: '2rem' }}>
-                <h2 style={{ marginTop: 0 }}>Your Projects</h2>
+            <section style={{ marginTop: '2.25rem' }}>
+                <div className="section-header-inline">
+                    <h2>Monitored Projects</h2>
+                    <span className="mono-count">{projects.length} total</span>
+                </div>
+
                 {loading && <p className="cell-muted">Loading projects...</p>}
                 {!loading && loadError && <p className="alert alert-error" role="alert">{loadError}</p>}
                 {!loading && !loadError && projects.length === 0 && (
-                    <div className="card" style={{ textAlign: 'center', padding: '2.5rem' }}>
-                        <p className="cell-muted" style={{ fontSize: '1rem', margin: 0 }}>
-                            No projects monitored yet. Create a project above to generate your ingestion API key.
+                    <div className="card empty-state-card">
+                        <h3>No projects monitored yet</h3>
+                        <p className="cell-muted">
+                            Create your first project above to generate an API key and start monitoring runtime stack traces.
                         </p>
                     </div>
                 )}
@@ -167,18 +180,18 @@ function DashboardPage() {
                         <table>
                             <thead>
                                 <tr>
-                                    <th>Project Name</th>
-                                    <th>GitHub Repository</th>
-                                    <th>Created</th>
-                                    <th>Integration</th>
-                                    <th style={{ textAlign: 'right' }}>Actions</th>
+                                    <th>PROJECT</th>
+                                    <th>GITHUB REPO</th>
+                                    <th>CREATED</th>
+                                    <th>INTEGRATION</th>
+                                    <th style={{ textAlign: 'right' }}>ACTION</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {projects.map((project) => (
-                                    <tr key={project.id}>
+                                    <tr key={project.id} className="row-hoverable">
                                         <td className="cell-message">
-                                            <Link to={`/projects/${project.id}`} style={{ fontWeight: 600, fontSize: '0.95rem' }}>
+                                            <Link to={`/projects/${project.id}`} className="project-title-link">
                                                 {project.name}
                                             </Link>
                                         </td>
@@ -186,7 +199,7 @@ function DashboardPage() {
                                             {project.githubRepo ? (
                                                 <span className="badge-repo mono">{project.githubRepo}</span>
                                             ) : (
-                                                <span className="cell-muted">No repo linked</span>
+                                                <span className="cell-muted" style={{ fontSize: '0.8rem' }}>No repo linked</span>
                                             )}
                                         </td>
                                         <td className="cell-muted mono" style={{ fontSize: '0.8rem' }}>
@@ -217,8 +230,7 @@ function DashboardPage() {
                                         <td style={{ textAlign: 'right' }}>
                                             <Link
                                                 to={`/projects/${project.id}`}
-                                                className="btn btn-primary"
-                                                style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}
+                                                className="btn btn-secondary btn-sm"
                                             >
                                                 View Errors →
                                             </Link>
