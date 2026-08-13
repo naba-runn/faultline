@@ -100,7 +100,7 @@ changed and why).
 - [x] **Task 33** — Search/filter + saved views on the error group table
 - [x] **Task 34** — SDK snippet generator (per-project copyable onboarding snippet on the dashboard, reduces "how do I even send it an error" friction)
 - [x] **Task 35** — Public API reference page (rendered from `API.md`, not hand-duplicated)
-- [x] **Task 36** — UI redesign pass 2 — dashboard overview page (trend charts, alert status, release timeline), refined visual system building on Task 23's token set. Deliberately last among feature work so it reflects the final feature surface (alerts, releases, trends) instead of being redone twice.
+- [x] **Task 36** — UI redesign pass 2 — dashboard overview page (trend charts, alert status, release timeline), refined visual system building on Task 23's token set. Deliberately last among feature work so it reflects the final feature surface (alerts, releases, trends) instead of being redone twice. **Corrected after Task 37:** the first pass under this checkbox (commit `bbbcdca`) only shipped a metrics/stat-card grid, with "System Status"/"Worker Queue" as hardcoded display strings — it did not actually build the trend chart, alert status, or release timeline this line promises. A follow-up pass added `GET /api/projects/overview` (hourly trend series, alert-config + isSpiking summary, recent release-tagged groups) and the three dashboard widgets that read it. See `DECISIONS.md`'s "Task 36 — overview widgets" entry.
 
 ## Milestone 9: Ship
 

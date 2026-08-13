@@ -167,6 +167,20 @@ const listProjects = catchAsync(async (req, res) => {
   return sendSuccess(res, 200, { projects });
 });
 
+// Task 36: dashboard overview — trend chart, alert status, release
+// timeline, aggregated across every project the user owns. Unlike
+// every other route below, this isn't scoped to a single :id, so it
+// has no ownership check to duplicate — errorGroupService.
+// getDashboardOverview already filters by ownerId internally (see
+// its own doc comment). Registered in routes/projectRoutes.js above
+// GET /:id so the literal path "/overview" isn't swallowed as a
+// project id.
+const getDashboardOverview = catchAsync(async (req, res) => {
+  const overview = await errorGroupService.getDashboardOverview(req.user._id);
+
+  return sendSuccess(res, 200, overview);
+});
+
 const listProjectGroups = catchAsync(async (req, res) => {
   // Ownership check first, same pattern as getProject/updateProject/
   // deleteProject: not-found and not-yours collapse to the same 404
@@ -478,6 +492,7 @@ const mintSseTicket = catchAsync(async (req, res) => {
 module.exports = {
   createProject,
   listProjects,
+  getDashboardOverview,
   getProject,
   updateProject,
   deleteProject,

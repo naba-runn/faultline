@@ -193,6 +193,14 @@ function computeTrend(eventTimestamps, options = {}) {
 module.exports = {
   computeTrend,
   getWindowBounds,
+  // Task 36: exported for the dashboard overview's hourly trend
+  // bucketing (errorGroupService.getDashboardOverview). Reuses this
+  // exact UTC-truncation logic rather than re-deriving hour
+  // boundaries a second time elsewhere — see the setUTCMinutes
+  // comment above for why a second, subtly different implementation
+  // of "start of hour" would be a real correctness risk, not just
+  // duplication.
+  startOfHour,
   DEFAULT_SPIKE_MULTIPLIER,
   DEFAULT_MIN_COUNT_FLOOR,
 };

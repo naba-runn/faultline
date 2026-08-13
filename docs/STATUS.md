@@ -15,10 +15,17 @@
 - **Milestone 5 — Detail View & Polish:** COMPLETE (5/5 tasks — Tasks 19, 20, 21, 22, 23 all done)
 - **Milestone 6 — Reliability & Real-Time Infrastructure:** COMPLETE (3/3 tasks — Tasks 25, 26, 27 all done)
 - **Milestone 7 — Alerting & Insights:** COMPLETE (5/5 tasks — Tasks 28, 29, 30, 31, 32 all done)
-- **Milestone 8 — Product Polish & Growth:** COMPLETE (4/4 tasks — Tasks 33, 34, 35, 36 all done)
+- **Milestone 8 — Product Polish & Growth:** COMPLETE (4/4 tasks — Tasks 33, 34, 35, 36 all done). **Task 36 note:** the original pass under this checkbox (commit `bbbcdca`) shipped a metrics/stat-card grid but not the trend chart/alert status/release timeline the task actually specifies — a follow-up pass has since built that missing scope for real (`GET /api/projects/overview` + three dashboard widgets). See `DECISIONS.md`'s "Task 36 (follow-up pass)" entry.
 - **Milestone 9 — Ship:** COMPLETE (1/1 task — Task 37 done)
 
-**ALL 9 MILESTONES (37/37 TASKS) ARE 100% COMPLETE AND SHIPPED.**
+**ALL 9 MILESTONES (37/37 TASKS) ARE COMPLETE.** One caveat: Task 36's
+follow-up pass (dashboard overview widgets, below) has not yet had a
+live manual test against a running instance — this environment has no
+network route to the project's MongoDB Atlas/Redis, so it's verified
+by unit tests and a clean production build only. Do that manual pass
+— add a project, simulate a spike, watch the widgets populate — before
+calling Milestone 8 fully shipped, same bar every other task in this
+file was held to.
 
 Task numbering and full checklist: `TASKS.md`. This section only
 states current position, not a restated description of every task —
@@ -26,7 +33,14 @@ that would duplicate `TASKS.md`.
 
 ## What's Actively In Progress
 
-Nothing mid-implementation — **Faultline is 100% Shipped!** Most recently completed task:
+**Task 36 (follow-up pass) — dashboard overview widgets — built, unit-tested, not yet manually verified live.**
+- **Backend.** New `GET /api/projects/overview` (`errorGroupService.getDashboardOverview`), scoped to the logged-in user's own projects: a 25-point hourly error-volume series for the trailing 24h (reuses `trendService.startOfHour`, now exported, for the same UTC-safe hour bucketing Task 29's spike detection uses), an alert-status summary (how many owned projects have any trigger enabled, plus currently-`isSpiking` groups read directly rather than recomputed), and the most recent release-tagged error groups. Route registered above `GET /:id` so the literal path isn't swallowed as a project id — verified by inspecting Express's actual route stack, not just the source order.
+- **Frontend.** `DashboardPage.jsx` gained a `TrendChart` (hand-rolled inline SVG bar chart — no new charting dependency), an `AlertStatusCard`, and a `ReleaseTimeline`, fetched from the new endpoint alongside the existing project list. New CSS in `index.css` reuses existing badge/card tokens.
+- **Tests.** 4 new unit tests in `server/tests/overviewService.test.js`, same mocked-Mongoose-chain convention as the rest of this suite (no real Mongo available here). Full server suite: 54/54 passing. Client production build verified clean.
+- **Docs.** `docs/API.md` gained the new endpoint's full documentation. `docs/TASKS.md`'s Task 36 line corrected in place — see `DECISIONS.md` for the full decision record, including what was deliberately left out (no new "alert firing history" collection — that's a real schema change, named as a future step, not silently implied to already exist).
+- **Not yet done:** live manual test against a running instance (blocked on this environment's lack of network access to Atlas/Redis — see caveat above). Do this before treating Milestone 8 as fully closed.
+
+Before this, most recently completed:
 
 **Task 37 — README, Deployment Setup & Ship — complete and verified.**
 - **Front Door Documentation.** Rewrote root `README.md` into a clean, portfolio-grade front door complete with architecture diagrams, quickstart instructions, environment configuration guide, and production deployment steps.

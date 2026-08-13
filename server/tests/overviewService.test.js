@@ -1,0 +1,169 @@
+// server/tests/overviewService.test.js
+//
+// Task 36 — errorGroupService.getDashboardOverview. Same reasoning as
+// errorGroupService.test.js: no MongoDB Atlas credentials or network
+// access in this environment, so Project/ErrorEvent/ErrorGroup's
+// query methods are monkey-patched with chainable fakes that mimic
+// Mongoose's real shapes (.select/.sort/.limit/.lean chains,
+// countDocuments resolving directly) rather than spinning up a real
+// or in-memory Mongo instance. This exercises getDashboardOverview's
+// own aggregation/bucketing/shaping logic, not Mongoose's query
+// execution or a real 24h window against real data — see
+// errorGroupService.test.js's header comment for the fuller
+// rationale and this pass's manual-test complement to it.
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+
+const Project = require('../models/Project');
+const ErrorEvent = require('../models/ErrorEvent');
+const ErrorGroup = require('../models/ErrorGroup');
+const trendService = require('../services/trendService');
+const { getDashboardOverview } = require('../services/errorGroupService');
+
+// A chainable fake matching the subset of the real Mongoose Query
+// interface this file's queries actually use (.select/.sort/.limit,
+// terminated by .lean() resolving to the given array) — same pattern
+// as errorGroupService.test.js's withMockedFind, generalized to cover
+// the extra .select()/.sort()/.limit() combinations
+// getDashboardOverview chains in different orders across its three
+// queries.
+function chainable(result) {
+  const chain = {
+    select: () => chain,
+    sort: () => chain,
+    limit: () => chain,
+    lean: () => Promise.resolve(result),
+  };
+  return chain;
+}
+
+function withMocks({ projects, events, spikingCount, spikingGroups, recentReleaseGroups }, fn) {
+  const originals = {
+    projectFind: Project.find,
+    eventFind: ErrorEvent.find,
+    groupFind: ErrorGroup.find,
+    groupCount: ErrorGroup.countDocuments,
+  };
+
+  Project.find = () => chainable(projects);
+  ErrorEvent.find = () => chainable(events);
+  ErrorGroup.countDocuments = () => Promise.resolve(spikingCount);
+
+  // ErrorGroup.find is called twice (spiking groups, then recent
+  // releases) with different filters — distinguish by the filter's
+  // own shape rather than call order, so the mock doesn't silently
+  // depend on getDashboardOverview's internal Promise.all ordering.
+  ErrorGroup.find = (filter) => {
+    if (filter.isSpiking !== undefined) return chainable(spikingGroups);
+    if (filter.firstSeenRelease !== undefined) return chainable(recentReleaseGroups);
+    throw new Error(`Unexpected ErrorGroup.find filter in test: ${JSON.stringify(filter)}`);
+  };
+
+  return fn().finally(() => {
+    Project.find = originals.projectFind;
+    ErrorEvent.find = originals.eventFind;
+    ErrorGroup.find = originals.groupFind;
+    ErrorGroup.countDocuments = originals.groupCount;
+  });
+}
+
+test('getDashboardOverview: no owned projects -> empty shape, still a full zero-filled series', async () => {
+  await withMocks(
+    { projects: [], events: [], spikingCount: 0, spikingGroups: [], recentReleaseGroups: [] },
+    async () => {
+      const result = await getDashboardOverview('owner-1');
+      assert.equal(result.alerts.totalProjects, 0);
+      assert.equal(result.alerts.projectsConfigured, 0);
+      assert.equal(result.alerts.spikingCount, 0);
+      assert.deepEqual(result.alerts.spikingGroups, []);
+      assert.deepEqual(result.releases.recent, []);
+      assert.equal(result.trend.windowHours, 24);
+      // 24 trailing full hours + the in-progress current hour = 25 points.
+      assert.equal(result.trend.series.length, 25);
+      assert.ok(result.trend.series.every((b) => b.count === 0));
+    }
+  );
+});
+
+test('getDashboardOverview: counts projects with any alert trigger enabled, not just newGroup', async () => {
+  const projects = [
+    { _id: 'p1', name: 'API', alertConfig: { newGroup: true } },
+    { _id: 'p2', name: 'Worker', alertConfig: { severityThreshold: { enabled: true } } },
+    { _id: 'p3', name: 'Web', alertConfig: { spikeDetection: { enabled: true } } },
+    { _id: 'p4', name: 'Idle', alertConfig: { newGroup: false, severityThreshold: { enabled: false }, spikeDetection: { enabled: false } } },
+    { _id: 'p5', name: 'NoConfig', alertConfig: null },
+  ];
+
+  await withMocks(
+    { projects, events: [], spikingCount: 0, spikingGroups: [], recentReleaseGroups: [] },
+    async () => {
+      const result = await getDashboardOverview('owner-1');
+      assert.equal(result.alerts.totalProjects, 5);
+      assert.equal(result.alerts.projectsConfigured, 3);
+    }
+  );
+});
+
+test('getDashboardOverview: buckets events into the correct trailing hour, ignores events outside the window', async () => {
+  const { currentHourStart, baselineWindowStart } = trendService.getWindowBounds();
+  const twoHoursAgo = new Date(currentHourStart.getTime() - 2 * 60 * 60 * 1000 + 5 * 60 * 1000); // 2h ago, 5 min into that hour
+  const thisHour = new Date(currentHourStart.getTime() + 60 * 1000); // 1 min into the current hour
+  const wayOutsideWindow = new Date(baselineWindowStart.getTime() - 60 * 60 * 1000); // 1h before the fetched window starts
+
+  const projects = [{ _id: 'p1', name: 'API', alertConfig: {} }];
+  const events = [
+    { receivedAt: twoHoursAgo },
+    { receivedAt: twoHoursAgo },
+    { receivedAt: thisHour },
+    { receivedAt: wayOutsideWindow },
+  ];
+
+  await withMocks(
+    { projects, events, spikingCount: 0, spikingGroups: [], recentReleaseGroups: [] },
+    async () => {
+      const result = await getDashboardOverview('owner-1');
+      const totalBucketed = result.trend.series.reduce((sum, b) => sum + b.count, 0);
+      // The out-of-window event must not land in any bucket (and must
+      // not throw) — only the 3 in-window events get counted.
+      assert.equal(totalBucketed, 3);
+
+      const twoHoursAgoBucket = result.trend.series.find(
+        (b) => b.hour.getTime() === trendService.startOfHour(twoHoursAgo).getTime()
+      );
+      assert.equal(twoHoursAgoBucket.count, 2);
+
+      const currentHourBucket = result.trend.series.find(
+        (b) => b.hour.getTime() === currentHourStart.getTime()
+      );
+      assert.equal(currentHourBucket.count, 1);
+    }
+  );
+});
+
+test('getDashboardOverview: shapes spiking groups and recent releases with project names attached', async () => {
+  const projects = [{ _id: 'p1', name: 'Checkout Service', alertConfig: {} }];
+  const spikingGroups = [
+    { _id: 'g1', projectId: 'p1', message: 'Payment timeout', lastSeen: new Date('2026-08-13T10:00:00Z'), count: 42 },
+  ];
+  const recentReleaseGroups = [
+    { _id: 'g2', projectId: 'p1', message: 'Null pointer in cart', firstSeen: new Date('2026-08-12T09:00:00Z'), firstSeenRelease: 'v1.4.2' },
+  ];
+
+  await withMocks(
+    { projects, events: [], spikingCount: 1, spikingGroups, recentReleaseGroups },
+    async () => {
+      const result = await getDashboardOverview('owner-1');
+
+      assert.equal(result.alerts.spikingCount, 1);
+      assert.equal(result.alerts.spikingGroups.length, 1);
+      assert.equal(result.alerts.spikingGroups[0].projectName, 'Checkout Service');
+      assert.equal(result.alerts.spikingGroups[0].message, 'Payment timeout');
+      assert.equal(result.alerts.spikingGroups[0].count, 42);
+
+      assert.equal(result.releases.recent.length, 1);
+      assert.equal(result.releases.recent[0].projectName, 'Checkout Service');
+      assert.equal(result.releases.recent[0].release, 'v1.4.2');
+    }
+  );
+});

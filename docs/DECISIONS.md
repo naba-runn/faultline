@@ -17,7 +17,116 @@ instead — that section is what `CHANGELOG.md` used to be.
 
 ---
 
-## Task 28: alert delivery infra + per-project config + new-group/severity-threshold triggers
+## Task 36 (follow-up pass): dashboard overview widgets — trend chart, alert status, release timeline
+
+**Context:** `TASKS.md`'s Task 36 line was checked off after commit
+`bbbcdca`, but that pass only shipped a metrics/stat-card grid
+(project count, GitHub-linked count, and two hardcoded display
+strings — "System Status: Operational", "Worker Queue: Ready", not
+backed by any real check). It never built the trend chart, alert
+status, or release timeline the checklist actually promises. This
+entry covers the follow-up pass that builds that missing scope for
+real, against a manual code/doc audit that surfaced the gap.
+
+**Decision:** One new read-only aggregation endpoint,
+`GET /api/projects/overview` (`errorGroupService.getDashboardOverview`),
+scoped to the logged-in user's own projects via `req.user._id` — not
+a single-project route, so registered in `routes/projectRoutes.js`
+*above* `GET /:id` (Express would otherwise match the literal path
+segment `overview` as `:id`). Three parts, each derived from fields
+that already exist from earlier tasks — no new persisted model:
+
+- **Trend** — hourly `ErrorEvent` counts for the trailing 24h,
+  fetched as one bounded query (`receivedAt >= baselineWindowStart`)
+  across all owned projects, then bucketed in JS with
+  `trendService.startOfHour` — the exact same UTC-safe hour
+  truncation Task 29's per-group spike detection already uses, now
+  exported from `trendService.js` for this second caller rather than
+  re-implemented. Reusing it isn't just DRY: Task 29's own shipped
+  log records a real timezone bug from a first attempt at "start of
+  hour" that used local-time truncation, and a second, subtly
+  different implementation here would risk the same class of bug a
+  second time. Returns a zero-filled 25-point series (24 full
+  trailing hours + the in-progress current hour) so the chart never
+  has to special-case missing hours.
+- **Alerts** — counts owned projects where *any* of the three
+  independent triggers (Task 28's `newGroup`/`severityThreshold`,
+  Task 30's `spikeDetection`) is enabled, plus reads `ErrorGroup.
+  isSpiking` (Task 30's already-persisted state) directly via
+  `countDocuments`/`find`. Deliberately does **not** call
+  `trendService.computeTrend` fresh for every group on every
+  dashboard load — that would be exactly the unthrottled-check
+  problem Task 30's own entry already rejected once for the
+  alert-firing path itself, just moved to a different call site.
+- **Releases** — the most recent `ErrorGroup` documents with a
+  non-null `firstSeenRelease` (Task 31), newest `firstSeen` first,
+  across all owned projects.
+
+**Alternatives considered for the chart:** pull in a charting library
+(recharts is already an allowed dependency per `SKILL.md`/other
+tooling in this ecosystem, but not currently used anywhere in this
+client). Rejected — the only prior "rendering" addition to this
+client was `marked` for Task 35's markdown docs page, a real parsing
+problem a hand-rolled solution shouldn't attempt; 25 bars is not that
+problem. A plain inline SVG (`TrendChart` in `DashboardPage.jsx`,
+`<rect>` per bucket, height proportional to `count/maxCount`, native
+`<title>` per bar for a hover tooltip) needed no new dependency and
+matches `PROJECT_RULES.md` §2's restraint-over-premature-infrastructure
+stance, which the existing `errorGroupService.test.js` header comment
+also invokes for a different reason (no mongodb-memory-server) —
+same underlying principle, applied to a frontend dependency instead
+of a test one.
+
+**Alternatives considered for "alert status":** log every fired alert
+to a new `Alert` collection and show a real firing history. Rejected
+for this pass — no such log currently exists anywhere in the system
+(Task 28/30 fire-and-enqueue, they don't persist a record), and
+adding one is a real schema change with its own retention/query
+design, not something to fold silently into a dashboard-widget task.
+What ships instead — "is alerting configured" + "what's spiking right
+now" — is honest about what data actually exists today; a firing-history
+feed is left as a named future step, not implied to already exist.
+
+**Shipped:**
+- `services/trendService.js`: exports `startOfHour` (previously
+  module-private).
+- `services/errorGroupService.js`: `getDashboardOverview(ownerId)`.
+- `controllers/projectController.js` /
+  `routes/projectRoutes.js`: `GET /api/projects/overview`, mounted
+  above `GET /:id`.
+- `client/src/pages/DashboardPage.jsx`: `TrendChart`,
+  `AlertStatusCard`, `ReleaseTimeline` components, an `overview`
+  fetch alongside the existing `projects` fetch, and a new widgets
+  row in the page layout.
+- `client/src/index.css`: `.overview-widgets-grid` and related
+  classes, reusing existing badge/card tokens rather than introducing
+  new ones.
+- `server/tests/overviewService.test.js`: 4 new unit tests (mocked
+  Mongoose chains, same convention as `errorGroupService.test.js` —
+  no real Mongo available in this environment) covering the
+  zero-projects shape, the any-trigger-counts-as-configured logic,
+  hourly bucketing (including an out-of-window event that must not
+  throw or get miscounted), and project-name attachment on spiking
+  groups / recent releases. Full suite: 54/54 passing.
+- `docs/API.md`: `GET /api/projects/overview` documented with its
+  full response shape.
+- `docs/TASKS.md`: Task 36's line corrected in place to admit the
+  first pass under that checkbox didn't deliver this scope, pointing
+  here.
+
+**Not done in this pass, left as a named gap:** no live/manual
+verification against a real running instance — this sandbox has no
+network route to the project's MongoDB Atlas cluster or Redis
+instance (see `PROJECT_RULES.md`'s environment notes), so this was
+built and verified by unit tests + a clean production build only, not
+by the "add a project, simulate a spike, watch the dashboard update"
+manual pass every other task in this log records. Do that manual
+pass before treating this as fully shipped, the same standard applied
+everywhere else in `TASKS.md`'s Notes section.
+
+---
+
+
 
 **Decision:** Three sub-parts, built in order: (28.1) `Project.alertConfig`
 embedded schema + `GET`/`PATCH /api/projects/:id/alerts`; (28.2)

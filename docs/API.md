@@ -118,6 +118,59 @@ first. `apiKeyHash` is never included.
 { "success": true, "data": { "projects": [ { "id": "...", "name": "...", "githubRepo": "...", "createdAt": "...", "updatedAt": "..." } ] } }
 ```
 
+### `GET /api/projects/overview` (Task 36)
+
+Requires auth: `Authorization: Bearer <token>`.
+
+Dashboard overview, aggregated across every project the authenticated
+user owns — not scoped to a single project, so this must be (and is)
+registered before `GET /api/projects/:id` in `routes/projectRoutes.js`
+or Express would match `overview` as an `:id`. Three parts:
+
+- `trend` — hourly ingested-error counts for the trailing 24h across
+  all owned projects, as a 25-point series (24 full trailing hours
+  plus the in-progress current hour), zero-filled for hours with no
+  events. Bucketed with the same UTC-safe hour truncation Task 29's
+  per-group spike detection uses (`trendService.startOfHour`).
+- `alerts` — how many owned projects have at least one alert trigger
+  enabled (Task 28's `newGroup`/`severityThreshold`, Task 30's
+  `spikeDetection` — any one counts), plus the groups currently
+  flagged `isSpiking` (Task 30's persisted state, read directly —
+  this does **not** recompute a fresh trend for every group on every
+  dashboard load).
+- `releases` — the most recent error groups that carry a
+  `firstSeenRelease` tag (Task 31), across all owned projects, newest
+  first.
+
+**Success (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "trend": {
+      "windowHours": 24,
+      "series": [ { "hour": "2026-08-12T11:00:00.000Z", "count": 3 }, "... 25 points total" ]
+    },
+    "alerts": {
+      "totalProjects": 4,
+      "projectsConfigured": 2,
+      "spikingCount": 1,
+      "spikingGroups": [
+        { "groupId": "...", "projectId": "...", "projectName": "...", "message": "...", "lastSeen": "...", "count": 42 }
+      ]
+    },
+    "releases": {
+      "recent": [
+        { "groupId": "...", "projectId": "...", "projectName": "...", "release": "v1.4.2", "message": "...", "firstSeen": "..." }
+      ]
+    }
+  }
+}
+```
+
+A user who owns zero projects gets the same shape back — a
+zero-filled 25-point series and empty arrays, not a 404 or a 400.
+
 ### `GET /api/projects/:id`
 
 Requires auth: `Authorization: Bearer <token>`.

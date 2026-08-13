@@ -30,6 +30,11 @@ router.use(authMiddleware);
 
 router.post('/', projectController.createProject);
 router.get('/', projectController.listProjects);
+// Task 36: must come before GET /:id — otherwise Express would match
+// "/overview" as :id and hand a non-ObjectId string to
+// projectService.getProject, which is a real path, just the wrong
+// one for this route.
+router.get('/overview', projectController.getDashboardOverview);
 router.get('/:id', projectController.getProject);
 router.get('/:id/groups', projectController.listProjectGroups);
 // Task 23: dashboard-side synthetic error trigger. JWT-authed,
