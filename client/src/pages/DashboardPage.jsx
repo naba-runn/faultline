@@ -79,7 +79,7 @@ function AlertStatusCard({ alerts }) {
         <>
             <div className="alert-status-summary">
                 <span className={`badge ${spikingCount > 0 ? 'badge-trend-spiking' : 'badge-trend-normal'}`}>
-                    {spikingCount > 0 ? `⚡ ${spikingCount} spiking now` : 'No active spikes'}
+                    {spikingCount > 0 ? `${spikingCount} spiking now` : 'No active spikes'}
                 </span>
                 <span className="cell-muted mono" style={{ fontSize: '0.78rem' }}>
                     {projectsConfigured} / {totalProjects} project{totalProjects === 1 ? '' : 's'} alerting
@@ -228,10 +228,6 @@ function DashboardPage() {
             <header className="topbar">
                 <div className="topbar-brand">
                     <h1 className="brand-logo-text">FAULTLINE</h1>
-                    <div className="status-pill-badge">
-                        <span className="live-indicator-dot" style={{ background: 'var(--color-accent)' }} />
-                        <span>All systems operational</span>
-                    </div>
                 </div>
                 <div className="topbar-meta">
                     <Link to="/dashboard" className="topbar-link active">Dashboard</Link>
@@ -365,6 +361,9 @@ function DashboardPage() {
                     {!loading && loadError && <p className="alert alert-error" role="alert">{loadError}</p>}
                     {!loading && !loadError && projects.length === 0 && (
                         <div className="card empty-state-card">
+                            <svg className="empty-state-trace" width="64" height="20" viewBox="0 0 64 20" aria-hidden="true">
+                                <path d="M0 10 H64" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="1 5" strokeLinecap="round" />
+                            </svg>
                             <h3>No projects monitored yet</h3>
                             <p className="cell-muted">
                                 Onboard your first project on the left to generate an API key and start monitoring runtime errors.
@@ -428,7 +427,7 @@ function DashboardPage() {
                                                     to={`/projects/${project.id}`}
                                                     className="btn btn-secondary btn-sm"
                                                 >
-                                                    View Errors →
+                                                    View errors
                                                 </Link>
                                             </td>
                                         </tr>

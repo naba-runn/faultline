@@ -53,7 +53,7 @@ function TrendBadge({ trend }) {
         return (
             <div className="trend-stat-row">
                 <span className="badge badge-trend-spiking">
-                    ⚡ SPIKING — {trend.currentHourCount} events this hour
+                    spiking — {trend.currentHourCount} events this hour
                 </span>
                 <span className="cell-muted mono" style={{ fontSize: '0.78rem' }}>
                     vs {rateLabel}/hr baseline
@@ -286,10 +286,6 @@ function GroupDetailPage() {
             <header className="topbar">
                 <div className="topbar-brand">
                     <h1 className="brand-logo-text">FAULTLINE</h1>
-                    <div className="status-pill-badge">
-                        <span className={`live-indicator-dot${liveConnected ? ' is-connected' : ''}`} style={{ background: 'var(--color-accent)' }} />
-                        <span>{liveConnected ? 'Live: All systems nominal' : 'Connecting…'}</span>
-                    </div>
                 </div>
                 <div className="topbar-meta">
                     <Link to="/dashboard" className="topbar-link">Dashboard</Link>
@@ -335,7 +331,7 @@ function GroupDetailPage() {
                 {/* AI Analysis Hero Section */}
                 <section className="card card-ai-hero" style={{ margin: 0 }}>
                     <div className="card-header-bar">
-                        <h2>🤖 AI Root Cause Analysis</h2>
+                        <h2>AI Root Cause Analysis</h2>
                         {aiSummary && (
                             <span className="ai-confidence-pill mono">
                                 Confidence <strong style={{ color: 'var(--color-text)' }}>{typeof aiSummary.confidence === 'number' ? `${Math.round(aiSummary.confidence * 100)}%` : '—'}</strong>
@@ -347,7 +343,7 @@ function GroupDetailPage() {
                         <div className="ai-content">
                             {aiSummary.affectedFile && (
                                 <div className="ai-target-box mono">
-                                    <span className="target-label">📁 AFFECTED TARGET:</span>
+                                    <span className="target-label">AFFECTED TARGET:</span>
                                     <code className="target-file">{aiSummary.affectedFile}</code>
                                     {aiSummary.affectedFunction && <code className="target-func">&gt; {aiSummary.affectedFunction}()</code>}
                                 </div>
@@ -378,7 +374,7 @@ function GroupDetailPage() {
                 {/* Activity & Trend Section */}
                 <section className="card" style={{ margin: 0 }}>
                     <div className="card-header-bar">
-                        <h2>📈 Error Rate Trend</h2>
+                        <h2>Error Rate Trend</h2>
                         <TrendBadge trend={trend} />
                     </div>
                     {trend && Number.isFinite(trend.baselineHourlyRate) && (

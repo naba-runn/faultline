@@ -295,10 +295,6 @@ function ProjectDetailPage() {
             <header className="topbar">
                 <div className="topbar-brand">
                     <h1 className="brand-logo-text">FAULTLINE</h1>
-                    <div className="status-pill-badge">
-                        <span className={`live-indicator-dot${liveConnected ? ' is-connected' : ''}`} style={{ background: 'var(--color-accent)' }} />
-                        <span>{liveConnected ? 'Live: All systems nominal' : 'Connecting…'}</span>
-                    </div>
                 </div>
                 <div className="topbar-meta">
                     <Link to="/dashboard" className="topbar-link">Dashboard</Link>
@@ -317,10 +313,12 @@ function ProjectDetailPage() {
 
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '1rem', marginTop: '0.5rem' }}>
                     <h1 className="font-headline-lg" style={{ margin: 0, fontSize: '1.8rem' }}>{project.name}</h1>
-                    <span className="mono cell-muted" style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span className="mono cell-muted" style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                         <span>GitHub: <strong>{project.githubRepo || 'no repo linked'}</strong></span>
-                        <span className="live-indicator-dot" style={{ background: 'var(--color-accent)' }} />
-                        <span style={{ color: 'var(--color-accent)' }}>Live</span>
+                        <span className={`live-indicator${liveConnected ? ' is-connected' : ''}`}>
+                            <span className="live-indicator-dot" />
+                            {liveConnected ? 'Live' : 'Connecting…'}
+                        </span>
                     </span>
                 </div>
             </div>
@@ -346,14 +344,22 @@ function ProjectDetailPage() {
                             Trigger a test error to verify ingestion & AI rules.
                         </p>
                     </div>
-                    <button
-                        type="button"
-                        className="btn btn-primary btn-sm btn-full"
-                        onClick={handleSimulate}
-                        disabled={simulating}
-                    >
-                        {simulating ? 'Simulating...' : 'SIMULATE ERROR →'}
-                    </button>
+                    <div className="simulate-panel">
+                        <button
+                            type="button"
+                            className="simulate-btn"
+                            onClick={handleSimulate}
+                            disabled={simulating}
+                        >
+                            {simulating ? 'simulating…' : 'simulate-error'}
+                        </button>
+                        {simulateResult && (
+                            <p className="simulate-result">
+                                {simulateResult.isNewGroup ? 'New group created.' : 'Recorded as a duplicate of an existing group.'}
+                            </p>
+                        )}
+                        {simulateError && <p className="alert alert-error" role="alert" style={{ margin: 0 }}>{simulateError}</p>}
+                    </div>
                 </div>
             </div>
 

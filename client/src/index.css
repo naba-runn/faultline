@@ -1,18 +1,26 @@
 /*
- * Faultline — global styles (Task 23).
+ * Faultline — global styles.
  *
- * Design direction: Faultline's subject matter is stack traces, error
- * fingerprints, and event logs — data that is monospace by nature, not
- * by preference. The token system below leans into that: a clean sans
- * for UI chrome (nav, headings, buttons, labels), monospace for
- * anything that IS data (error messages, stack traces, counts,
- * timestamps, the API key, status/severity values, project names).
+ * Design direction: a fault line is a rock record read after the
+ * fact, through instruments — not a glowing dashboard. The palette is
+ * a core sample (char, sediment, mineral stain) instead of the
+ * generic dark-SaaS "near-black + one bright accent" scheme. Severity
+ * reads on a warm ochre-to-brick scale borrowed from seismic hazard
+ * maps; the one interactive accent is a cooled slate-blue — like ink
+ * on a seismograph roll — kept deliberately apart from that scale so
+ * "this is clickable" and "this is how bad it is" never share a hue.
  *
- * Palette is a deep graphite console, not pure black — #14171c
- * background, #1b1f26 raised surfaces, #2a2f38 hairline borders — with
- * a single desaturated teal accent (#5fb3b3) for interactive elements.
- * Severity/status get their own small pill badges since those are the
- * two things a user scans a table for fastest.
+ * Type: IBM Plex Sans Condensed for headings/labels (a field-report
+ * register — built for dense technical documents, not chat UI),
+ * IBM Plex Sans for body copy, IBM Plex Mono for anything that IS
+ * data (error messages, stack traces, counts, timestamps, API keys).
+ * One superfamily across all three roles, used for three distinct
+ * jobs — not a grab-bag of unrelated faces.
+ *
+ * Data tags (severity/status/env) are small flat rectangles with a
+ * left color spine, not pills — a specimen label, not a chat bubble.
+ * Pills are reserved for actual toggles (filter chips, tabs) where
+ * the shape signals "press me," a real and different job.
  *
  * One stylesheet, plain CSS custom properties, no framework — matches
  * PROJECT_RULES.md §11's "premature abstraction is a defect" stance;
@@ -20,88 +28,78 @@
  */
 
 :root {
-    --color-bg: #0e1513;
-    --color-surface: #0e1513;
-    --color-surface-raised: #161d1b;
-    --color-surface-container: #1a211f;
-    --color-surface-container-high: #242b2a;
-    --color-surface-container-highest: #2f3634;
-    --color-surface-container-lowest: #09100e;
-    --color-border: #2f3634;
-    --color-border-strong: #3c4a46;
-    --color-border-outline: #859490;
+    --color-bg: #17140f;
+    --color-surface: #17140f;
+    --color-surface-raised: #1e1a14;
+    --color-surface-container: #221d16;
+    --color-surface-container-high: #2b251b;
+    --color-surface-container-highest: #362f22;
+    --color-surface-container-lowest: #100e0a;
+    --color-border: #362f22;
+    --color-border-strong: #453c2a;
+    --color-border-outline: #8c8168;
 
-    --color-text: #dde4e1;
-    --color-text-muted: #859490;
-    --color-text-faint: #5b6270;
+    --color-text: #e7ded0;
+    --color-text-muted: #a89b82;
+    --color-text-faint: #6f6551;
 
-    --color-accent: #57f1db;
-    --color-accent-strong: #2dd4bf;
-    --color-accent-bg: rgba(45, 212, 191, 0.12);
+    /* The one interactive accent — deliberately cool against a warm
+       palette, so links/focus/brand never get mistaken for a
+       severity reading. */
+    --color-accent: #7fa1b8;
+    --color-accent-strong: #a0c1d6;
+    --color-accent-bg: rgba(127, 161, 184, 0.14);
+    --color-accent-rgb: 127, 161, 184;
 
-    --color-danger: #ffb4ab;
-    --color-danger-bg: rgba(147, 0, 10, 0.4);
-    --color-warning: #ffac5a;
-    --color-warning-bg: rgba(255, 172, 90, 0.14);
-    --color-caution: #ffd1aa;
-    --color-caution-bg: rgba(255, 209, 170, 0.14);
-    --color-success: #57f1db;
-    --color-success-bg: rgba(87, 241, 219, 0.14);
+    /* Magnitude scale — low to critical, seismic hazard map colors */
+    --color-danger: #d17b62;
+    --color-danger-bg: rgba(168, 74, 48, 0.22);
+    --color-warning: #cf9a4f;
+    --color-warning-bg: rgba(207, 154, 79, 0.16);
+    --color-caution: #cbb84f;
+    --color-caution-bg: rgba(203, 184, 79, 0.16);
+    --color-success: #8ca875;
+    --color-success-bg: rgba(140, 168, 117, 0.16);
 
-    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    --font-display: 'IBM Plex Sans Condensed', var(--font-sans);
+    --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-    --radius: 8px;
-    --radius-sm: 4px;
-}
-
-/* Material Symbols Outlined Icon Styles */
-.material-symbols-outlined {
-    font-family: 'Material Symbols Outlined';
-    font-weight: normal;
-    font-style: normal;
-    font-size: 18px;
-    line-height: 1;
-    letter-spacing: normal;
-    text-transform: none;
-    display: inline-block;
-    white-space: nowrap;
-    word-wrap: normal;
-    direction: ltr;
-    -webkit-font-smoothing: antialiased;
-    vertical-align: middle;
+    /* Sharper than a consumer app's soft-rounded corners — this reads
+       instrument panel, not friendly SaaS. */
+    --radius: 3px;
+    --radius-sm: 2px;
 }
 
 /* Stitch Typography Scale Utility Classes */
 .font-label-caps,
 .label-caps {
-    font-family: var(--font-sans);
+    font-family: var(--font-display);
     font-size: 11px;
     line-height: 16px;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.07em;
     font-weight: 600;
     text-transform: uppercase;
     color: var(--color-text-muted);
 }
 
 .font-headline-lg {
-    font-family: var(--font-sans);
+    font-family: var(--font-display);
     font-size: 30px;
     line-height: 36px;
-    letter-spacing: -0.02em;
-    font-weight: 600;
-}
-
-.font-headline-md {
-    font-family: var(--font-sans);
-    font-size: 24px;
-    line-height: 32px;
     letter-spacing: -0.01em;
     font-weight: 600;
 }
 
+.font-headline-md {
+    font-family: var(--font-display);
+    font-size: 24px;
+    line-height: 32px;
+    font-weight: 600;
+}
+
 .font-headline-sm {
-    font-family: var(--font-sans);
+    font-family: var(--font-display);
     font-size: 18px;
     line-height: 24px;
     font-weight: 600;
@@ -160,20 +158,20 @@ body {
 h1,
 h2,
 h3 {
-    font-family: var(--font-sans);
+    font-family: var(--font-display);
     font-weight: 600;
-    letter-spacing: -0.01em;
     margin: 0 0 0.6em 0;
 }
 
 h1 {
-    font-size: 1.5rem;
+    font-size: 1.6rem;
+    letter-spacing: -0.005em;
 }
 
 h2 {
-    font-size: 0.8rem;
+    font-size: 0.82rem;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.06em;
     color: var(--color-text-muted);
     margin-top: 2rem;
     margin-bottom: 0.75rem;
@@ -250,6 +248,15 @@ select:focus-visible {
     gap: 1rem;
 }
 
+.brand-logo-text {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--color-text);
+    margin: 0;
+}
+
 .topbar-meta {
     display: flex;
     align-items: center;
@@ -263,7 +270,7 @@ select:focus-visible {
     color: var(--color-text-muted);
     font-size: 0.9rem;
     font-weight: 500;
-    transition: color 0.2s ease;
+    transition: color 0.15s ease;
     padding: 0.25rem 0.4rem;
 }
 
@@ -276,6 +283,15 @@ select:focus-visible {
     border-bottom: 2px solid var(--color-accent);
 }
 
+.topbar-divider {
+    color: var(--color-border-strong);
+}
+
+.topbar-user {
+    color: var(--color-text);
+    font-weight: 500;
+}
+
 .back-link {
     display: inline-flex;
     align-items: center;
@@ -283,7 +299,7 @@ select:focus-visible {
     margin-bottom: 1.25rem;
     font-size: 0.85rem;
     color: var(--color-text-muted);
-    transition: color 0.2s ease;
+    transition: color 0.15s ease;
 }
 
 .back-link:hover {
@@ -291,11 +307,15 @@ select:focus-visible {
 }
 
 .card {
-    background: var(--color-surface-container-low);
+    background: var(--color-surface-raised);
     border: 1px solid var(--color-border-strong);
     border-radius: var(--radius);
     padding: 1.25rem 1.5rem;
     margin-bottom: 1.5rem;
+}
+
+.card-accented {
+    border-left: 2px solid var(--color-accent);
 }
 
 /* ---------- Forms ---------- */
@@ -359,13 +379,13 @@ select:focus-visible {
 .btn-primary {
     background: var(--color-accent);
     border-color: var(--color-accent);
-    color: #0d2323;
+    color: #14201f;
 }
 
 .btn-primary:hover:not(:disabled) {
     background: var(--color-accent-strong);
     border-color: var(--color-accent-strong);
-    color: #0d2323;
+    color: #14201f;
 }
 
 .btn-ghost {
@@ -380,6 +400,37 @@ select:focus-visible {
     border-color: transparent;
 }
 
+.btn-secondary {
+    font-family: var(--font-sans);
+    background: var(--color-bg);
+    border: 1px solid var(--color-border-strong);
+    color: var(--color-text);
+    padding: 0.35rem 0.75rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.btn-secondary:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent-strong);
+}
+
+.btn-sm {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: var(--radius-sm);
+}
+
+.btn-full {
+    width: 100%;
+    padding: 0.7rem 1rem;
+    font-size: 0.92rem;
+    margin-top: 0.5rem;
+}
+
 /* ---------- Alerts ---------- */
 
 .alert {
@@ -387,221 +438,19 @@ select:focus-visible {
     padding: 0.65rem 0.9rem;
     font-size: 0.85rem;
     margin-bottom: 1rem;
+    border-left: 2px solid transparent;
 }
 
 .alert-error {
     background: var(--color-danger-bg);
-    color: #ffb0b3;
-    border: 1px solid rgba(229, 72, 77, 0.35);
+    color: #e3a893;
+    border-left-color: var(--color-danger);
 }
-
-/* ---------- Stitch Auth & Layout Rules ---------- */
-
-.auth-stitch-container {
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 2rem 1.5rem;
-    background-color: var(--color-bg);
-    background-image: linear-gradient(to right, rgba(60, 74, 70, 0.12) 1px, transparent 1px),
-                      linear-gradient(to bottom, rgba(60, 74, 70, 0.12) 1px, transparent 1px);
-    background-size: 32px 32px;
-}
-
-.auth-stitch-card {
-    display: flex;
-    width: 100%;
-    max-width: 1020px;
-    min-height: 560px;
-    border-radius: 12px;
-    overflow: hidden;
-    background: var(--color-surface-raised);
-    border: 1px solid var(--color-border-strong);
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
-}
-
-.auth-left-panel {
-    width: 50%;
-    background: #0b110f;
-    padding: 3rem 2.5rem;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    border-right: 1px solid var(--color-border-strong);
-}
-
-@media (max-width: 840px) {
-    .auth-left-panel {
-        display: none;
-    }
-}
-
-.auth-right-panel {
-    width: 50%;
-    padding: 3rem 2.5rem;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    background: var(--color-surface-lowest);
-}
-
-@media (max-width: 840px) {
-    .auth-right-panel {
-        width: 100%;
-    }
-}
-
-.auth-brand-header {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    margin-bottom: 1.5rem;
-}
-
-.brand-dot-pulse {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--color-accent);
-    box-shadow: 0 0 10px var(--color-accent);
-    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-.brand-title {
-    font-size: 1.35rem;
-    font-weight: 900;
-    letter-spacing: -0.03em;
-    color: var(--color-accent);
-    margin: 0;
-}
-
-.auth-headline {
-    font-size: 1.5rem;
-    font-weight: 700;
-    line-height: 1.3;
-    color: var(--color-text);
-    margin-bottom: 1.75rem;
-}
-
-.auth-feature-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.85rem;
-}
-
-.auth-feature-list li {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    font-size: 0.9rem;
-    color: var(--color-text-muted);
-}
-
-.auth-feature-list .feature-icon {
-    color: var(--color-accent);
-    font-size: 1.1rem;
-}
-
-.auth-terminal-box {
-    background: #060a09;
-    border: 1px solid var(--color-border);
-    border-radius: 6px;
-    padding: 1rem 1.15rem;
-    font-size: 0.78rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.45rem;
-}
-
-.auth-terminal-box .terminal-line {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.auth-terminal-box .indent {
-    padding-left: 1.2rem;
-    color: var(--color-text-muted);
-}
-
-.auth-terminal-box .dot-red {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--color-danger);
-}
-
-.auth-terminal-box .text-red { color: var(--color-danger); }
-.auth-terminal-box .text-warning { color: var(--color-warning); }
-.auth-terminal-box .text-teal { color: var(--color-accent); }
-.auth-terminal-box .dim { color: var(--color-text-faint); }
-
-.auth-form-header {
-    margin-bottom: 2rem;
-}
-
-.auth-form-header h3 {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--color-text);
-    margin: 0 0 0.4rem 0;
-}
-
-.auth-form-header p {
-    font-size: 0.88rem;
-    color: var(--color-text-muted);
-    margin: 0;
-}
-
-.brand-logo-text {
-    font-size: 1.25rem;
-    font-weight: 900;
-    letter-spacing: -0.03em;
-    color: var(--color-accent);
-    margin: 0;
-}
-
-.status-pill-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    background: var(--color-surface-container);
-    border: 1px solid var(--color-border);
-    padding: 0.2rem 0.65rem;
-    border-radius: 9999px;
-    font-size: 0.75rem;
-    font-family: var(--font-sans);
-    color: var(--color-text-muted);
-}
-
-.dashboard-main-grid {
-    display: grid;
-    grid-template-columns: 4fr 8fr;
-    gap: 1.5rem;
-    align-items: start;
-}
-
-@media (max-width: 960px) {
-    .dashboard-main-grid {
-        grid-template-columns: 1fr;
-    }
-}
-
-.create-project-form-vertical {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-}
-
 
 .alert-info {
     background: var(--color-accent-bg);
     color: var(--color-accent-strong);
-    border: 1px solid rgba(95, 179, 179, 0.35);
+    border-left-color: var(--color-accent);
 }
 
 .api-key-reveal {
@@ -615,6 +464,107 @@ select:focus-visible {
     border: 1px solid var(--color-border-strong);
     border-radius: var(--radius-sm);
     color: var(--color-accent-strong);
+}
+
+/* ---------- Auth pages (login / register) ---------- */
+/*
+ * One centered instrument card, not a split-panel marketing layout.
+ * The only decoration is a trace line — a flat baseline that settles
+ * after one small disturbance on load, echoing what this whole
+ * product watches for. It's drawn with real SVG stroke animation, not
+ * dressed up as a fake product screenshot or a scripted chat log.
+ */
+
+.auth-shell {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1.5rem;
+    background: var(--color-bg);
+}
+
+.auth-panel {
+    width: 100%;
+    max-width: 380px;
+}
+
+.auth-mark {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 2rem;
+}
+
+.auth-trace {
+    width: 96px;
+    height: 28px;
+    color: var(--color-accent);
+    overflow: visible;
+}
+
+.auth-trace-path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 180;
+    stroke-dashoffset: 180;
+    animation: trace-draw 1.4s ease-out 0.15s forwards;
+}
+
+@keyframes trace-draw {
+    to {
+        stroke-dashoffset: 0;
+    }
+}
+
+.auth-wordmark {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: var(--color-text);
+    margin: 0;
+}
+
+.auth-copy {
+    text-align: center;
+    margin-bottom: 1.75rem;
+}
+
+.auth-copy h1 {
+    font-size: 1.3rem;
+    color: var(--color-text);
+    margin-bottom: 0.35rem;
+}
+
+.auth-copy p {
+    font-size: 0.88rem;
+    color: var(--color-text-muted);
+    margin: 0;
+}
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+}
+
+.auth-footer {
+    text-align: center;
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    margin-top: 1.75rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--color-border);
+}
+
+.auth-link {
+    color: var(--color-accent);
+    font-weight: 600;
 }
 
 /* ---------- Tables ---------- */
@@ -635,10 +585,11 @@ thead th {
     position: sticky;
     top: 0;
     text-align: left;
-    font-family: var(--font-sans);
+    font-family: var(--font-display);
     font-size: 0.72rem;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
+    font-weight: 600;
     color: var(--color-text-muted);
     background: var(--color-surface-raised);
     padding: 0.6rem 0.9rem;
@@ -684,16 +635,24 @@ table select {
     padding: 0.25rem 0.4rem;
 }
 
-/* ---------- Badges (severity / status) ---------- */
+/* ---------- Data tags (severity / status / env) ---------- */
+/*
+ * A specimen label, not a chat-bubble pill: flat rectangle, small
+ * left spine in the tag's own color, monospace. Reserve the fully
+ * rounded pill shape (below, in Filters) for things you actually
+ * press — a toggle should look pressable, a reading shouldn't.
+ */
 
 .badge {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
     font-family: var(--font-mono);
     font-size: 0.72rem;
     font-weight: 600;
-    letter-spacing: 0.02em;
-    padding: 0.15rem 0.5rem;
-    border-radius: 999px;
+    letter-spacing: 0.01em;
+    padding: 0.15rem 0.55rem 0.15rem 0.5rem;
+    border-radius: var(--radius-sm);
+    border-left: 2px solid currentColor;
     text-transform: lowercase;
     white-space: nowrap;
 }
@@ -733,9 +692,9 @@ table select {
     color: var(--color-text-faint);
 }
 
-/* Task 29.2: trend badge on the Activity card — same visual language
-   as the severity/status badges above (pill shape, background+text
-   pair from the theme palette), not a new pattern. */
+/* Trend badge on the Activity card — same visual language as the
+   severity/status badges above (tag shape, background+text pair from
+   the theme palette), not a new pattern. */
 .badge-trend-spiking {
     background: var(--color-danger-bg);
     color: var(--color-danger);
@@ -751,8 +710,8 @@ table select {
     color: var(--color-text-faint);
 }
 
-/* Task 31: release/environment badges on the group detail page —
-   same visual language as the severity/status/trend badges above. */
+/* Release/environment tags on the group detail page — same visual
+   language as the severity/status/trend tags above. */
 .badge-release {
     background: var(--color-accent-bg);
     color: var(--color-accent-strong);
@@ -760,7 +719,7 @@ table select {
 
 .badge-env {
     background: var(--color-surface-raised);
-    color: var(--color-text-secondary);
+    color: var(--color-text-muted);
 }
 
 .badge-sourcemap {
@@ -768,7 +727,19 @@ table select {
     color: var(--color-accent-strong);
 }
 
-/* Task 32: Resolved stack trace UI */
+.badge-repo {
+    background: var(--color-surface-raised);
+    border: 1px solid var(--color-border);
+    border-left: 2px solid var(--color-border-outline);
+    padding: 0.2rem 0.5rem;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--color-accent-strong);
+}
+
+/* ---------- Stack trace UI ---------- */
+
 .stack-header {
     display: flex;
     justify-content: space-between;
@@ -794,7 +765,7 @@ table select {
     padding: 0.25rem 0.6rem;
     border-radius: var(--radius-sm);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: border-color 0.15s ease, color 0.15s ease;
 }
 
 .btn-tab:hover {
@@ -827,7 +798,7 @@ table select {
     align-items: baseline;
     gap: 0.4rem;
     padding: 0.2rem 0;
-    border-bottom: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.05));
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .resolved-frame:last-child {
@@ -843,6 +814,12 @@ table select {
     color: var(--color-text);
 }
 
+.resolved-frame .frame-raw-muted {
+    color: var(--color-text-faint);
+    font-size: 0.75rem;
+    margin-left: auto;
+}
+
 /* Global form control typography reset — ensures inputs, selects, and buttons
    inherit the design system font (--font-sans) rather than browser user-agent defaults. */
 button,
@@ -852,13 +829,14 @@ textarea {
     font-family: var(--font-sans);
 }
 
-.resolved-frame .frame-raw-muted {
-    color: var(--color-text-faint);
-    font-size: 0.75rem;
-    margin-left: auto;
-}
+/* ---------- Search/Filter + Saved Views toolbar ---------- */
+/*
+ * Filter chips are real toggles, so they keep the fully-rounded pill
+ * shape the data tags above deliberately avoid — the shape difference
+ * is the point: rounded means "press me," the tag rectangle means
+ * "this is a reading."
+ */
 
-/* Task 33: Search/Filter + Saved Views toolbar */
 .filter-card {
     display: flex;
     flex-direction: column;
@@ -875,11 +853,11 @@ textarea {
 }
 
 .filter-label {
-    font-family: var(--font-sans);
+    font-family: var(--font-display);
     font-size: 0.75rem;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.05em;
     color: var(--color-text-faint);
     margin-right: 0.25rem;
 }
@@ -897,7 +875,7 @@ textarea {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
-    transition: all 0.15s ease;
+    transition: border-color 0.15s ease, color 0.15s ease;
 }
 
 .preset-pill:hover {
@@ -971,31 +949,6 @@ textarea {
     border-color: var(--color-accent);
 }
 
-.btn-secondary {
-    font-family: var(--font-sans);
-    background: var(--color-surface-raised);
-    border: 1px solid var(--color-border);
-    color: var(--color-text-muted);
-    padding: 0.35rem 0.75rem;
-    border-radius: var(--radius-sm);
-    font-size: 0.8rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s ease;
-}
-
-.btn-secondary:hover {
-    background: var(--color-bg);
-    color: var(--color-text);
-    border-color: var(--color-accent);
-}
-
-.btn-sm {
-    font-size: 0.75rem;
-    padding: 0.25rem 0.6rem;
-    border-radius: 999px;
-}
-
 .btn-link {
     font-family: var(--font-sans);
     background: none;
@@ -1007,7 +960,8 @@ textarea {
     text-decoration: underline;
 }
 
-/* Task 34: SDK Snippet Generator styles */
+/* ---------- SDK Snippet Generator ---------- */
+
 .sdk-snippet-container {
     background: var(--color-bg);
     border: 1px solid var(--color-border);
@@ -1039,7 +993,7 @@ textarea {
     padding: 0.25rem 0.65rem;
     border-radius: var(--radius-sm);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: border-color 0.15s ease, color 0.15s ease;
 }
 
 .sdk-tab:hover {
@@ -1064,7 +1018,6 @@ textarea {
     padding: 0.25rem 0.65rem;
     border-radius: var(--radius-sm);
     cursor: pointer;
-    transition: all 0.15s ease;
 }
 
 .btn-copy-snippet:hover {
@@ -1073,7 +1026,7 @@ textarea {
 }
 
 .sdk-code-block {
-    background: #0d0f12;
+    background: var(--color-surface-container-lowest);
     border: 1px solid var(--color-border-strong);
     border-radius: var(--radius-sm);
     padding: 0.85rem;
@@ -1091,7 +1044,8 @@ textarea {
     margin: 0.5rem 0 0 0;
 }
 
-/* Task 35: Public API Reference page styles */
+/* ---------- Public API Reference page ---------- */
+
 .page-docs {
     max-width: 1200px;
 }
@@ -1122,11 +1076,11 @@ textarea {
 }
 
 .docs-toc-title {
-    font-family: var(--font-sans);
+    font-family: var(--font-display);
     font-size: 0.75rem;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.05em;
     color: var(--color-text-faint);
     margin-bottom: 0.75rem;
 }
@@ -1215,7 +1169,7 @@ textarea {
 }
 
 .markdown-rendered pre {
-    background: #0d0f12;
+    background: var(--color-surface-container-lowest);
     border: 1px solid var(--color-border-strong);
     border-radius: var(--radius-sm);
     padding: 1rem;
@@ -1276,27 +1230,27 @@ textarea {
 }
 
 .method-GET {
-    background: rgba(95, 179, 146, 0.18);
-    color: #5fb392;
-    border: 1px solid rgba(95, 179, 146, 0.4);
+    background: rgba(140, 168, 117, 0.18);
+    color: #9fbf87;
+    border: 1px solid rgba(140, 168, 117, 0.4);
 }
 
 .method-POST {
-    background: rgba(95, 179, 179, 0.18);
-    color: #7fc9c9;
-    border: 1px solid rgba(95, 179, 179, 0.4);
+    background: var(--color-accent-bg);
+    color: var(--color-accent-strong);
+    border: 1px solid rgba(var(--color-accent-rgb), 0.4);
 }
 
 .method-PATCH {
-    background: rgba(240, 168, 96, 0.18);
-    color: #f0a860;
-    border: 1px solid rgba(240, 168, 96, 0.4);
+    background: rgba(207, 154, 79, 0.18);
+    color: #e0b06e;
+    border: 1px solid rgba(207, 154, 79, 0.4);
 }
 
 .method-DELETE {
-    background: rgba(229, 72, 77, 0.18);
-    color: #e5484d;
-    border: 1px solid rgba(229, 72, 77, 0.4);
+    background: rgba(168, 74, 48, 0.18);
+    color: #dd8f74;
+    border: 1px solid rgba(168, 74, 48, 0.4);
 }
 
 /* ---------- Monospace data ---------- */
@@ -1317,23 +1271,18 @@ textarea {
     white-space: pre;
 }
 
-.sparkline-wrap {
-    color: var(--color-accent);
-}
-
 /* ---------- Simulate Error (signature element) ---------- */
 /*
  * Styled as a terminal command invocation rather than a generic
  * button — the tool's own subject matter (a service that ingests
  * program errors) is the reason this reads as $ simulate-error rather
- * than a plain "Simulate" label with no context.
+ * than a plain "Simulate" label with a trailing arrow bolted on.
  */
 
 .simulate-panel {
     display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    flex-wrap: wrap;
+    flex-direction: column;
+    gap: 0.6rem;
 }
 
 .simulate-btn {
@@ -1346,6 +1295,7 @@ textarea {
     border-radius: var(--radius-sm);
     padding: 0.55rem 1rem;
     cursor: pointer;
+    text-align: left;
 }
 
 .simulate-btn::before {
@@ -1365,7 +1315,7 @@ textarea {
 
 .simulate-result {
     font-family: var(--font-mono);
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     color: var(--color-text-muted);
 }
 
@@ -1373,7 +1323,7 @@ textarea {
     color: var(--color-accent-strong);
 }
 
-/* ---------- Live indicator (Task 26) ---------- */
+/* ---------- Live indicator ---------- */
 
 .live-indicator {
     display: inline-flex;
@@ -1405,7 +1355,7 @@ textarea {
     50% { opacity: 0.35; }
 }
 
-/* ---------- Task 36: Dashboard Redesign Overview Styles ---------- */
+/* ---------- Dashboard overview ---------- */
 
 .metrics-overview-grid {
     display: grid;
@@ -1422,19 +1372,14 @@ textarea {
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
-    transition: border-color 0.2s ease;
-}
-
-.stat-card:hover {
-    border-color: var(--color-accent);
 }
 
 .stat-label {
-    font-family: var(--font-sans);
+    font-family: var(--font-display);
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
     color: var(--color-text-muted);
 }
 
@@ -1468,7 +1413,32 @@ textarea {
     align-items: end;
 }
 
-/* ---------- Task 36: Overview widgets (trend / alerts / releases) ---------- */
+.create-project-form-vertical {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+@media (max-width: 720px) {
+    .create-project-form {
+        grid-template-columns: 1fr;
+    }
+}
+
+.dashboard-main-grid {
+    display: grid;
+    grid-template-columns: 4fr 8fr;
+    gap: 1.5rem;
+    align-items: start;
+}
+
+@media (max-width: 960px) {
+    .dashboard-main-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ---------- Overview widgets (trend / alerts / releases) ---------- */
 
 .overview-widgets-grid {
     display: grid;
@@ -1547,147 +1517,7 @@ textarea {
     color: var(--color-accent);
 }
 
-@media (max-width: 720px) {
-    .create-project-form {
-        grid-template-columns: 1fr;
-    }
-}
-
-.badge-repo {
-    background: var(--color-surface-raised);
-    border: 1px solid var(--color-border);
-    padding: 0.2rem 0.5rem;
-    border-radius: var(--radius-sm);
-    font-family: var(--font-mono);
-    font-size: 0.78rem;
-    color: var(--color-accent-strong);
-}
-
-/* ---------- Product Polish & Visual Hierarchy Additions ---------- */
-
-.auth-container {
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 2rem 1rem;
-    background: radial-gradient(circle at top, rgba(45, 212, 191, 0.05) 0%, transparent 60%);
-}
-
-.auth-card {
-    width: 100%;
-    max-width: 440px;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border-strong);
-    border-radius: 10px;
-    padding: 2.25rem 2rem;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-}
-
-.auth-brand {
-    text-align: center;
-    margin-bottom: 2rem;
-}
-
-.auth-brand-logo {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.6rem;
-    margin-bottom: 0.4rem;
-}
-
-.brand-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--color-accent);
-    box-shadow: 0 0 10px var(--color-accent);
-}
-
-.auth-brand-logo h1 {
-    margin: 0;
-    font-family: var(--font-mono);
-    font-size: 1.6rem;
-    letter-spacing: 0.08em;
-    color: var(--color-text);
-}
-
-.auth-tagline {
-    font-size: 0.88rem;
-    color: var(--color-text-muted);
-    margin: 0;
-}
-
-.auth-form {
-    display: flex;
-    flex-direction: column;
-    gap: 1.1rem;
-}
-
-.btn-full {
-    width: 100%;
-    padding: 0.7rem 1rem;
-    font-size: 0.92rem;
-    margin-top: 0.5rem;
-}
-
-.auth-footer {
-    text-align: center;
-    font-size: 0.85rem;
-    color: var(--color-text-muted);
-    margin-top: 1.5rem;
-    padding-top: 1.25rem;
-    border-top: 1px solid var(--color-border);
-}
-
-.auth-link {
-    color: var(--color-accent);
-    font-weight: 600;
-}
-
-.auth-features {
-    display: flex;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-top: 1.25rem;
-}
-
-.feature-pill {
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
-    color: var(--color-text-faint);
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    padding: 0.2rem 0.5rem;
-    border-radius: 4px;
-}
-
-.topbar-brand {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-}
-
-.topbar-divider {
-    color: var(--color-border-strong);
-}
-
-.topbar-user {
-    color: var(--color-text);
-    font-weight: 500;
-}
-
-.topbar-link {
-    color: var(--color-accent);
-    font-weight: 500;
-
-}
-
-.card-accented {
-    border-left: 3px solid var(--color-accent);
-}
+/* ---------- Shared section chrome ---------- */
 
 .section-header {
     margin-bottom: 1.25rem;
@@ -1743,12 +1573,18 @@ textarea {
     color: var(--color-text);
 }
 
+.empty-state-trace {
+    color: var(--color-text-faint);
+    margin: 0 auto 1rem auto;
+    display: block;
+}
+
 .row-hoverable td {
     transition: background 0.15s ease;
 }
 
 .row-hoverable:hover td {
-    background: rgba(45, 212, 191, 0.03) !important;
+    background: rgba(var(--color-accent-rgb), 0.05) !important;
 }
 
 .project-title-link,
@@ -1765,22 +1601,6 @@ textarea {
     color: var(--color-accent);
 }
 
-.btn-secondary {
-    background: var(--color-bg);
-    border: 1px solid var(--color-border-strong);
-    color: var(--color-text);
-}
-
-.btn-secondary:hover {
-    border-color: var(--color-accent);
-    color: var(--color-accent-strong);
-}
-
-.btn-sm {
-    padding: 0.35rem 0.75rem;
-    font-size: 0.78rem;
-}
-
 .simulate-card-header {
     display: flex;
     justify-content: space-between;
@@ -1792,20 +1612,23 @@ textarea {
     font-family: var(--font-mono);
     font-size: 0.78rem;
     font-weight: 600;
-    border-radius: 999px;
+    border-radius: var(--radius-sm);
     padding: 0.2rem 0.6rem;
     cursor: pointer;
     border: 1px solid transparent;
+    border-left: 2px solid currentColor;
 }
 
 .count-pill {
     background: var(--color-surface-raised);
     border: 1px solid var(--color-border);
     padding: 0.15rem 0.5rem;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: 0.82rem;
     color: var(--color-text);
 }
+
+/* ---------- Error group detail page ---------- */
 
 .group-detail-header {
     margin-bottom: 1.75rem;
@@ -1827,8 +1650,8 @@ textarea {
 }
 
 .card-ai-hero {
-    border: 1px solid rgba(45, 212, 191, 0.3);
-    background: linear-gradient(180deg, rgba(45, 212, 191, 0.03) 0%, var(--color-surface) 100%);
+    border: 1px solid rgba(var(--color-accent-rgb), 0.3);
+    background: linear-gradient(180deg, rgba(var(--color-accent-rgb), 0.04) 0%, var(--color-surface) 100%);
 }
 
 .card-header-bar {
@@ -1844,21 +1667,23 @@ textarea {
     margin: 0;
     font-size: 0.95rem;
     color: var(--color-text);
+    text-transform: none;
+    letter-spacing: normal;
 }
 
 .ai-confidence-pill {
     font-size: 0.8rem;
     background: var(--color-accent-bg);
-    border: 1px solid rgba(45, 212, 191, 0.3);
+    border: 1px solid rgba(var(--color-accent-rgb), 0.3);
     color: var(--color-accent-strong);
     padding: 0.25rem 0.6rem;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
 }
 
 .ai-target-box {
     background: var(--color-bg);
     border: 1px solid var(--color-border-strong);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     padding: 0.5rem 0.8rem;
     font-size: 0.82rem;
     margin-bottom: 1.25rem;
@@ -1897,7 +1722,7 @@ textarea {
     color: var(--color-text);
     background: rgba(0, 0, 0, 0.2);
     padding: 0.85rem 1rem;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     border: 1px solid var(--color-border);
 }
 
@@ -1913,7 +1738,7 @@ textarea {
 .ai-checklist-wrap li {
     background: var(--color-bg);
     border: 1px solid var(--color-border);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     padding: 0.6rem 0.8rem;
 }
 
@@ -1923,11 +1748,11 @@ textarea {
     gap: 0.75rem;
     padding: 1rem;
     background: var(--color-bg);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     border: 1px dashed var(--color-border-strong);
 }
 
-/* ---------- 2-Column Top Viewport Grid & Enhanced Trend Visuals ---------- */
+/* ---------- 2-Column Top Viewport Grid & Trend Visuals ---------- */
 
 .group-detail-top-grid {
     display: grid;
@@ -1953,7 +1778,7 @@ textarea {
 .sparkline-enhanced-wrap {
     background: var(--color-bg);
     border: 1px solid var(--color-border-strong);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     padding: 0.85rem 1rem;
     display: flex;
     flex-direction: column;
@@ -1982,7 +1807,7 @@ textarea {
     gap: 0.2rem;
     padding: 0.75rem;
     background: var(--color-bg);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     border: 1px solid var(--color-border);
 }
 

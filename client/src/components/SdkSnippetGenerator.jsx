@@ -116,7 +116,7 @@ function SdkSnippetGenerator({ apiKey, projectName }) {
                     className="btn-copy-snippet"
                     onClick={handleCopy}
                 >
-                    {copied ? '✓ Copied!' : 'Copy snippet'}
+                    {copied ? 'Copied' : 'Copy snippet'}
                 </button>
             </div>
 
