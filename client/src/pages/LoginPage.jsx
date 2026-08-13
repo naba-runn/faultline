@@ -32,47 +32,96 @@ function LoginPage() {
     }
 
     return (
-        <div className="auth-container">
-            <div className="auth-card">
-                <div className="auth-brand">
-                    <div className="auth-brand-logo">
-                        <span className="brand-dot" />
-                        <h1>FAULTLINE</h1>
+        <div className="auth-stitch-container">
+            <div className="auth-stitch-card">
+                {/* Left Panel: Context & Live Stream Preview */}
+                <div className="auth-left-panel">
+                    <div>
+                        <div className="auth-brand-header">
+                            <span className="material-symbols-outlined text-primary text-[28px]" style={{ color: 'var(--color-accent)' }}>warning</span>
+                            <h1 className="brand-title">FAULTLINE</h1>
+                        </div>
+                        <h2 className="auth-headline">
+                            Understand runtime errors before they become incidents.
+                        </h2>
+                        <ul className="auth-feature-list">
+                            <li>
+                                <span className="material-symbols-outlined text-primary text-[18px]" style={{ color: 'var(--color-accent)' }}>check_circle</span>
+                                <span>Real-time error tracking</span>
+                            </li>
+                            <li>
+                                <span className="material-symbols-outlined text-primary text-[18px]" style={{ color: 'var(--color-accent)' }}>psychology</span>
+                                <span>AI-grounded root-cause analysis</span>
+                            </li>
+                            <li>
+                                <span className="material-symbols-outlined text-primary text-[18px]" style={{ color: 'var(--color-accent)' }}>bug_report</span>
+                                <span>Production-aware debugging</span>
+                            </li>
+                        </ul>
                     </div>
-                    <p className="auth-tagline">Understand errors before they become incidents.</p>
+
+                    <div className="auth-terminal-box mono">
+                        <div className="terminal-line">
+                            <span className="dot-red" />
+                            <span className="text-red font-bold">NEW ERROR</span>
+                            <span className="dim">→</span>
+                            <span>TypeError: undefined is not a function</span>
+                        </div>
+                        <div className="terminal-line indent">
+                            <span className="dim">⚡ GROUPED →</span>
+                            <span>Cluster: 42 occurrences / 5 min</span>
+                        </div>
+                        <div className="terminal-line indent">
+                            <span className="text-warning">🧠 AI ANALYZING →</span>
+                            <span>Trace analysis in progress...</span>
+                        </div>
+                        <div className="terminal-line indent">
+                            <span className="text-teal font-bold">✓ ROOT CAUSE FOUND →</span>
+                            <span>utils.js:145</span>
+                        </div>
+                    </div>
                 </div>
 
-                <form onSubmit={handleSubmit} className="auth-form">
-                    <div className="field">
-                        <label htmlFor="email">Email address</label>
-                        <input
-                            id="email"
-                            type="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            placeholder="developer@company.com"
-                            required
-                        />
+                {/* Right Panel: Form */}
+                <div className="auth-right-panel">
+                    <div className="auth-form-header">
+                        <h3>Welcome back</h3>
+                        <p>Sign in to monitor your telemetry.</p>
                     </div>
-                    <div className="field">
-                        <label htmlFor="password">Password</label>
-                        <input
-                            id="password"
-                            type="password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="••••••••"
-                            required
-                        />
-                    </div>
-                    {error && <p className="alert alert-error" role="alert">{error}</p>}
-                    <button type="submit" className="btn btn-primary btn-full" disabled={submitting}>
-                        {submitting ? 'Logging in...' : 'Log in to Dashboard →'}
-                    </button>
-                </form>
 
-                <div className="auth-footer">
-                    <span>Don't have an account?</span> <Link to="/register" className="auth-link">Register</Link>
+                    <form onSubmit={handleSubmit} className="auth-form">
+                        <div className="field">
+                            <label htmlFor="email" className="font-label-caps">Email Address</label>
+                            <input
+                                id="email"
+                                type="email"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                placeholder="user@domain.com"
+                                required
+                            />
+                        </div>
+                        <div className="field">
+                            <label htmlFor="password" className="font-label-caps">Password</label>
+                            <input
+                                id="password"
+                                type="password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder="••••••••"
+                                required
+                            />
+                        </div>
+                        {error && <p className="alert alert-error" role="alert">{error}</p>}
+                        <button type="submit" className="btn btn-primary btn-full flex-center gap-xs" disabled={submitting}>
+                            <span>{submitting ? 'Logging in...' : 'Log in'}</span>
+                            <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                        </button>
+                    </form>
+
+                    <div className="auth-footer">
+                        <span>Don't have an account?</span> <Link to="/register" className="auth-link">Register</Link>
+                    </div>
                 </div>
             </div>
         </div>

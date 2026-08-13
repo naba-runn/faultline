@@ -285,77 +285,77 @@ function ProjectDetailPage() {
         );
     }
 
+    const totalGroupsCount = groups.length;
+    const openGroupsCount = groups.filter(g => g.status === 'OPEN').length;
+    const highSeverityCount = groups.filter(g => g.severity === 'HIGH' || g.severity === 'CRITICAL').length;
+
     return (
         <div className="page">
-            <Link to="/dashboard" className="back-link">← Back to dashboard</Link>
+            {/* Top Fixed Header */}
             <header className="topbar">
                 <div className="topbar-brand">
-                    <h1 style={{ margin: 0 }}>{project.name}</h1>
+                    <h1 className="brand-logo-text">FAULTLINE</h1>
+                    <div className="status-pill-badge">
+                        <span className={`live-indicator-dot${liveConnected ? ' is-connected' : ''}`} style={{ background: 'var(--color-accent)' }} />
+                        <span>{liveConnected ? 'Live: All systems nominal' : 'Connecting…'}</span>
+                    </div>
                 </div>
-                <div className="topbar-meta mono">
+                <div className="topbar-meta">
+                    <Link to="/dashboard" className="topbar-link">Dashboard</Link>
+                    <Link to={`/projects/${id}`} className="topbar-link active">Projects</Link>
                     <Link to="/docs" className="topbar-link">API Docs</Link>
-                    <span className="topbar-divider">/</span>
-                    {project.githubRepo ? (
-                        <span className="badge-repo mono">{project.githubRepo}</span>
-                    ) : (
-                        <span className="cell-muted" style={{ fontSize: '0.8rem' }}>no repo linked</span>
-                    )}
-                    <span className="topbar-divider">/</span>
-                    <span className={`live-indicator${liveConnected ? ' is-connected' : ''}`}>
-                        <span className="live-indicator-dot" />
-                        {liveConnected ? 'Live' : 'Connecting…'}
-                    </span>
                 </div>
             </header>
 
-            <section className="card card-accented simulate-card">
-                <div className="simulate-card-header">
+            {/* Breadcrumb & Project Title Header */}
+            <div style={{ margin: '1rem 0 1.5rem 0' }}>
+                <div className="breadcrumb-nav">
+                    <Link to="/dashboard" className="back-link">← Back to dashboard</Link>
+                    <span className="cell-muted">/</span>
+                    <span className="mono font-bold" style={{ color: 'var(--color-text)' }}>{project.name}</span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '1rem', marginTop: '0.5rem' }}>
+                    <h1 className="font-headline-lg" style={{ margin: 0, fontSize: '1.8rem' }}>{project.name}</h1>
+                    <span className="mono cell-muted" style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span>GitHub: <strong>{project.githubRepo || 'no repo linked'}</strong></span>
+                        <span className="live-indicator-dot" style={{ background: 'var(--color-accent)' }} />
+                        <span style={{ color: 'var(--color-accent)' }}>Live</span>
+                    </span>
+                </div>
+            </div>
+
+            {/* Summary & Actions Bento */}
+            <div className="metrics-overview-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '1.75rem' }}>
+                <div className="stat-card">
+                    <span className="stat-label">ERROR GROUPS</span>
+                    <span className="stat-value">{totalGroupsCount}</span>
+                </div>
+                <div className="stat-card" style={{ borderLeft: '3px solid var(--color-warning)' }}>
+                    <span className="stat-label">OPEN</span>
+                    <span className="stat-value">{openGroupsCount}</span>
+                </div>
+                <div className="stat-card" style={{ borderLeft: '3px solid var(--color-danger)' }}>
+                    <span className="stat-label">HIGH SEVERITY</span>
+                    <span className="stat-value">{highSeverityCount}</span>
+                </div>
+                <div className="stat-card" style={{ background: 'var(--color-surface-container)', justifyContent: 'space-between' }}>
                     <div>
-                        <h2 style={{ margin: 0, fontSize: '1rem', color: 'var(--color-text)' }}>Simulate Runtime Error</h2>
-                        <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>
-                            Trigger a synthetic runtime exception to test live ingestion, fingerprint deduplication, and AI root-cause analysis.
+                        <span className="stat-label">DEVELOPMENT</span>
+                        <p className="cell-muted" style={{ fontSize: '0.78rem', margin: '0.2rem 0 0.5rem 0' }}>
+                            Trigger a test error to verify ingestion & AI rules.
                         </p>
                     </div>
                     <button
                         type="button"
-                        className="btn-tab"
-                        onClick={() => setShowSdkSnippet(!showSdkSnippet)}
-                    >
-                        {showSdkSnippet ? 'Hide SDK Setup' : 'SDK Setup / Snippet'}
-                    </button>
-                </div>
-
-                <div className="simulate-panel" style={{ marginTop: '1rem' }}>
-                    <button
-                        type="button"
-                        className="btn btn-primary"
+                        className="btn btn-primary btn-sm btn-full"
                         onClick={handleSimulate}
                         disabled={simulating}
                     >
-                        {simulating ? 'Simulating Exception...' : '⚡ Simulate Error →'}
+                        {simulating ? 'Simulating...' : 'SIMULATE ERROR →'}
                     </button>
-                    {simulateResult && (
-                        <div className="simulate-result">
-                            {simulateResult.isNewGroup ? (
-                                <span className="alert alert-info" style={{ display: 'inline-block', margin: 0, padding: '0.4rem 0.8rem' }}>
-                                    ✨ <strong>New Group Created</strong> — AI analysis worker has been enqueued.
-                                </span>
-                            ) : (
-                                <span className="alert alert-info" style={{ display: 'inline-block', margin: 0, padding: '0.4rem 0.8rem' }}>
-                                    🔄 <strong>Duplicate Recorded</strong> — Existing group matched, count incremented.
-                                </span>
-                            )}
-                        </div>
-                    )}
-                    {simulateError && <p className="alert alert-error" style={{ display: 'inline-block', margin: 0 }}>{simulateError}</p>}
                 </div>
-
-                {showSdkSnippet && (
-                    <div style={{ marginTop: '1.25rem' }}>
-                        <SdkSnippetGenerator projectName={project.name} />
-                    </div>
-                )}
-            </section>
+            </div>
 
             <section className="card filter-card">
                 <div className="filter-presets">

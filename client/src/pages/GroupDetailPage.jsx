@@ -282,7 +282,25 @@ function GroupDetailPage() {
 
     return (
         <div className="page">
-            <Link to={`/projects/${group.projectId}`} className="back-link">← Back to project</Link>
+            {/* Top Fixed Header */}
+            <header className="topbar">
+                <div className="topbar-brand">
+                    <h1 className="brand-logo-text">FAULTLINE</h1>
+                    <div className="status-pill-badge">
+                        <span className={`live-indicator-dot${liveConnected ? ' is-connected' : ''}`} style={{ background: 'var(--color-accent)' }} />
+                        <span>{liveConnected ? 'Live: All systems nominal' : 'Connecting…'}</span>
+                    </div>
+                </div>
+                <div className="topbar-meta">
+                    <Link to="/dashboard" className="topbar-link">Dashboard</Link>
+                    <Link to={`/projects/${group.projectId}`} className="topbar-link">Projects</Link>
+                    <Link to="/docs" className="topbar-link">API Docs</Link>
+                </div>
+            </header>
+
+            <div style={{ margin: '1rem 0' }}>
+                <Link to={`/projects/${group.projectId}`} className="back-link">← Back to project</Link>
+            </div>
 
             <header className="group-detail-header">
                 <div className="group-header-top">
