@@ -10,7 +10,17 @@ function ProtectedRoute({ children }) {
     const { isAuthenticated, loading } = useAuth();
 
     if (loading) {
-        return <p>Checking auth status...</p>;
+        return (
+            <div className="page">
+                <header className="topbar">
+                    <div className="topbar-left">
+                        <div className="topbar-brand">
+                            <h1 className="brand-logo-text">FAULTLINE</h1>
+                        </div>
+                    </div>
+                </header>
+            </div>
+        );
     }
 
     if (!isAuthenticated) {

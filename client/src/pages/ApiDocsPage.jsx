@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { marked } from 'marked';
 import api from '../api/axios.js';
+import { useAuth } from '../context/AuthContext.jsx';
 
 function slugify(text) {
     return text
@@ -11,14 +12,13 @@ function slugify(text) {
         .replace(/\s+/g, '-');
 }
 
-// Custom renderer compatible with marked v12+ (depth, tokens object signature)
+// Custom renderer compatible with marked v12+
 const renderer = {
     heading({ tokens, depth }) {
         const text = this.parser.parseInline(tokens);
         const plainText = text.replace(/<[^>]+>/g, '').replace(/`/g, '').trim();
         const slug = slugify(plainText);
 
-        // Format route headings like "POST /api/auth/register" with colored HTTP method badges
         const match = plainText.match(/^(GET|POST|PATCH|DELETE)\s+(.+)$/);
         let contentHtml = text;
         if (match) {
@@ -44,18 +44,10 @@ function extractToc(markdown) {
 
         if (h2Match) {
             const title = h2Match[1].replace(/`/g, '').trim();
-            toc.push({
-                level: 2,
-                title,
-                id: slugify(title),
-            });
+            toc.push({ level: 2, title, id: slugify(title) });
         } else if (h3Match && !line.startsWith('####')) {
             const title = h3Match[1].replace(/`/g, '').trim();
-            toc.push({
-                level: 3,
-                title,
-                id: slugify(title),
-            });
+            toc.push({ level: 3, title, id: slugify(title) });
         }
     }
     return toc;
@@ -66,6 +58,17 @@ function ApiDocsPage() {
     const [updatedAt, setUpdatedAt] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+
+    // Auth is optional on the docs page — show nav if logged in
+    let user = null;
+    let logout = null;
+    try {
+        const auth = useAuth();
+        user = auth.user;
+        logout = auth.logout;
+    } catch {
+        // Not wrapped in AuthProvider — public access
+    }
 
     useEffect(() => {
         async function fetchDocs() {
@@ -93,26 +96,45 @@ function ApiDocsPage() {
 
     return (
         <div className="page page-docs">
-            <Link to="/dashboard" className="back-link">← Back to dashboard</Link>
+            {/* Topbar */}
             <header className="topbar">
-                <div>
-                    <h1>API Reference</h1>
-                    <p className="topbar-meta">Live documentation rendered directly from <code>API.md</code></p>
+                <div className="topbar-left">
+                    <div className="topbar-brand">
+                        <h1 className="brand-logo-text">FAULTLINE</h1>
+                    </div>
+                    <nav className="topbar-nav">
+                        <Link to="/dashboard" className="topbar-link">Dashboard</Link>
+                        <Link to="/docs" className="topbar-link active">API Docs</Link>
+                    </nav>
                 </div>
-                {updatedAt && (
-                    <p className="topbar-meta mono" style={{ fontSize: '0.78rem' }}>
-                        Last updated: {new Date(updatedAt).toLocaleString()}
-                    </p>
+                {user && (
+                    <div className="topbar-meta">
+                        <span className="topbar-user">{user.name}</span>
+                        <button type="button" className="btn-ghost btn-sm" onClick={logout}>
+                            Log out
+                        </button>
+                    </div>
                 )}
             </header>
 
-            {loading && <p className="cell-muted">Loading API documentation...</p>}
+            {/* Page Header */}
+            <div className="docs-page-header">
+                <h1>API Reference</h1>
+                <div className="docs-meta">
+                    Live documentation from <code style={{ fontSize: '0.72rem' }}>API.md</code>
+                    {updatedAt && (
+                        <span> · Updated {new Date(updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                    )}
+                </div>
+            </div>
+
+            {loading && <p className="cell-muted" style={{ fontSize: '0.82rem' }}>Loading API documentation…</p>}
             {error && <p className="alert alert-error" role="alert">{error}</p>}
 
             {!loading && !error && (
                 <div className="docs-layout">
                     <nav className="docs-sidebar">
-                        <h3 className="docs-toc-title">Table of Contents</h3>
+                        <h3 className="docs-toc-title">Navigation</h3>
                         <ul className="docs-toc-list">
                             {toc.map((item, idx) => (
                                 <li
@@ -125,7 +147,7 @@ function ApiDocsPage() {
                         </ul>
                     </nav>
 
-                    <main className="docs-body card">
+                    <main className="docs-body">
                         <div
                             className="markdown-rendered"
                             dangerouslySetInnerHTML={{ __html: htmlContent }}

@@ -2,10 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../api/axios.js';
 import { useProjectSSE } from '../hooks/useProjectSSE.js';
+import { useAuth } from '../context/AuthContext.jsx';
 
-// Same map as ProjectDetailPage.jsx — kept duplicated rather than
-// extracted to a shared module for one small constant used in two
-// places (see PROJECT_RULES.md §11 on premature abstraction).
 const SEVERITY_LABEL = {
     low: 'Low',
     medium: 'Medium',
@@ -15,6 +13,25 @@ const SEVERITY_LABEL = {
 
 function formatDate(iso) {
     return new Date(iso).toLocaleString();
+}
+
+function formatTime(iso) {
+    return new Date(iso).toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+    });
+}
+
+function formatRelativeTime(iso) {
+    const diffMs = Date.now() - new Date(iso).getTime();
+    const minutes = Math.round(diffMs / 60000);
+    if (minutes < 1) return 'just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.round(hours / 24);
+    return `${days}d ago`;
 }
 
 function SeverityBadge({ severity }) {
@@ -30,61 +47,53 @@ function StatusBadge({ status }) {
     return <span className={`badge badge-status-${status}`}>{status}</span>;
 }
 
-// Task 29.2: surfaces trendService's computed current-vs-baseline
-// comparison (via GET /api/groups/:id's new `trend` field), not raw
-// counts alone — the point of Task 29 per TASKS.md's own wording.
-// `trend` can be undefined only for a payload from before this field
-// existed (stale cached response, if any) — treated the same as
-// 'insufficient_history' rather than crashing on a missing field.
-function TrendBadge({ trend }) {
+// Trend status display
+function TrendStatus({ trend }) {
     if (!trend || trend.status === 'insufficient_history') {
         return (
-            <div className="trend-stat-row">
-                <span className="badge badge-trend-insufficient">Insufficient history</span>
-                <span className="cell-muted" style={{ fontSize: '0.78rem' }}>Collecting 24h baseline...</span>
+            <div style={{ fontSize: '0.78rem', color: 'var(--color-text-faint)' }}>
+                Collecting 24h baseline…
             </div>
         );
     }
 
     const rate = trend.baselineHourlyRate;
     const rateLabel = Number.isFinite(rate) ? rate.toFixed(1) : '0.0';
-
-    if (trend.isSpiking) {
-        return (
-            <div className="trend-stat-row">
-                <span className="badge badge-trend-spiking">
-                    spiking — {trend.currentHourCount} events this hour
-                </span>
-                <span className="cell-muted mono" style={{ fontSize: '0.78rem' }}>
-                    vs {rateLabel}/hr baseline
-                </span>
-            </div>
-        );
-    }
+    const ratio = rate > 0 ? (trend.currentHourCount / rate).toFixed(1) : null;
 
     return (
-        <div className="trend-stat-row">
-            <span className="badge badge-trend-normal">
-                NORMAL — {trend.currentHourCount} events this hour
-            </span>
-            <span className="cell-muted mono" style={{ fontSize: '0.78rem' }}>
-                vs {rateLabel}/hr baseline
-            </span>
+        <div>
+            <div className="trend-headline">
+                <span className="trend-big">{trend.currentHourCount}</span>
+                <span className="trend-unit">events this hour</span>
+                <span className="trend-baseline">
+                    {rateLabel}/hr baseline
+                </span>
+            </div>
+            {trend.isSpiking && (
+                <div style={{ marginBottom: '0.5rem' }}>
+                    <span className="badge badge-trend-spiking">
+                        ↑ {ratio}× baseline · spiking
+                    </span>
+                </div>
+            )}
+            {!trend.isSpiking && (
+                <div style={{ marginBottom: '0.5rem' }}>
+                    <span className="badge badge-trend-normal">normal</span>
+                </div>
+            )}
         </div>
     );
 }
 
-// Buckets the (already-capped, most-recent-first) events by calendar
-// day, ascending, for the sparkline.
+// Sparkline chart from events
 function buildSparklineBuckets(events) {
     if (events.length === 0) return [];
-
     const counts = new Map();
     events.forEach((event) => {
         const day = new Date(event.receivedAt).toISOString().slice(0, 10);
         counts.set(day, (counts.get(day) || 0) + 1);
     });
-
     return Array.from(counts.entries())
         .sort(([dayA], [dayB]) => (dayA < dayB ? -1 : 1))
         .map(([day, count]) => ({ day, count }));
@@ -92,29 +101,29 @@ function buildSparklineBuckets(events) {
 
 function Sparkline({ buckets }) {
     if (buckets.length === 0) {
-        return <p className="cell-muted">No event data to chart yet.</p>;
+        return <p className="cell-muted" style={{ fontSize: '0.78rem' }}>No event data to chart.</p>;
     }
 
     if (buckets.length === 1) {
         return (
             <div className="sparkline-single-day">
-                <span className="stat-value" style={{ fontSize: '1.4rem' }}>{buckets[0].count}</span>
-                <span className="cell-muted" style={{ fontSize: '0.8rem' }}>
-                    event{buckets[0].count === 1 ? '' : 's'} recorded on {buckets[0].day}
+                <span className="trend-big" style={{ fontSize: '1.2rem' }}>{buckets[0].count}</span>
+                <span className="cell-muted" style={{ fontSize: '0.72rem' }}>
+                    event{buckets[0].count === 1 ? '' : 's'} on {buckets[0].day}
                 </span>
             </div>
         );
     }
 
-    const width = 340;
-    const height = 90;
-    const maxCount = Math.max(...buckets.map((bucket) => bucket.count));
+    const width = 300;
+    const height = 70;
+    const maxCount = Math.max(...buckets.map((b) => b.count));
     const stepX = width / (buckets.length - 1);
 
     const points = buckets
         .map((bucket, index) => {
             const x = index * stepX;
-            const y = height - (bucket.count / maxCount) * (height - 18) - 8;
+            const y = height - (bucket.count / maxCount) * (height - 14) - 6;
             return `${x},${y}`;
         })
         .join(' ');
@@ -122,10 +131,10 @@ function Sparkline({ buckets }) {
     const areaPoints = `0,${height} ${points} ${width},${height}`;
 
     return (
-        <div className="sparkline-enhanced-wrap">
-            <div className="sparkline-header-meta mono">
-                <span>Peak: <strong>{maxCount} events/day</strong></span>
-                <span>Range: <strong>{buckets.length} days</strong></span>
+        <div className="sparkline-wrap">
+            <div className="sparkline-header">
+                <span>Peak: <strong>{maxCount}/day</strong></span>
+                <span>{buckets.length} days</span>
             </div>
             <svg
                 viewBox={`0 0 ${width} ${height}`}
@@ -137,15 +146,15 @@ function Sparkline({ buckets }) {
             >
                 <defs>
                     <linearGradient id="sparkline-grad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="var(--color-accent)" stopOpacity="0.25" />
+                        <stop offset="0%" stopColor="var(--color-accent)" stopOpacity="0.2" />
                         <stop offset="100%" stopColor="var(--color-accent)" stopOpacity="0.0" />
                     </linearGradient>
                 </defs>
                 <line x1="0" y1={height - 1} x2={width} y2={height - 1} stroke="var(--color-border)" strokeWidth="1" />
                 <polygon points={areaPoints} fill="url(#sparkline-grad)" />
-                <polyline points={points} fill="none" stroke="var(--color-accent)" strokeWidth="2.5" />
+                <polyline points={points} fill="none" stroke="var(--color-accent)" strokeWidth="2" />
             </svg>
-            <div className="sparkline-footer-meta mono cell-muted">
+            <div className="sparkline-footer">
                 <span>{buckets[0].day}</span>
                 <span>{buckets[buckets.length - 1].day}</span>
             </div>
@@ -153,13 +162,7 @@ function Sparkline({ buckets }) {
     );
 }
 
-// Renders suggestedFix as a checklist per Task 19's spec. Checked
-// state is local-only React state, never sent to the server —
-// suggestedFix is a plain string array with no stable id to persist
-// against, and persisting "worked on this step" state wasn't asked
-// for (would need a new ErrorGroup field; see PROJECT_RULES.md §2).
-// It intentionally resets on reload — a scratch pad for the current
-// view, not a saved record.
+// Remediation checklist
 function AiChecklist({ suggestedFix }) {
     const [checked, setChecked] = useState({});
 
@@ -179,7 +182,7 @@ function AiChecklist({ suggestedFix }) {
                             checked={Boolean(checked[index])}
                             onChange={() => toggle(index)}
                         />
-                        <span className="mono">{step}</span>
+                        <span style={{ fontSize: '0.82rem' }}>{step}</span>
                     </label>
                 </li>
             ))}
@@ -187,34 +190,19 @@ function AiChecklist({ suggestedFix }) {
     );
 }
 
-// Task 19: ErrorGroupDetail page. Fetches the newly added
-// GET /api/groups/:id, which returns { group, events } as one combined
-// payload (see docs/DECISIONS.md, "Task 19" for why one endpoint, not
-// two). Status is shown read-only here — changing it stays on
-// ProjectDetailPage (Task 18's PATCH), not duplicated on this page,
-// per PROJECT_RULES.md §2's no-scope-creep rule. Task 23 adds the
-// dark theme/badge/table polish. Task 26 adds a live "connected"
-// indicator and a silent background refetch when the SSE stream
-// reports a status change or enrichment completion for *this specific
-// group* (filtered by errorGroupId — a status_changed event for a
-// different group in the same project shouldn't refetch this page).
 function GroupDetailPage() {
     const { id } = useParams();
+    const { user, logout } = useAuth();
 
     const [group, setGroup] = useState(null);
     const [events, setEvents] = useState([]);
     const [trend, setTrend] = useState(null);
-    // Task 31: deduplicated env values across all fetched events,
-    // computed server-side (e.g. ["production", "staging"]).
     const [environments, setEnvironments] = useState([]);
-    // Task 32: toggle between resolved source stack trace and raw minified stack
     const [showRawStack, setShowRawStack] = useState(false);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
     const fetchData = useCallback(async (silent = false) => {
-        // silent=true for SSE-triggered refetches (Task 26) — see the
-        // same reasoning in ProjectDetailPage.jsx's fetchData.
         if (!silent) setLoading(true);
         setError('');
         try {
@@ -224,8 +212,6 @@ function GroupDetailPage() {
             setTrend(res.data.data.trend);
             setEnvironments(res.data.data.environments || []);
         } catch (err) {
-            // docs/API.md: 404 covers not-found, not-yours, and a malformed
-            // :id identically — surfaced as-is, same as ProjectDetailPage.
             setError(err.response?.data?.error || 'Failed to load error group.');
         } finally {
             if (!silent) setLoading(false);
@@ -236,14 +222,6 @@ function GroupDetailPage() {
         fetchData();
     }, [fetchData]);
 
-    // Task 26: subscribes once `group.projectId` is known (undefined
-    // before the first fetch resolves — useProjectSSE no-ops until
-    // then, then connects automatically once it's set). Filters to
-    // this specific group so an unrelated group's event in the same
-    // project doesn't trigger a pointless refetch here. Debounced for
-    // the same reason as ProjectDetailPage.jsx — see that file's
-    // comment and docs/DECISIONS.md's "Redundant self-triggered
-    // refetches" entry.
     const refetchDebounceRef = useRef(null);
     const { connected: liveConnected } = useProjectSSE(group?.projectId, (type, payload) => {
         if (payload?.errorGroupId === id) {
@@ -260,162 +238,167 @@ function GroupDetailPage() {
         };
     }, []);
 
-    if (loading) {
+    if (error && !group) {
         return (
             <div className="page">
-                <p className="cell-muted">Loading error group...</p>
-            </div>
-        );
-    }
-
-    if (error) {
-        return (
-            <div className="page">
+                <header className="topbar">
+                    <div className="topbar-left">
+                        <div className="topbar-brand">
+                            <h1 className="brand-logo-text">FAULTLINE</h1>
+                        </div>
+                        <nav className="topbar-nav">
+                            <Link to="/dashboard" className="topbar-link">Dashboard</Link>
+                            <Link to="/docs" className="topbar-link">API Docs</Link>
+                        </nav>
+                    </div>
+                </header>
                 <p className="alert alert-error" role="alert">{error}</p>
                 <Link to="/dashboard" className="back-link">← Back to dashboard</Link>
             </div>
         );
     }
 
-    const aiSummary = group.aiSummary;
+    const aiSummary = group?.aiSummary;
     const buckets = buildSparklineBuckets(events);
 
     return (
         <div className="page">
-            {/* Top Fixed Header */}
+            {/* Topbar */}
             <header className="topbar">
-                <div className="topbar-brand">
-                    <h1 className="brand-logo-text">FAULTLINE</h1>
+                <div className="topbar-left">
+                    <div className="topbar-brand">
+                        <h1 className="brand-logo-text">FAULTLINE</h1>
+                    </div>
+                    <nav className="topbar-nav">
+                        <Link to="/dashboard" className="topbar-link">Dashboard</Link>
+                        <Link to="/docs" className="topbar-link">API Docs</Link>
+                    </nav>
                 </div>
                 <div className="topbar-meta">
-                    <Link to="/dashboard" className="topbar-link">Dashboard</Link>
-                    <Link to={`/projects/${group.projectId}`} className="topbar-link">Projects</Link>
-                    <Link to="/docs" className="topbar-link">API Docs</Link>
+                    <span className="topbar-user">{user?.name}</span>
+                    <button type="button" className="btn-ghost btn-sm" onClick={logout}>
+                        Log out
+                    </button>
                 </div>
             </header>
 
-            <div style={{ margin: '1rem 0' }}>
-                <Link to={`/projects/${group.projectId}`} className="back-link">← Back to project</Link>
-            </div>
+            {/* Back Link */}
+            <Link to={group ? `/projects/${group.projectId}` : '/dashboard'} className="back-link" style={{ marginBottom: '0.75rem' }}>
+                ← Back to project
+            </Link>
 
+            {/* Error Header */}
             <header className="group-detail-header">
-                <div className="group-header-top">
-                    <h1 className="mono group-title">{group.message}</h1>
-                </div>
-                <div className="group-meta-bar">
-                    <StatusBadge status={group.status} />
-                    <SeverityBadge severity={aiSummary?.severity} />
-                    <span className="badge badge-env">Seen {group.count} time{group.count === 1 ? '' : 's'}</span>
-                    {group.firstSeenRelease && (
-                        <span className="badge badge-release">
-                            introduced in <span className="mono">{group.firstSeenRelease}</span>
-                        </span>
-                    )}
-                    {environments.map((env) => (
-                        <span key={env} className="badge badge-env">{env}</span>
-                    ))}
-                    <span className={`live-indicator${liveConnected ? ' is-connected' : ''}`}>
-                        <span className="live-indicator-dot" />
-                        {liveConnected ? 'Live' : 'Connecting…'}
-                    </span>
-                </div>
-                <div className="group-timestamps cell-muted mono" style={{ fontSize: '0.8rem', marginTop: '0.6rem' }}>
-                    <span>First seen: {formatDate(group.firstSeen)}</span>
-                    <span style={{ margin: '0 0.5rem' }}>·</span>
-                    <span>Last seen: {formatDate(group.lastSeen)}</span>
-                </div>
+                {loading && !group ? (
+                    <div className="skeleton skeleton-heading" style={{ width: '400px' }} />
+                ) : (
+                    <h1 className="group-title">{group?.message}</h1>
+                )}
+                {group && (
+                    <>
+                        <div className="group-meta-bar">
+                            <StatusBadge status={group.status} />
+                            <SeverityBadge severity={aiSummary?.severity} />
+                            {environments.map((env) => (
+                                <span key={env} className="badge badge-env">{env}</span>
+                            ))}
+                            {group.firstSeenRelease && (
+                                <span className="badge badge-release mono">{group.firstSeenRelease}</span>
+                            )}
+                            <span className={`live-indicator${liveConnected ? ' is-connected' : ''}`}>
+                                <span className="live-indicator-dot" />
+                                {liveConnected ? 'Live' : 'Connecting…'}
+                            </span>
+                        </div>
+                        <div className="group-timestamps" style={{ marginTop: '0.35rem' }}>
+                            <span className="mono" style={{ fontSize: '0.72rem' }}>{group.count}</span> occurrences
+                            {' · '}First seen {formatRelativeTime(group.firstSeen)}
+                            {' · '}Last seen {formatRelativeTime(group.lastSeen)}
+                        </div>
+                    </>
+                )}
             </header>
 
-            {/* 2-Column Top Viewport Grid for AI Intelligence & Event Trend */}
-            <div className="group-detail-top-grid">
-                {/* AI Analysis Hero Section */}
-                <section className="card card-ai-hero" style={{ margin: 0 }}>
-                    <div className="card-header-bar">
+            {/* AI Analysis + Trend — 2-column grid, AI visually dominant */}
+            <div className="group-detail-grid">
+                {/* AI Root Cause — dominant section */}
+                <section className="ai-section">
+                    <div className="ai-section-header">
                         <h2>AI Root Cause Analysis</h2>
                         {aiSummary && (
-                            <span className="ai-confidence-pill mono">
-                                Confidence <strong style={{ color: 'var(--color-text)' }}>{typeof aiSummary.confidence === 'number' ? `${Math.round(aiSummary.confidence * 100)}%` : '—'}</strong>
+                            <span className="ai-confidence">
+                                Confidence <strong>{typeof aiSummary.confidence === 'number' ? `${Math.round(aiSummary.confidence * 100)}%` : '—'}</strong>
                             </span>
                         )}
                     </div>
 
                     {aiSummary ? (
-                        <div className="ai-content">
+                        <div>
                             {aiSummary.affectedFile && (
-                                <div className="ai-target-box mono">
-                                    <span className="target-label">AFFECTED TARGET:</span>
+                                <div className="ai-target-box">
+                                    <span className="target-label">AFFECTED:</span>
                                     <code className="target-file">{aiSummary.affectedFile}</code>
                                     {aiSummary.affectedFunction && <code className="target-func">&gt; {aiSummary.affectedFunction}()</code>}
                                 </div>
                             )}
-                            
-                            <div className="ai-root-cause">
-                                <h3 className="sub-heading">Root Cause Summary</h3>
-                                <p className="root-cause-text">{aiSummary.rootCause}</p>
-                            </div>
+
+                            <div className="sub-heading">Root Cause</div>
+                            <p className="root-cause-text">{aiSummary.rootCause}</p>
 
                             {aiSummary.suggestedFix && aiSummary.suggestedFix.length > 0 && (
-                                <div className="ai-checklist-wrap" style={{ marginTop: '1.25rem' }}>
-                                    <h3 className="sub-heading">Suggested Remediation Checklist</h3>
+                                <div className="ai-checklist-wrap">
+                                    <div className="sub-heading">Suggested Remediation</div>
                                     <AiChecklist suggestedFix={aiSummary.suggestedFix} />
                                 </div>
                             )}
                         </div>
                     ) : (
                         <div className="ai-loading-skeleton">
-                            <span className="live-indicator-dot" style={{ background: 'var(--color-warning)' }} />
-                            <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
-                                <strong>AI Analysis Enqueued</strong> — Background worker process is analyzing stack trace and grounding with GitHub code context...
+                            <span className="live-indicator-dot" style={{ background: 'var(--color-warning)', flexShrink: 0 }} />
+                            <p style={{ margin: 0 }}>
+                                <strong>Analysis enqueued</strong> — worker is processing stack trace and grounding with code context…
                             </p>
                         </div>
                     )}
                 </section>
 
-                {/* Activity & Trend Section */}
-                <section className="card" style={{ margin: 0 }}>
-                    <div className="card-header-bar">
-                        <h2>Error Rate Trend</h2>
-                        <TrendBadge trend={trend} />
-                    </div>
-                    {trend && Number.isFinite(trend.baselineHourlyRate) && (
-                        <div className="trend-stat-headline mono">
-                            <span className="trend-stat-big">{trend.currentHourCount}</span>
-                            <span className="cell-muted" style={{ fontSize: '0.85rem' }}>events/hr</span>
-                            <span className="cell-muted" style={{ marginLeft: 'auto', fontSize: '0.8rem' }}>
-                                vs {trend.baselineHourlyRate.toFixed(1)} baseline
-                            </span>
-                        </div>
-                    )}
+                {/* Error Rate Trend — compact, secondary */}
+                <section className="trend-section">
+                    <div className="sub-heading">Error Rate</div>
+                    <TrendStatus trend={trend} />
                     <Sparkline buckets={buckets} />
                 </section>
             </div>
 
-            {/* Stack Trace Section */}
+            {/* Stack Trace */}
+            <hr className="section-divider" />
             {(() => {
                 const hasResolvedFrames = group.resolvedStack && group.resolvedStack.some((f) => f.resolved);
                 return (
-                    <section className="card stack-card">
+                    <section className="stack-section">
                         <div className="stack-header">
-                            <h2>Stack Trace</h2>
-                            {hasResolvedFrames && (
-                                <div className="stack-toggle">
-                                    <span className="badge badge-sourcemap">Source map resolved</span>
-                                    <button
-                                        type="button"
-                                        className={`btn-tab ${!showRawStack ? 'active' : ''}`}
-                                        onClick={() => setShowRawStack(false)}
-                                    >
-                                        Resolved source
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className={`btn-tab ${showRawStack ? 'active' : ''}`}
-                                        onClick={() => setShowRawStack(true)}
-                                    >
-                                        Raw stack
-                                    </button>
-                                </div>
-                            )}
+                            <h2 style={{ margin: 0 }}>Stack Trace</h2>
+                            <div className="stack-toggle">
+                                {hasResolvedFrames && (
+                                    <>
+                                        <span className="badge badge-sourcemap">source mapped</span>
+                                        <button
+                                            type="button"
+                                            className={`btn-tab ${!showRawStack ? 'active' : ''}`}
+                                            onClick={() => setShowRawStack(false)}
+                                        >
+                                            Resolved
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`btn-tab ${showRawStack ? 'active' : ''}`}
+                                            onClick={() => setShowRawStack(true)}
+                                        >
+                                            Raw
+                                        </button>
+                                    </>
+                                )}
+                            </div>
                         </div>
 
                         {!showRawStack && hasResolvedFrames ? (
@@ -426,7 +409,7 @@ function GroupDetailPage() {
                                             <>
                                                 <span className="frame-func">at {frame.originalFunctionName || 'anonymous'}</span>
                                                 <span className="frame-loc">({frame.originalFile}:{frame.originalLine}:{frame.originalColumn})</span>
-                                                <span className="frame-raw-muted">mapped from {frame.file}:{frame.line}:{frame.column}</span>
+                                                <span className="frame-raw-muted">← {frame.file}:{frame.line}:{frame.column}</span>
                                             </>
                                         ) : (
                                             <>
@@ -444,42 +427,28 @@ function GroupDetailPage() {
                 );
             })()}
 
-            {/* Recent Events Table */}
-            <div className="section-header-inline" style={{ marginTop: '2.25rem' }}>
-                <h2>Recent Incident Occurrences</h2>
+            {/* Recent Events — compact timeline */}
+            <hr className="section-divider" />
+            <div className="section-header-inline">
+                <h2 style={{ fontSize: '0.85rem' }}>Recent Events</h2>
                 <span className="mono-count">{events.length} fetched</span>
             </div>
 
             {events.length === 0 ? (
-                <p className="cell-muted">No events recorded yet.</p>
+                <p className="cell-muted" style={{ fontSize: '0.78rem' }}>No events recorded yet.</p>
             ) : (
-                <div className="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>RECEIVED AT</th>
-                                <th>ENVIRONMENT</th>
-                                <th>RELEASE BUILD</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {events.map((event) => (
-                                <tr key={event.id} className="row-hoverable">
-                                    <td className="mono" style={{ fontSize: '0.85rem' }}>{formatDate(event.receivedAt)}</td>
-                                    <td>
-                                        <span className="badge badge-env">{event.env || 'simulated'}</span>
-                                    </td>
-                                    <td className="mono">
-                                        {event.release ? (
-                                            <span className="badge badge-release">{event.release}</span>
-                                        ) : (
-                                            <span className="cell-muted">—</span>
-                                        )}
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                <div className="events-timeline">
+                    {events.map((event) => (
+                        <div key={event.id} className="event-row">
+                            <span className="event-timestamp">{formatTime(event.receivedAt)}</span>
+                            <span className="event-env">{event.env || 'simulated'}</span>
+                            {event.release ? (
+                                <span className="event-release">{event.release}</span>
+                            ) : (
+                                <span className="cell-muted" style={{ fontSize: '0.72rem' }}>—</span>
+                            )}
+                        </div>
+                    ))}
                 </div>
             )}
         </div>
