@@ -640,6 +640,7 @@ async function getDashboardOverview(ownerId) {
   if (projects.length === 0) {
     const { currentHourStart, baselineWindowStart } = trendService.getWindowBounds();
     return {
+      lastEventAt: null,
       trend: { windowHours: OVERVIEW_TREND_HOURS, series: buildEmptySeries(baselineWindowStart, currentHourStart) },
       alerts: { totalProjects: 0, projectsConfigured: 0, spikingCount: 0, spikingGroups: [] },
       releases: { recent: [] },
@@ -651,9 +652,13 @@ async function getDashboardOverview(ownerId) {
 
   const { currentHourStart, baselineWindowStart } = trendService.getWindowBounds();
 
+  // Find all error group IDs owned by these projects to query ErrorEvents
+  const userGroupDocs = await ErrorGroup.find({ projectId: { $in: projectIds } }).select('_id').lean();
+  const groupIds = userGroupDocs.map((g) => g._id);
+
   const [recentEvents, spikingCount, spikingGroups, recentReleaseGroups] = await Promise.all([
     ErrorEvent.find(
-      { projectId: { $in: projectIds }, receivedAt: { $gte: baselineWindowStart } },
+      { errorGroupId: { $in: groupIds }, receivedAt: { $gte: baselineWindowStart } },
       { receivedAt: 1 }
     ).lean(),
     ErrorGroup.countDocuments({ projectId: { $in: projectIds }, isSpiking: true, status: 'open' }),
@@ -663,27 +668,28 @@ async function getDashboardOverview(ownerId) {
       .select('projectId message lastSeen count')
       .lean(),
     ErrorGroup.find({ projectId: { $in: projectIds }, firstSeenRelease: { $ne: null } })
-      .sort({ firstSeen: -1 })
+      .sort({ lastSeen: -1 })
       .limit(OVERVIEW_RECENT_RELEASES_LIMIT)
-      .select('projectId message firstSeen firstSeenRelease')
+      .select('projectId message firstSeen lastSeen firstSeenRelease')
       .lean(),
   ]);
 
+  let lastEventAt = null;
   const series = buildEmptySeries(baselineWindowStart, currentHourStart);
   const bucketIndexByHour = new Map(series.map((bucket, i) => [bucket.hour.getTime(), i]));
   for (const event of recentEvents) {
     const hourStart = trendService.startOfHour(event.receivedAt).getTime();
     const index = bucketIndexByHour.get(hourStart);
-    // Events land outside every bucket only if receivedAt is in the
-    // future relative to `now` (clock skew) or otherwise falls
-    // outside the fetched window — skip rather than throw, a bad
-    // clock shouldn't break the whole dashboard.
     if (index !== undefined) series[index].count += 1;
+    if (!lastEventAt || event.receivedAt > lastEventAt) {
+      lastEventAt = event.receivedAt;
+    }
   }
 
   const projectsConfigured = projects.filter((p) => alertingEnabled(p.alertConfig)).length;
 
   return {
+    lastEventAt,
     trend: { windowHours: OVERVIEW_TREND_HOURS, series },
     alerts: {
       totalProjects: projects.length,
@@ -706,6 +712,7 @@ async function getDashboardOverview(ownerId) {
         release: g.firstSeenRelease,
         message: g.message,
         firstSeen: g.firstSeen,
+        lastSeen: g.lastSeen,
       })),
     },
   };

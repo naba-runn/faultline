@@ -18,10 +18,18 @@ const app = express();
 // Security headers
 app.use(helmet());
 
-// CORS — allow only the configured client origin
+// CORS — allow configured client origin, plus any localhost port in development
 app.use(
   cors({
-    origin: config.clientOrigin,
+    origin: (origin, callback) => {
+      if (!origin || /^http:\/\/(localhost|127\.0\.0\.1):[0-9]+$/.test(origin)) {
+        return callback(null, true);
+      }
+      if (origin === config.clientOrigin) {
+        return callback(null, true);
+      }
+      callback(new Error('Not allowed by CORS'));
+    },
     credentials: true,
   })
 );

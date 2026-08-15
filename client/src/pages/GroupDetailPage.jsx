@@ -49,35 +49,52 @@ function StatusBadge({ status }) {
 
 // Trend status display
 function TrendStatus({ trend }) {
-    if (!trend || trend.status === 'insufficient_history') {
+    const isInsufficient = !trend || trend.status === 'insufficient_history';
+    const currentCount = trend?.currentHourCount || 0;
+    const rate = trend?.baselineHourlyRate;
+    const rateLabel = Number.isFinite(rate) && rate !== null ? rate.toFixed(1) : null;
+    const ratio = rate > 0 ? (currentCount / rate).toFixed(1) : null;
+
+    if (isInsufficient) {
+        const isElevated = currentCount >= 5;
         return (
-            <div style={{ fontSize: '0.78rem', color: 'var(--color-text-faint)' }}>
-                Collecting 24h baseline…
+            <div>
+                <div className="trend-headline">
+                    <span className="trend-big">{currentCount}</span>
+                    <span className="trend-unit">events this hour</span>
+                </div>
+                <div style={{ marginBottom: '0.5rem' }}>
+                    {isElevated ? (
+                        <span className="badge badge-trend-spiking">↑ elevated activity</span>
+                    ) : (
+                        <span className="badge badge-trend-normal">normal (baseline building)</span>
+                    )}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--color-text-faint)' }}>
+                    Collecting 24h baseline…
+                </div>
             </div>
         );
     }
-
-    const rate = trend.baselineHourlyRate;
-    const rateLabel = Number.isFinite(rate) ? rate.toFixed(1) : '0.0';
-    const ratio = rate > 0 ? (trend.currentHourCount / rate).toFixed(1) : null;
 
     return (
         <div>
             <div className="trend-headline">
                 <span className="trend-big">{trend.currentHourCount}</span>
                 <span className="trend-unit">events this hour</span>
-                <span className="trend-baseline">
-                    {rateLabel}/hr baseline
-                </span>
+                {rateLabel !== null && (
+                    <span className="trend-baseline">
+                        {rateLabel}/hr baseline
+                    </span>
+                )}
             </div>
-            {trend.isSpiking && (
+            {trend.isSpiking ? (
                 <div style={{ marginBottom: '0.5rem' }}>
                     <span className="badge badge-trend-spiking">
-                        ↑ {ratio}× baseline · spiking
+                        ↑ {ratio ? `${ratio}× baseline · ` : ''}spiking
                     </span>
                 </div>
-            )}
-            {!trend.isSpiking && (
+            ) : (
                 <div style={{ marginBottom: '0.5rem' }}>
                     <span className="badge badge-trend-normal">normal</span>
                 </div>
@@ -86,77 +103,83 @@ function TrendStatus({ trend }) {
     );
 }
 
-// Sparkline chart from events
-function buildSparklineBuckets(events) {
-    if (events.length === 0) return [];
-    const counts = new Map();
+// 24-hour hourly sparkline chart from events
+function buildHourlySparklineBuckets(events) {
+    const now = new Date();
+    const currentHourStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours()));
+    const HOUR_MS = 60 * 60 * 1000;
+
+    const buckets = [];
+    for (let i = 24; i >= 0; i--) {
+        const h = new Date(currentHourStart.getTime() - i * HOUR_MS);
+        buckets.push({
+            hour: h,
+            label: h.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            count: 0,
+        });
+    }
+
+    const bucketIndexByTime = new Map(buckets.map((b, idx) => [b.hour.getTime(), idx]));
+
     events.forEach((event) => {
-        const day = new Date(event.receivedAt).toISOString().slice(0, 10);
-        counts.set(day, (counts.get(day) || 0) + 1);
+        const d = new Date(event.receivedAt);
+        const hourStart = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours());
+        const index = bucketIndexByTime.get(hourStart);
+        if (index !== undefined) {
+            buckets[index].count += 1;
+        }
     });
-    return Array.from(counts.entries())
-        .sort(([dayA], [dayB]) => (dayA < dayB ? -1 : 1))
-        .map(([day, count]) => ({ day, count }));
+
+    return buckets;
 }
 
 function Sparkline({ buckets }) {
-    if (buckets.length === 0) {
+    if (!buckets || buckets.length === 0) {
         return <p className="cell-muted" style={{ fontSize: '0.78rem' }}>No event data to chart.</p>;
     }
 
-    if (buckets.length === 1) {
-        return (
-            <div className="sparkline-single-day">
-                <span className="trend-big" style={{ fontSize: '1.2rem' }}>{buckets[0].count}</span>
-                <span className="cell-muted" style={{ fontSize: '0.72rem' }}>
-                    event{buckets[0].count === 1 ? '' : 's'} on {buckets[0].day}
-                </span>
-            </div>
-        );
-    }
-
     const width = 300;
-    const height = 70;
-    const maxCount = Math.max(...buckets.map((b) => b.count));
+    const height = 60;
+    const maxCount = Math.max(1, ...buckets.map((b) => b.count));
     const stepX = width / (buckets.length - 1);
 
     const points = buckets
         .map((bucket, index) => {
             const x = index * stepX;
             const y = height - (bucket.count / maxCount) * (height - 14) - 6;
-            return `${x},${y}`;
+            return `${x.toFixed(1)},${y.toFixed(1)}`;
         })
         .join(' ');
 
     const areaPoints = `0,${height} ${points} ${width},${height}`;
 
     return (
-        <div className="sparkline-wrap">
+        <div className="sparkline-wrap" style={{ marginTop: '0.5rem' }}>
             <div className="sparkline-header">
-                <span>Peak: <strong>{maxCount}/day</strong></span>
-                <span>{buckets.length} days</span>
+                <span>Peak: <strong>{maxCount}/hr</strong></span>
+                <span>Trailing 24h</span>
             </div>
             <svg
                 viewBox={`0 0 ${width} ${height}`}
                 width="100%"
                 height={height}
                 role="img"
-                aria-label="Event count per day"
+                aria-label="Event count per hour"
                 className="sparkline-svg"
             >
                 <defs>
                     <linearGradient id="sparkline-grad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="var(--color-accent)" stopOpacity="0.2" />
+                        <stop offset="0%" stopColor="var(--color-accent)" stopOpacity="0.3" />
                         <stop offset="100%" stopColor="var(--color-accent)" stopOpacity="0.0" />
                     </linearGradient>
                 </defs>
-                <line x1="0" y1={height - 1} x2={width} y2={height - 1} stroke="var(--color-border)" strokeWidth="1" />
+                <line x1="0" y1={height - 1} x2={width} y2={height - 1} stroke="var(--color-border-strong)" strokeWidth="1" />
                 <polygon points={areaPoints} fill="url(#sparkline-grad)" />
                 <polyline points={points} fill="none" stroke="var(--color-accent)" strokeWidth="2" />
             </svg>
             <div className="sparkline-footer">
-                <span>{buckets[0].day}</span>
-                <span>{buckets[buckets.length - 1].day}</span>
+                <span>{buckets[0].label}</span>
+                <span>now</span>
             </div>
         </div>
     );
@@ -259,7 +282,7 @@ function GroupDetailPage() {
     }
 
     const aiSummary = group?.aiSummary;
-    const buckets = buildSparklineBuckets(events);
+    const buckets = buildHourlySparklineBuckets(events);
 
     return (
         <div className="page">
@@ -372,22 +395,25 @@ function GroupDetailPage() {
 
             {/* Stack Trace */}
             <hr className="section-divider" />
-            {(() => {
+            {group ? (() => {
                 const hasResolvedFrames = group.resolvedStack && group.resolvedStack.some((f) => f.resolved);
+                const hasParsedFrames = group.resolvedStack && group.resolvedStack.length > 0;
                 return (
                     <section className="stack-section">
                         <div className="stack-header">
                             <h2 style={{ margin: 0 }}>Stack Trace</h2>
                             <div className="stack-toggle">
                                 {hasResolvedFrames && (
+                                    <span className="badge badge-sourcemap">source mapped</span>
+                                )}
+                                {hasParsedFrames && (
                                     <>
-                                        <span className="badge badge-sourcemap">source mapped</span>
                                         <button
                                             type="button"
                                             className={`btn-tab ${!showRawStack ? 'active' : ''}`}
                                             onClick={() => setShowRawStack(false)}
                                         >
-                                            Resolved
+                                            {hasResolvedFrames ? 'Resolved' : 'Parsed'}
                                         </button>
                                         <button
                                             type="button"
@@ -401,7 +427,7 @@ function GroupDetailPage() {
                             </div>
                         </div>
 
-                        {!showRawStack && hasResolvedFrames ? (
+                        {!showRawStack && hasParsedFrames ? (
                             <div className="resolved-stack-wrap">
                                 {group.resolvedStack.map((frame, idx) => (
                                     <div key={idx} className={`resolved-frame ${frame.resolved ? 'is-resolved' : 'is-unresolved'}`}>
@@ -421,11 +447,13 @@ function GroupDetailPage() {
                                 ))}
                             </div>
                         ) : (
-                            <pre className="stack-sample mono">{group.stackSample}</pre>
+                            <pre className="stack-sample mono">{group.stackSample || 'No stack trace available.'}</pre>
                         )}
                     </section>
                 );
-            })()}
+            })() : (
+                <div className="skeleton skeleton-block" style={{ height: '120px' }} />
+            )}
 
             {/* Recent Events — compact timeline */}
             <hr className="section-divider" />

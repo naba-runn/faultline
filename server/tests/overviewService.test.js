@@ -57,6 +57,7 @@ function withMocks({ projects, events, spikingCount, spikingGroups, recentReleas
   ErrorGroup.find = (filter) => {
     if (filter.isSpiking !== undefined) return chainable(spikingGroups);
     if (filter.firstSeenRelease !== undefined) return chainable(recentReleaseGroups);
+    if (filter.projectId !== undefined) return chainable(spikingGroups.concat(recentReleaseGroups));
     throw new Error(`Unexpected ErrorGroup.find filter in test: ${JSON.stringify(filter)}`);
   };
 

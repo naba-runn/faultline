@@ -21,47 +21,75 @@ function formatHourLabel(iso) {
 
 // 25-point hourly bar chart for the trailing 24h trend.
 function TrendChart({ series }) {
+    const totalCount = series.reduce((sum, b) => sum + b.count, 0);
     const maxCount = Math.max(1, ...series.map((b) => b.count));
     const width = 700;
-    const height = 120;
-    const barGap = 2;
+    const height = 50;
+    const barGap = 3;
     const barWidth = (width - barGap * (series.length - 1)) / series.length;
 
     return (
-        <svg
-            viewBox={`0 0 ${width} ${height + 20}`}
-            className="trend-chart-svg"
-            role="img"
-            aria-label="Hourly error volume over the last 24 hours"
-        >
-            {series.map((bucket, i) => {
-                const barHeight = (bucket.count / maxCount) * height;
-                const x = i * (barWidth + barGap);
-                const y = height - barHeight;
-                const isCurrentHour = i === series.length - 1;
-                return (
-                    <g key={bucket.hour}>
-                        <rect
-                            x={x}
-                            y={y}
-                            width={barWidth}
-                            height={Math.max(barHeight, bucket.count > 0 ? 2 : 0)}
-                            rx={1.5}
-                            fill={isCurrentHour ? 'var(--color-accent)' : 'var(--color-accent-strong)'}
-                            opacity={isCurrentHour ? 1 : 0.4}
-                        >
-                            <title>{`${formatHourLabel(bucket.hour)}: ${bucket.count} error${bucket.count === 1 ? '' : 's'}`}</title>
-                        </rect>
-                    </g>
-                );
-            })}
-            <text x={0} y={height + 16} className="trend-chart-axis-label">
-                {formatHourLabel(series[0].hour)}
-            </text>
-            <text x={width} y={height + 16} textAnchor="end" className="trend-chart-axis-label">
-                now
-            </text>
-        </svg>
+        <div style={{ position: 'relative', marginTop: '0.35rem' }}>
+            <svg
+                viewBox={`0 0 ${width} ${height + 20}`}
+                className="trend-chart-svg"
+                role="img"
+                aria-label="Hourly error volume over the last 24 hours"
+            >
+                {/* Horizontal baseline */}
+                <line
+                    x1="0"
+                    y1={height}
+                    x2={width}
+                    y2={height}
+                    stroke="var(--color-border-strong)"
+                    strokeWidth="1"
+                />
+
+                {series.map((bucket, i) => {
+                    const hasCount = bucket.count > 0;
+                    const barHeight = hasCount ? Math.max(4, (bucket.count / maxCount) * height) : 2;
+                    const x = i * (barWidth + barGap);
+                    const y = height - barHeight;
+                    const isCurrentHour = i === series.length - 1;
+
+                    return (
+                        <g key={bucket.hour}>
+                            <rect
+                                x={x}
+                                y={y}
+                                width={barWidth}
+                                height={barHeight}
+                                rx={1}
+                                fill={hasCount ? (isCurrentHour ? 'var(--color-accent)' : 'var(--color-accent-strong)') : 'var(--color-border-strong)'}
+                                opacity={hasCount ? (isCurrentHour ? 1 : 0.7) : 0.3}
+                            >
+                                <title>{`${formatHourLabel(bucket.hour)}: ${bucket.count} error${bucket.count === 1 ? '' : 's'}`}</title>
+                            </rect>
+                        </g>
+                    );
+                })}
+                <text x={0} y={height + 16} className="trend-chart-axis-label">
+                    {formatHourLabel(series[0].hour)}
+                </text>
+                <text x={width} y={height + 16} textAnchor="end" className="trend-chart-axis-label">
+                    now
+                </text>
+            </svg>
+            {totalCount === 0 && (
+                <div style={{
+                    position: 'absolute',
+                    top: '30%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    fontSize: '0.75rem',
+                    color: 'var(--color-text-faint)',
+                    pointerEvents: 'none',
+                }}>
+                    No error activity in trailing 24h
+                </div>
+            )}
+        </div>
     );
 }
 
@@ -147,16 +175,8 @@ function DashboardPage() {
         : null;
     const spikingCount = overview?.alerts?.spikingCount || 0;
     const spikingGroups = overview?.alerts?.spikingGroups || [];
-    const lastEventTime = overview?.trend?.series
-        ? (() => {
-            // Find the most recent non-zero bucket
-            for (let i = overview.trend.series.length - 1; i >= 0; i--) {
-                if (overview.trend.series[i].count > 0) {
-                    return formatRelativeTime(overview.trend.series[i].hour);
-                }
-            }
-            return '—';
-        })()
+    const lastEventTime = overview?.lastEventAt
+        ? formatRelativeTime(overview.lastEventAt)
         : null;
 
     return (
@@ -276,7 +296,7 @@ function DashboardPage() {
                                     </Link>
                                 </div>
                                 <span className="cell-muted" style={{ fontSize: '0.75rem' }}>
-                                    {r.projectName} · introduced {formatRelativeTime(r.firstSeen)}
+                                    {r.projectName} · last seen {formatRelativeTime(r.lastSeen || r.firstSeen)} · introduced {formatRelativeTime(r.firstSeen)}
                                 </span>
                             </li>
                         ))}
