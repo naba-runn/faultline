@@ -641,6 +641,7 @@ async function getDashboardOverview(ownerId) {
     const { currentHourStart, baselineWindowStart } = trendService.getWindowBounds();
     return {
       lastEventAt: null,
+      unresolvedCount: 0,
       trend: { windowHours: OVERVIEW_TREND_HOURS, series: buildEmptySeries(baselineWindowStart, currentHourStart) },
       alerts: { totalProjects: 0, projectsConfigured: 0, spikingCount: 0, spikingGroups: [] },
       releases: { recent: [] },
@@ -656,7 +657,7 @@ async function getDashboardOverview(ownerId) {
   const userGroupDocs = await ErrorGroup.find({ projectId: { $in: projectIds } }).select('_id').lean();
   const groupIds = userGroupDocs.map((g) => g._id);
 
-  const [recentEvents, spikingCount, spikingGroups, recentReleaseGroups] = await Promise.all([
+  const [recentEvents, spikingCount, spikingGroups, recentReleaseGroups, unresolvedCount] = await Promise.all([
     ErrorEvent.find(
       { errorGroupId: { $in: groupIds }, receivedAt: { $gte: baselineWindowStart } },
       { receivedAt: 1 }
@@ -670,8 +671,9 @@ async function getDashboardOverview(ownerId) {
     ErrorGroup.find({ projectId: { $in: projectIds }, firstSeenRelease: { $ne: null } })
       .sort({ lastSeen: -1 })
       .limit(OVERVIEW_RECENT_RELEASES_LIMIT)
-      .select('projectId message firstSeen lastSeen firstSeenRelease')
+      .select('projectId message firstSeen lastSeen firstSeenRelease status count aiSummary.severity')
       .lean(),
+    ErrorGroup.countDocuments({ projectId: { $in: projectIds }, status: 'open' }),
   ]);
 
   let lastEventAt = null;
@@ -690,6 +692,7 @@ async function getDashboardOverview(ownerId) {
 
   return {
     lastEventAt,
+    unresolvedCount,
     trend: { windowHours: OVERVIEW_TREND_HOURS, series },
     alerts: {
       totalProjects: projects.length,
@@ -713,6 +716,9 @@ async function getDashboardOverview(ownerId) {
         message: g.message,
         firstSeen: g.firstSeen,
         lastSeen: g.lastSeen,
+        status: g.status || 'open',
+        count: g.count || 0,
+        severity: g.aiSummary?.severity || null,
       })),
     },
   };

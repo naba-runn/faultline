@@ -446,11 +446,13 @@ function ProjectDetailPage() {
                                                 </option>
                                             ))}
                                         </select>
-                                        {' · '}
-                                        <span className="mono" style={{ fontSize: '0.72rem' }}>{group.count}</span> occurrences
-                                        {' · '}
-                                        {formatRelativeTime(group.lastSeen)}
+                                        {group.firstSeenRelease && <>{' · '}<span className="mono" style={{ fontSize: '0.72rem' }}>{group.firstSeenRelease}</span></>}
+                                        {group.aiSummary?.rootCause && <>{' · '}<span style={{ color: 'var(--color-text-faint)', fontSize: '0.72rem' }}>{group.aiSummary.rootCause.length > 60 ? group.aiSummary.rootCause.slice(0, 60) + '…' : group.aiSummary.rootCause}</span></>}
                                     </div>
+                                </div>
+                                <div className="incident-stats">
+                                    <div className="incident-count">{group.count}</div>
+                                    <div>{formatRelativeTime(group.lastSeen)}</div>
                                 </div>
                             </div>
                         );

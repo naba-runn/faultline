@@ -80,6 +80,32 @@ body {
     font-size: 14px;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-strong) var(--color-surface);
+}
+
+/* ========== Scrollbar ========== */
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--color-surface);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--color-border-strong);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--color-border-outline);
+}
+
+::-webkit-scrollbar-corner {
+    background: var(--color-surface);
 }
 
 h1,
@@ -91,8 +117,9 @@ h3 {
 }
 
 h1 {
-    font-size: 1.5rem;
-    letter-spacing: -0.01em;
+    font-size: 1.6rem;
+    letter-spacing: -0.015em;
+    font-weight: 700;
 }
 
 h2 {
@@ -982,7 +1009,7 @@ table select {
 .metric-value {
     font-family: var(--font-mono);
     font-size: 1.5rem;
-    font-weight: 700;
+    font-weight: 800;
     color: var(--color-text);
     line-height: 1;
 }
@@ -1018,18 +1045,25 @@ table select {
 
 .incident-severity {
     flex-shrink: 0;
-    width: 52px;
+    width: 72px;
     font-family: var(--font-sans);
     font-size: 0.65rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.03em;
     padding-top: 0.15rem;
 }
 
 .incident-content {
     flex: 1;
     min-width: 0;
+}
+
+.incident-header-line {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
 }
 
 .incident-message {
@@ -1041,6 +1075,8 @@ table select {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    flex: 1;
+    min-width: 0;
 }
 
 .incident-message:hover {
@@ -1056,6 +1092,28 @@ table select {
 
 .incident-meta .mono {
     font-size: 0.72rem;
+}
+
+/* Inline status indicator — text-only, visually subordinate */
+.incident-status {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    flex-shrink: 0;
+}
+
+.incident-status-open {
+    color: var(--color-warning);
+}
+
+.incident-status-resolved {
+    color: var(--color-success);
+}
+
+.incident-status-ignored {
+    color: var(--color-text-faint);
 }
 
 .incident-stats {
@@ -1805,6 +1863,8 @@ table select {
     padding: 0.75rem 0;
     max-height: calc(100vh - 80px);
     overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-strong) var(--color-surface);
 }
 
 .docs-toc-title {
@@ -2005,6 +2065,8 @@ table select {
     flex-direction: column;
     max-height: 200px;
     overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-strong) var(--color-surface);
 }
 
 .overview-list li {

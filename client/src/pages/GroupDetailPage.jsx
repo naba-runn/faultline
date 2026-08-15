@@ -16,11 +16,20 @@ function formatDate(iso) {
 }
 
 function formatTime(iso) {
-    return new Date(iso).toLocaleTimeString(undefined, {
+    const d = new Date(iso);
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    const time = d.toLocaleTimeString(undefined, {
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',
     });
+    if (isToday) return time;
+    const date = d.toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+    });
+    return `${date} ${time}`;
 }
 
 function formatRelativeTime(iso) {

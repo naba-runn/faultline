@@ -4,6 +4,20 @@ import { useAuth } from '../context/AuthContext.jsx';
 import api from '../api/axios.js';
 import SdkSnippetGenerator from '../components/SdkSnippetGenerator.jsx';
 
+const SEVERITY_LABEL = {
+    low: 'LOW',
+    medium: 'MEDIUM',
+    high: 'HIGH',
+    critical: 'CRITICAL',
+};
+
+const SEVERITY_COLOR = {
+    critical: 'var(--color-danger)',
+    high: 'var(--color-warning)',
+    medium: 'var(--color-caution)',
+    low: 'var(--color-text-muted)',
+};
+
 function formatRelativeTime(iso) {
     const diffMs = Date.now() - new Date(iso).getTime();
     const minutes = Math.round(diffMs / 60000);
@@ -178,6 +192,7 @@ function DashboardPage() {
     const lastEventTime = overview?.lastEventAt
         ? formatRelativeTime(overview.lastEventAt)
         : null;
+    const unresolvedCount = overview?.unresolvedCount ?? null;
 
     return (
         <div className="page">
@@ -231,6 +246,12 @@ function DashboardPage() {
                             <span className="metric-label">spiking</span>
                         </div>
                     )}
+                    {unresolvedCount !== null && (
+                        <div className="metric-item">
+                            <span className="metric-value" style={{ color: 'var(--color-warning)' }}>{unresolvedCount}</span>
+                            <span className="metric-label">unresolved</span>
+                        </div>
+                    )}
                     {lastEventTime && (
                         <div className="metric-item">
                             <span className="metric-value" style={{ fontSize: '1rem' }}>{lastEventTime}</span>
@@ -256,8 +277,8 @@ function DashboardPage() {
                 <div style={{ marginTop: '0.5rem' }}>
                     <hr className="section-divider" />
                     <div className="section-header-inline">
-                        <h2 style={{ fontSize: '0.85rem' }}>Active Spikes</h2>
-                        <span className="mono-count">{spikingGroups.length} spiking</span>
+                        <h2 style={{ fontSize: '0.85rem' }}>Recent Spikes</h2>
+                        <span className="mono-count">{spikingGroups.length}</span>
                     </div>
                     <div className="incident-list">
                         {spikingGroups.map((g) => (
@@ -266,11 +287,13 @@ function DashboardPage() {
                                     SPIKE
                                 </div>
                                 <div className="incident-content">
-                                    <Link to={`/groups/${g.groupId}`} className="incident-message">
-                                        {g.message}
-                                    </Link>
+                                    <div className="incident-header-line">
+                                        <Link to={`/groups/${g.groupId}`} className="incident-message">
+                                            {g.message}
+                                        </Link>
+                                    </div>
                                     <div className="incident-meta">
-                                        {g.projectName} · <span className="mono">{g.count}</span> events · {formatRelativeTime(g.lastSeen)}
+                                        {g.projectName} · <span className="mono" style={{ fontSize: '0.72rem' }}>{g.count}</span> events · {formatRelativeTime(g.lastSeen)}
                                     </div>
                                 </div>
                             </div>
@@ -279,28 +302,48 @@ function DashboardPage() {
                 </div>
             )}
 
-            {/* Recent Releases */}
+            {/* Recent Incidents */}
             {!overviewLoading && !overviewError && overview && overview.releases.recent.length > 0 && (
                 <div style={{ marginTop: '0.25rem' }}>
                     <hr className="section-divider" />
                     <div className="section-header-inline">
-                        <h2 style={{ fontSize: '0.85rem' }}>Recent Releases</h2>
+                        <h2 style={{ fontSize: '0.85rem' }}>Recent Incidents</h2>
+                        <span className="mono-count">{overview.releases.recent.length}</span>
                     </div>
-                    <ul className="overview-list">
-                        {overview.releases.recent.map((r) => (
-                            <li key={r.groupId}>
-                                <div>
-                                    <span className="badge badge-release mono">{r.release}</span>{' '}
-                                    <Link to={`/groups/${r.groupId}`} className="overview-list-title">
-                                        {r.message}
-                                    </Link>
+                    <div className="incident-list">
+                        {overview.releases.recent.map((r) => {
+                            const sevKey = r.severity?.toLowerCase();
+                            const sevColor = SEVERITY_COLOR[sevKey] || 'var(--color-text-faint)';
+                            const sevLabel = SEVERITY_LABEL[sevKey] || '—';
+                            const statusKey = r.status || 'open';
+                            return (
+                                <div key={r.groupId} className="incident-row">
+                                    <div
+                                        className="incident-severity"
+                                        style={{ color: sevColor }}
+                                    >
+                                        {sevLabel}
+                                    </div>
+                                    <div className="incident-content">
+                                        <div className="incident-header-line">
+                                            <Link to={`/groups/${r.groupId}`} className="incident-message">
+                                                {r.message}
+                                            </Link>
+                                            <span className={`incident-status incident-status-${statusKey}`}>
+                                                {statusKey.toUpperCase()}
+                                            </span>
+                                        </div>
+                                        <div className="incident-meta">
+                                            {r.projectName}
+                                            {r.release && <>{' · '}<span className="mono" style={{ fontSize: '0.72rem' }}>{r.release}</span></>}
+                                            {' · '}<span className="mono" style={{ fontSize: '0.72rem' }}>{r.count}</span> events
+                                            {' · '}{formatRelativeTime(r.lastSeen || r.firstSeen)}
+                                        </div>
+                                    </div>
                                 </div>
-                                <span className="cell-muted" style={{ fontSize: '0.75rem' }}>
-                                    {r.projectName} · last seen {formatRelativeTime(r.lastSeen || r.firstSeen)} · introduced {formatRelativeTime(r.firstSeen)}
-                                </span>
-                            </li>
-                        ))}
-                    </ul>
+                            );
+                        })}
+                    </div>
                 </div>
             )}
 
