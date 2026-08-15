@@ -1,30 +1,49 @@
-# Faultline — AI-Grounded Error Intelligence Platform
+# Faultline: AI-Grounded Error Intelligence Platform
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](#-verification--test-suite)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D20.0.0-blue)](#-tech-stack)
-[![License](https://img.shields.io/badge/license-MIT-green)](#)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](#verification-and-test-suite)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D20.0.0-blue)](#tech-stack)
+[![License](https://img.shields.io/badge/license-MIT-green)](#license-and-documentation)
 
-> **Faultline** is a modern, real-time error tracking and AI-grounded root-cause intelligence platform — a lightweight, developer-focused alternative to Sentry.
-> 
-> Client applications ingest runtime errors to Faultline's API. Errors are automatically deduplicated by stack-trace fingerprinting. On the first occurrence of a new error group, Faultline fetches the offending source code directly from GitHub and calls **Google Gemini 2.5 Flash** to generate a structured, actionable root-cause analysis and suggested fix.
+> Faultline is a real-time error tracking and AI-grounded root-cause intelligence platform. It provides automated deduplication, source-map resolution, baseline anomaly detection, and asynchronous AI enrichment powered by Google Gemini 2.5 Flash.
 
 ---
 
-## 📸 Key Features
+## Live Workflow Demonstration
 
-- 🧠 **AI Root-Cause Intelligence**: Asynchronous background enrichment using Google Gemini 2.5 Flash, grounded with GitHub code snippet context.
-- ⚡ **Real-Time Dashboard**: Server-Sent Events (SSE) push live error occurrences, count updates, and enrichment completions directly to the UI without page reloads.
-- 🗺️ **Source-Map Support**: Synchronous JavaScript Source Map v3 resolution (`source-map-js`) mapping minified production stack frames back to original source code files.
-- 📈 **Trend & Spike Detection**: Statistical baseline algorithm evaluating trailing 24-hour error frequency to detect real anomaly spikes.
-- 🔔 **Multi-Channel Alerting**: Instant notification system supporting Resend email delivery for new error groups and volume spikes.
-- 🏷️ **Multi-Environment & Release Tagging**: Categorize issues by environment (`production`, `staging`) and trace bugs to exact release builds (`v1.4.2`).
-- 🔍 **Search, Filters & Saved Views**: Deep error searching by regex message matching, status (`open`, `resolved`, `ignored`), and AI severity (`critical`, `high`, `medium`, `low`).
-- ⚡ **SDK Snippet Generator**: Copyable onboarding code snippets for **cURL**, **Node.js / Express**, and **Python**.
-- 📖 **Live Public API Documentation**: Built-in interactive documentation available at `/docs` rendered dynamically from raw API specifications.
+![Faultline End-to-End Workflow](docs/assets/faultline-demo.gif)
+
+*Figure 1: End-to-end event execution path — Error Simulation -> Stack Fingerprinting & Grouping -> Async AI Enrichment -> Live SSE Dashboard Push.*
 
 ---
 
-## 🏗️ Architecture Overview
+## Deployed Environments
+
+| Service | Endpoint / URL | Status |
+| :--- | :--- | :--- |
+| **Web Dashboard UI** | [https://faultline-dashboard.vercel.app](https://faultline-dashboard.vercel.app) | Production |
+| **Express API Service** | [https://faultline-api.onrender.com](https://faultline-api.onrender.com) | Production |
+| **Live API Documentation** | [https://faultline-api.onrender.com/docs](https://faultline-api.onrender.com/docs) | Active |
+| **Health Check** | [https://faultline-api.onrender.com/health](https://faultline-api.onrender.com/health) | Active |
+
+---
+
+## Key Features
+
+- **AI Root-Cause Intelligence**: Asynchronous background enrichment using Google Gemini 2.5 Flash, grounded with GitHub code repository context.
+- **Real-Time SSE Dashboard**: Server-Sent Events (SSE) stream live error occurrences, count updates, and enrichment completions directly to the client without page reloads.
+- **Source-Map Resolution**: Synchronous JavaScript Source Map v3 resolution (`source-map-js`) mapping minified production stack frames back to original source code files.
+- **Trend and Spike Detection**: Statistical baseline algorithm evaluating trailing 24-hour error frequency to detect real anomaly spikes.
+- **Multi-Channel Alerting**: Instant notification system supporting Resend email delivery for new error groups and volume spikes.
+- **Environment and Release Tagging**: Categorize issues by environment (`production`, `staging`) and trace bugs to exact release builds (`v1.4.2`).
+- **Search, Filters and Saved Views**: Deep error searching by regex message matching, status (`open`, `resolved`, `ignored`), and AI severity (`critical`, `high`, `medium`, `low`).
+- **SDK Snippet Generator**: Copyable onboarding code snippets for cURL, Node.js / Express, and Python.
+- **Live Public API Documentation**: Built-in interactive documentation available at `/docs` rendered dynamically from raw API specifications.
+
+---
+
+## Architecture Overview
+
+![Faultline Architecture Diagram](docs/assets/architecture.png)
 
 ```
                       +-------------------+
@@ -62,12 +81,28 @@
 
 ---
 
-## 🛠️ Tech Stack
+## Platform Screenshots
+
+### Observability Dashboard Overview
+![Faultline Dashboard Overview](docs/assets/dashboard-overview.png)
+*Figure 2: Real-time incident list showing error groups, severity badges, spike indicators, and 24-hour volume metrics.*
+
+### AI Root-Cause Analysis and Source Map Viewer
+![Gemini 2.5 Flash AI Root Cause Analysis](docs/assets/group-detail-ai.png)
+*Figure 3: Deep inspection view featuring Gemini 2.5 Flash root cause diagnosis, proposed code diffs, and source-mapped stack traces.*
+
+### Interactive API Documentation and SDK Setup
+![API Documentation and SDK Snippet Generator](docs/assets/api-docs-sdks.png)
+*Figure 4: Built-in API explorer and copyable client integration snippets.*
+
+---
+
+## Tech Stack
 
 ### Frontend (`/client`)
 - **Framework**: React 18 + Vite
 - **Routing**: React Router DOM v6
-- **Styling**: Vanilla CSS (Tailwind-free) custom design system with dark-mode tokens & CSS grid layouts
+- **Styling**: Vanilla CSS custom design system with dark-mode tokens and CSS grid layouts
 - **HTTP Client**: Axios with JWT interceptors
 - **Markdown Parsing**: `marked` v15
 
@@ -75,14 +110,14 @@
 - **Runtime**: Node.js (ES Modules / CommonJS)
 - **Framework**: Express.js
 - **Database**: MongoDB Atlas via Mongoose ORM
-- **Queue & Real-Time**: BullMQ + Redis (Render Key Value / local Redis)
+- **Queue and Real-Time**: BullMQ + Redis (Render Key Value / local Redis)
 - **AI Integration**: `@google/genai` (Gemini 2.5 Flash)
 - **Email Delivery**: Resend API
 - **Source Maps**: `source-map-js`
 
 ---
 
-## 🚀 Quickstart Guide
+## Quickstart Guide
 
 ### Prerequisites
 - **Node.js** `>= 20.0.0`
@@ -106,7 +141,7 @@ npm install
 cp .env.example .env
 ```
 
-Configure your `.env` variables:
+Configure environment variables in `.env`:
 ```env
 PORT=5050
 MONGODB_URI=mongodb+srv://<user>:<password>@cluster.mongodb.net/faultline
@@ -116,7 +151,7 @@ REDIS_URL=redis://127.0.0.1:6379
 RESEND_API_KEY=re_123456789 (optional for email alerts)
 ```
 
-Start the development server & worker process:
+Start the development server and worker process:
 ```bash
 # Terminal 1: API Server
 npm run dev
@@ -133,13 +168,13 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173` in your browser.
+Access the UI at `http://localhost:5173`.
 
 ---
 
-## 🧪 Testing with Demo App
+## Demo Application
 
-Faultline includes a pre-configured demo application for testing real ingestion, minified source maps, and error spikes:
+Faultline includes a pre-configured demo application for testing event ingestion, minified source maps, and error spikes:
 
 ```bash
 cd demo-app
@@ -150,9 +185,9 @@ node minified-demo.js  # Demonstrates source-map upload and minified frame resol
 
 ---
 
-## 🧪 Verification & Test Suite
+## Verification and Test Suite
 
-The server includes a suite of 50 unit and integration tests covering deduplication, trend calculation, spike evaluation, source map resolution, and API contracts:
+The server includes a suite of 54 unit and integration tests covering deduplication, trend calculation, spike evaluation, source map resolution, and API contracts:
 
 ```bash
 cd server
@@ -161,7 +196,7 @@ npm test
 
 ---
 
-## 🌐 Production Deployment Guide
+## Production Deployment
 
 ### Frontend Deployment (Vercel)
 1. Import `client/` into Vercel.
@@ -170,7 +205,7 @@ npm test
 4. The repository includes `client/vercel.json` configured for SPA routing rewrites.
 
 ### Backend Deployment (Render)
-1. **Database & Queue**: Create a MongoDB Atlas cluster and a Render Key Value (Redis) instance.
+1. **Database and Queue**: Create a MongoDB Atlas cluster and a Render Key Value (Redis) instance.
 2. **API Web Service**:
    - Build Command: `cd server && npm install`
    - Start Command: `cd server && node server.js`
@@ -180,8 +215,8 @@ npm test
 
 ---
 
-## 📄 License & Documentation
+## License and Documentation
 
 - **Live API Documentation**: Accessible within the running app at `/docs` or in `docs/API.md`.
-- **System Decisions**: Comprehensive Architectural Decision Records in `docs/DECISIONS.md`.
+- **System Decisions**: Architectural Decision Records in `docs/DECISIONS.md`.
 - **License**: MIT
