@@ -170,22 +170,35 @@ select:focus-visible {
 
 /* Skeleton Loading Primitives for Instant Render */
 .skeleton {
-    background: var(--color-surface-container);
+    background: var(--color-surface-raised);
+    background-image: linear-gradient(
+        90deg,
+        var(--color-surface-raised) 0%,
+        var(--color-surface-container) 50%,
+        var(--color-surface-raised) 100%
+    );
+    background-size: 200% 100%;
     border-radius: var(--radius-sm);
-    animation: skeleton-pulse 1.5s ease-in-out infinite;
+    animation: skeleton-shimmer 2.2s ease-in-out infinite;
     display: inline-block;
 }
 
 .skeleton-text {
-    height: 1rem;
+    height: 12px;
     width: 60%;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.35rem;
 }
 
 .skeleton-heading {
     height: 1.5rem;
     width: 40%;
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.skeleton-badge {
+    height: 16px;
+    width: 48px;
+    border-radius: var(--radius-sm);
 }
 
 .skeleton-block {
@@ -193,12 +206,21 @@ select:focus-visible {
     width: 100%;
 }
 
-@keyframes skeleton-pulse {
-    0%, 100% { opacity: 0.4; }
-    50% { opacity: 0.8; }
+@keyframes skeleton-shimmer {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
+    .skeleton {
+        animation: none !important;
+        background-image: none !important;
+        background-color: var(--color-surface-container) !important;
+    }
     * {
         animation-duration: 0.001ms !important;
         transition-duration: 0.001ms !important;
@@ -1026,6 +1048,13 @@ table select {
     flex-direction: column;
 }
 
+.incident-list-scroll {
+    max-height: 280px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-strong) var(--color-surface);
+}
+
 .incident-row {
     display: flex;
     align-items: flex-start;
@@ -1705,6 +1734,13 @@ table select {
 .events-timeline {
     display: flex;
     flex-direction: column;
+}
+
+.events-timeline-scroll {
+    max-height: 300px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-strong) var(--color-surface);
 }
 
 .event-row {

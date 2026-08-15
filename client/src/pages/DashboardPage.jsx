@@ -107,6 +107,141 @@ function TrendChart({ series }) {
     );
 }
 
+function DashboardMetricsSkeleton() {
+    return (
+        <div className="metrics-row" aria-busy="true" aria-label="Loading metrics">
+            <div className="metric-item">
+                <span className="skeleton" style={{ width: '28px', height: '24px' }} />
+                <span className="skeleton" style={{ width: '48px', height: '12px' }} />
+            </div>
+            <div className="metric-item">
+                <span className="skeleton" style={{ width: '36px', height: '24px' }} />
+                <span className="skeleton" style={{ width: '68px', height: '12px' }} />
+            </div>
+            <div className="metric-item">
+                <span className="skeleton" style={{ width: '24px', height: '24px' }} />
+                <span className="skeleton" style={{ width: '56px', height: '12px' }} />
+            </div>
+            <div className="metric-item">
+                <span className="skeleton" style={{ width: '48px', height: '18px' }} />
+                <span className="skeleton" style={{ width: '54px', height: '12px' }} />
+            </div>
+        </div>
+    );
+}
+
+function TrendChartSkeleton() {
+    const width = 700;
+    const height = 50;
+    const count = 25;
+    const barGap = 3;
+    const barWidth = (width - barGap * (count - 1)) / count;
+
+    return (
+        <div style={{ position: 'relative', marginTop: '0.35rem' }} aria-busy="true" aria-label="Loading error volume chart">
+            <svg
+                viewBox={`0 0 ${width} ${height + 20}`}
+                className="trend-chart-svg"
+                role="img"
+            >
+                <line
+                    x1="0"
+                    y1={height}
+                    x2={width}
+                    y2={height}
+                    stroke="var(--color-border-strong)"
+                    strokeWidth="1"
+                />
+                {Array.from({ length: count }).map((_, i) => {
+                    const barHeight = 4 + ((i * 7 + 3) % 24);
+                    const x = i * (barWidth + barGap);
+                    const y = height - barHeight;
+                    return (
+                        <rect
+                            key={i}
+                            x={x}
+                            y={y}
+                            width={barWidth}
+                            height={barHeight}
+                            rx={1}
+                            fill="var(--color-surface-container)"
+                            opacity={0.5}
+                        />
+                    );
+                })}
+                <text x={0} y={height + 16} className="trend-chart-axis-label" fill="var(--color-text-faint)">
+                    24h ago
+                </text>
+                <text x={width} y={height + 16} textAnchor="end" className="trend-chart-axis-label" fill="var(--color-text-faint)">
+                    now
+                </text>
+            </svg>
+        </div>
+    );
+}
+
+function IncidentListSkeleton({ count = 3 }) {
+    return (
+        <div className="incident-list" aria-busy="true" aria-label="Loading incidents">
+            {Array.from({ length: count }).map((_, i) => (
+                <div key={i} className="incident-row" style={{ pointerEvents: 'none' }}>
+                    <div className="incident-severity">
+                        <span className="skeleton" style={{ width: '48px', height: '14px' }} />
+                    </div>
+                    <div className="incident-content">
+                        <div className="incident-header-line">
+                            <span className="skeleton" style={{ width: `${55 + (i * 12) % 30}%`, height: '14px' }} />
+                            <span className="skeleton" style={{ width: '38px', height: '12px' }} />
+                        </div>
+                        <div className="incident-meta" style={{ marginTop: '0.25rem' }}>
+                            <span className="skeleton" style={{ width: `${35 + (i * 8) % 25}%`, height: '11px' }} />
+                        </div>
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function ProjectsTableSkeleton({ count = 3 }) {
+    return (
+        <div className="table-wrap" aria-busy="true" aria-label="Loading projects">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Project</th>
+                        <th>Repository</th>
+                        <th>Created</th>
+                        <th>Integration</th>
+                        <th style={{ textAlign: 'right' }}></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {Array.from({ length: count }).map((_, i) => (
+                        <tr key={i}>
+                            <td>
+                                <span className="skeleton" style={{ width: `${90 + (i * 20) % 40}px`, height: '14px' }} />
+                            </td>
+                            <td>
+                                <span className="skeleton" style={{ width: '110px', height: '12px' }} />
+                            </td>
+                            <td>
+                                <span className="skeleton" style={{ width: '70px', height: '12px' }} />
+                            </td>
+                            <td>
+                                <span className="skeleton" style={{ width: '42px', height: '20px' }} />
+                            </td>
+                            <td style={{ textAlign: 'right' }}>
+                                <span className="skeleton" style={{ width: '80px', height: '22px' }} />
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
 function DashboardPage() {
     const { user, logout } = useAuth();
 
@@ -228,7 +363,9 @@ function DashboardPage() {
             </div>
 
             {/* Inline Metrics */}
-            {!overviewLoading && !overviewError && overview && (
+            {overviewLoading && !overview ? (
+                <DashboardMetricsSkeleton />
+            ) : overview ? (
                 <div className="metrics-row">
                     <div className="metric-item">
                         <span className="metric-value">{projects.length}</span>
@@ -259,17 +396,22 @@ function DashboardPage() {
                         </div>
                     )}
                 </div>
-            )}
+            ) : null}
 
             {/* Trend Chart — directly in the flow */}
-            {!overviewLoading && !overviewError && overview && (
+            {overviewLoading && !overview ? (
+                <div className="overview-section">
+                    <hr className="section-divider" />
+                    <div className="sub-heading">Error Volume — Last 24h</div>
+                    <TrendChartSkeleton />
+                </div>
+            ) : overview ? (
                 <div className="overview-section">
                     <hr className="section-divider" />
                     <div className="sub-heading">Error Volume — Last 24h</div>
                     <TrendChart series={overview.trend.series} />
                 </div>
-            )}
-            {overviewLoading && <p className="cell-muted" style={{ fontSize: '0.82rem' }}>Loading overview…</p>}
+            ) : null}
             {!overviewLoading && overviewError && <p className="alert alert-error" role="alert">{overviewError}</p>}
 
             {/* Spiking Incidents */}
@@ -280,7 +422,7 @@ function DashboardPage() {
                         <h2 style={{ fontSize: '0.85rem' }}>Recent Spikes</h2>
                         <span className="mono-count">{spikingGroups.length}</span>
                     </div>
-                    <div className="incident-list">
+                    <div className="incident-list incident-list-scroll">
                         {spikingGroups.map((g) => (
                             <div key={g.groupId} className="incident-row">
                                 <div className="incident-severity severity-marker severity-marker-high">
@@ -303,14 +445,23 @@ function DashboardPage() {
             )}
 
             {/* Recent Incidents */}
-            {!overviewLoading && !overviewError && overview && overview.releases.recent.length > 0 && (
+            {overviewLoading && !overview ? (
+                <div style={{ marginTop: '0.25rem' }}>
+                    <hr className="section-divider" />
+                    <div className="section-header-inline">
+                        <h2 style={{ fontSize: '0.85rem' }}>Recent Incidents</h2>
+                        <span className="skeleton" style={{ width: '24px', height: '14px' }} />
+                    </div>
+                    <IncidentListSkeleton count={3} />
+                </div>
+            ) : overview && overview.releases.recent.length > 0 ? (
                 <div style={{ marginTop: '0.25rem' }}>
                     <hr className="section-divider" />
                     <div className="section-header-inline">
                         <h2 style={{ fontSize: '0.85rem' }}>Recent Incidents</h2>
                         <span className="mono-count">{overview.releases.recent.length}</span>
                     </div>
-                    <div className="incident-list">
+                    <div className="incident-list incident-list-scroll">
                         {overview.releases.recent.map((r) => {
                             const sevKey = r.severity?.toLowerCase();
                             const sevColor = SEVERITY_COLOR[sevKey] || 'var(--color-text-faint)';
@@ -345,17 +496,21 @@ function DashboardPage() {
                         })}
                     </div>
                 </div>
-            )}
+            ) : null}
 
             {/* Projects */}
             <div className="project-table-section">
                 <hr className="section-divider" />
                 <div className="section-header-inline">
                     <h2 style={{ fontSize: '0.85rem' }}>Projects</h2>
-                    <span className="mono-count">{projects.length} total</span>
+                    {loading && projects.length === 0 ? (
+                        <span className="skeleton" style={{ width: '45px', height: '14px' }} />
+                    ) : (
+                        <span className="mono-count">{projects.length} total</span>
+                    )}
                 </div>
 
-                {loading && <p className="cell-muted" style={{ fontSize: '0.82rem' }}>Loading projects…</p>}
+                {loading && projects.length === 0 && <ProjectsTableSkeleton count={3} />}
                 {!loading && loadError && <p className="alert alert-error" role="alert">{loadError}</p>}
                 {!loading && !loadError && projects.length === 0 && (
                     <div className="empty-state">

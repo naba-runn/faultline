@@ -322,12 +322,20 @@ function GroupDetailPage() {
             {/* Error Header */}
             <header className="group-detail-header">
                 {loading && !group ? (
-                    <div className="skeleton skeleton-heading" style={{ width: '400px' }} />
-                ) : (
-                    <h1 className="group-title">{group?.message}</h1>
-                )}
-                {group && (
                     <>
+                        <span className="skeleton" style={{ width: '55%', height: '24px', display: 'block', marginBottom: '0.5rem' }} />
+                        <div className="group-meta-bar">
+                            <span className="skeleton skeleton-badge" />
+                            <span className="skeleton skeleton-badge" />
+                            <span className="skeleton skeleton-badge" style={{ width: '65px' }} />
+                        </div>
+                        <div style={{ marginTop: '0.35rem' }}>
+                            <span className="skeleton" style={{ width: '240px', height: '12px' }} />
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <h1 className="group-title">{group?.message}</h1>
                         <div className="group-meta-bar">
                             <StatusBadge status={group.status} />
                             <SeverityBadge severity={aiSummary?.severity} />
@@ -357,14 +365,35 @@ function GroupDetailPage() {
                 <section className="ai-section">
                     <div className="ai-section-header">
                         <h2>AI Root Cause Analysis</h2>
-                        {aiSummary && (
+                        {loading && !group ? (
+                            <span className="skeleton" style={{ width: '85px', height: '14px' }} />
+                        ) : aiSummary ? (
                             <span className="ai-confidence">
                                 Confidence <strong>{typeof aiSummary.confidence === 'number' ? `${Math.round(aiSummary.confidence * 100)}%` : '—'}</strong>
                             </span>
-                        )}
+                        ) : null}
                     </div>
 
-                    {aiSummary ? (
+                    {loading && !group ? (
+                        <div>
+                            <div className="ai-target-box" style={{ background: 'var(--color-bg)' }}>
+                                <span className="skeleton" style={{ width: '65%', height: '14px' }} />
+                            </div>
+                            <div className="sub-heading">Root Cause</div>
+                            <div className="root-cause-text" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <span className="skeleton" style={{ width: '95%', height: '12px' }} />
+                                <span className="skeleton" style={{ width: '85%', height: '12px' }} />
+                                <span className="skeleton" style={{ width: '60%', height: '12px' }} />
+                            </div>
+                            <div className="ai-checklist-wrap">
+                                <div className="sub-heading">Suggested Remediation</div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                    <span className="skeleton" style={{ width: '100%', height: '30px' }} />
+                                    <span className="skeleton" style={{ width: '100%', height: '30px' }} />
+                                </div>
+                            </div>
+                        </div>
+                    ) : aiSummary ? (
                         <div>
                             {aiSummary.affectedFile && (
                                 <div className="ai-target-box">
@@ -397,14 +426,50 @@ function GroupDetailPage() {
                 {/* Error Rate Trend — compact, secondary */}
                 <section className="trend-section">
                     <div className="sub-heading">Error Rate</div>
-                    <TrendStatus trend={trend} />
-                    <Sparkline buckets={buckets} />
+                    {loading && !group ? (
+                        <div>
+                            <div className="trend-headline">
+                                <span className="skeleton" style={{ width: '50px', height: '26px' }} />
+                                <span className="skeleton" style={{ width: '45px', height: '14px' }} />
+                            </div>
+                            <div className="sparkline-wrap" style={{ marginTop: '0.5rem' }}>
+                                <div className="sparkline-header">
+                                    <span className="skeleton" style={{ width: '60px', height: '12px' }} />
+                                    <span className="skeleton" style={{ width: '65px', height: '12px' }} />
+                                </div>
+                                <div className="skeleton" style={{ width: '100%', height: '60px', margin: '4px 0' }} />
+                                <div className="sparkline-footer">
+                                    <span className="skeleton" style={{ width: '45px', height: '12px' }} />
+                                    <span className="skeleton" style={{ width: '25px', height: '12px' }} />
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <>
+                            <TrendStatus trend={trend} />
+                            <Sparkline buckets={buckets} />
+                        </>
+                    )}
                 </section>
             </div>
 
             {/* Stack Trace */}
             <hr className="section-divider" />
-            {group ? (() => {
+            {loading && !group ? (
+                <section className="stack-section">
+                    <div className="stack-header">
+                        <h2 style={{ margin: 0 }}>Stack Trace</h2>
+                    </div>
+                    <div className="resolved-stack-wrap">
+                        {Array.from({ length: 4 }).map((_, idx) => (
+                            <div key={idx} className="resolved-frame" style={{ display: 'flex', gap: '8px', padding: '0.25rem 0' }}>
+                                <span className="skeleton" style={{ width: `${25 + (idx * 12) % 20}%`, height: '14px' }} />
+                                <span className="skeleton" style={{ width: `${40 + (idx * 9) % 25}%`, height: '14px' }} />
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            ) : group ? (() => {
                 const hasResolvedFrames = group.resolvedStack && group.resolvedStack.some((f) => f.resolved);
                 const hasParsedFrames = group.resolvedStack && group.resolvedStack.length > 0;
                 return (
@@ -460,21 +525,33 @@ function GroupDetailPage() {
                         )}
                     </section>
                 );
-            })() : (
-                <div className="skeleton skeleton-block" style={{ height: '120px' }} />
-            )}
+            })() : null}
 
             {/* Recent Events — compact timeline */}
             <hr className="section-divider" />
             <div className="section-header-inline">
                 <h2 style={{ fontSize: '0.85rem' }}>Recent Events</h2>
-                <span className="mono-count">{events.length} fetched</span>
+                {loading && events.length === 0 ? (
+                    <span className="skeleton" style={{ width: '45px', height: '14px' }} />
+                ) : (
+                    <span className="mono-count">{events.length} fetched</span>
+                )}
             </div>
 
-            {events.length === 0 ? (
+            {loading && events.length === 0 ? (
+                <div className="events-timeline" aria-busy="true" aria-label="Loading events">
+                    {Array.from({ length: 4 }).map((_, idx) => (
+                        <div key={idx} className="event-row">
+                            <span className="skeleton" style={{ width: '70px', height: '14px' }} />
+                            <span className="skeleton" style={{ width: '60px', height: '14px' }} />
+                            <span className="skeleton" style={{ width: '50px', height: '14px' }} />
+                        </div>
+                    ))}
+                </div>
+            ) : events.length === 0 ? (
                 <p className="cell-muted" style={{ fontSize: '0.78rem' }}>No events recorded yet.</p>
             ) : (
-                <div className="events-timeline">
+                <div className="events-timeline events-timeline-scroll">
                     {events.map((event) => (
                         <div key={event.id} className="event-row">
                             <span className="event-timestamp">{formatTime(event.receivedAt)}</span>

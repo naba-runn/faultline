@@ -251,23 +251,32 @@ function ProjectDetailPage() {
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
                     <div>
                         {loading && !project ? (
-                            <div className="skeleton skeleton-heading" style={{ width: '200px' }} />
+                            <>
+                                <span className="skeleton" style={{ width: '220px', height: '24px', marginBottom: '0.35rem', display: 'block' }} />
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginTop: '0.2rem' }}>
+                                    <span className="skeleton" style={{ width: '130px', height: '14px' }} />
+                                    <span className="skeleton" style={{ width: '45px', height: '14px' }} />
+                                </div>
+                                <div style={{ marginTop: '0.35rem' }}>
+                                    <span className="skeleton" style={{ width: '260px', height: '12px' }} />
+                                </div>
+                            </>
                         ) : (
-                            <h1 style={{ margin: '0 0 0.2rem 0', fontSize: '1.35rem' }}>{project?.name}</h1>
-                        )}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
-                            {project?.githubRepo && (
-                                <span className="mono" style={{ fontSize: '0.75rem' }}>{project.githubRepo}</span>
-                            )}
-                            <span className={`live-indicator${liveConnected ? ' is-connected' : ''}`}>
-                                <span className="live-indicator-dot" />
-                                {liveConnected ? 'Live' : 'Connecting…'}
-                            </span>
-                        </div>
-                        {!loading && (
-                            <div style={{ marginTop: '0.35rem', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
-                                {totalGroupsCount} error groups · {openGroupsCount} open · {highSeverityCount} high severity
-                            </div>
+                            <>
+                                <h1 style={{ margin: '0 0 0.2rem 0', fontSize: '1.35rem' }}>{project?.name}</h1>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+                                    {project?.githubRepo && (
+                                        <span className="mono" style={{ fontSize: '0.75rem' }}>{project.githubRepo}</span>
+                                    )}
+                                    <span className={`live-indicator${liveConnected ? ' is-connected' : ''}`}>
+                                        <span className="live-indicator-dot" />
+                                        {liveConnected ? 'Live' : 'Connecting…'}
+                                    </span>
+                                </div>
+                                <div style={{ marginTop: '0.35rem', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+                                    {totalGroupsCount} error groups · {openGroupsCount} open · {highSeverityCount} high severity
+                                </div>
+                            </>
                         )}
                     </div>
 
@@ -401,12 +410,38 @@ function ProjectDetailPage() {
             {/* Error Groups */}
             <div className="section-header-inline">
                 <h2 style={{ fontSize: '0.85rem' }}>Error Groups</h2>
-                <span className="mono-count">{groups.length} groups</span>
+                {loading && groups.length === 0 ? (
+                    <span className="skeleton" style={{ width: '45px', height: '14px' }} />
+                ) : (
+                    <span className="mono-count">{groups.length} groups</span>
+                )}
             </div>
 
             {statusError && <p className="alert alert-error" role="alert">{statusError}</p>}
 
-            {groups.length === 0 ? (
+            {loading && groups.length === 0 ? (
+                <div className="incident-list" aria-busy="true" aria-label="Loading error groups">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                        <div key={i} className="incident-row" style={{ pointerEvents: 'none' }}>
+                            <div className="incident-severity">
+                                <span className="skeleton" style={{ width: '50px', height: '14px' }} />
+                            </div>
+                            <div className="incident-content">
+                                <span className="skeleton" style={{ width: `${60 + (i * 10) % 25}%`, height: '14px' }} />
+                                <div className="incident-meta" style={{ marginTop: '0.25rem' }}>
+                                    <span className="skeleton" style={{ width: '60px', height: '16px' }} />
+                                    {' · '}
+                                    <span className="skeleton" style={{ width: `${40 + (i * 7) % 30}%`, height: '12px' }} />
+                                </div>
+                            </div>
+                            <div className="incident-stats">
+                                <span className="skeleton" style={{ width: '20px', height: '14px', marginBottom: '2px', display: 'block', marginLeft: 'auto' }} />
+                                <span className="skeleton" style={{ width: '42px', height: '11px' }} />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : groups.length === 0 ? (
                 <div className="empty-state">
                     <h3>No error groups match</h3>
                     <p className="cell-muted" style={{ fontSize: '0.82rem' }}>
@@ -414,7 +449,7 @@ function ProjectDetailPage() {
                     </p>
                 </div>
             ) : (
-                <div className="incident-list">
+                <div className="incident-list incident-list-scroll">
                     {groups.map((group) => {
                         const severity = group.aiSummary?.severity?.toLowerCase();
                         const severityColor = SEVERITY_COLOR[severity] || 'var(--color-text-faint)';
