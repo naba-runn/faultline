@@ -1,26 +1,22 @@
 import { useState } from 'react';
 
-const API_ENDPOINT = 'http://localhost:5050/api/events';
+const FAULTLINE_API_ENDPOINT =
+    import.meta.env.VITE_FAULTLINE_API_URL || 'http://localhost:5050/api/events';
 
-function getSnippets(apiKey) {
-    const keyStr = apiKey || '<YOUR_API_KEY>';
+function getSnippets() {
     return {
-        curl: `curl -X POST ${API_ENDPOINT} \\
-  -H "Authorization: Bearer ${keyStr}" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "message": "Error: Failed to process payment",
-    "stack": "Error: Failed to process payment\\n    at checkout (/app/src/cart.js:42:15)",
-    "env": "production",
-    "release": "v1.0.0"
-  }'`,
-        node: `// Node.js / Express Integration
-async function reportErrorToFaultline(error, release = 'v1.0.0') {
+        node: `// Node.js / Express HTTP Integration
+// Install: none (uses native fetch in Node 18+)
+const FAULTLINE_API_KEY = process.env.FAULTLINE_API_KEY || '<YOUR_API_KEY>';
+const FAULTLINE_API_URL = process.env.FAULTLINE_API_URL || '${FAULTLINE_API_ENDPOINT}';
+
+async function reportErrorToFaultline(error, release = '1.0.0') {
+  if (!FAULTLINE_API_KEY || FAULTLINE_API_KEY === '<YOUR_API_KEY>') return;
   try {
-    await fetch('${API_ENDPOINT}', {
+    await fetch(FAULTLINE_API_URL, {
       method: 'POST',
       headers: {
-        'Authorization': 'Bearer ${keyStr}',
+        'Authorization': \`Bearer \${FAULTLINE_API_KEY}\`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -28,28 +24,53 @@ async function reportErrorToFaultline(error, release = 'v1.0.0') {
         stack: error.stack,
         env: process.env.NODE_ENV || 'production',
         release: release,
+        metadata: { source: 'backend-api' },
       }),
     });
   } catch (err) {
-    console.error('Failed to report error to Faultline:', err);
+    console.error('Failed to report error to Faultline:', err.message);
   }
-}`,
-        python: `# Python Integration
-import requests
-import os
+}
 
-def report_error_to_faultline(error, release="v1.0.0"):
+// Express error-handling middleware (place after routes)
+app.use((err, req, res, next) => {
+  reportErrorToFaultline(err);
+  res.status(500).json({ error: 'Internal Server Error' });
+});`,
+        curl: `# HTTP / cURL Integration
+curl -X POST ${FAULTLINE_API_ENDPOINT} \\
+  -H "Authorization: Bearer <YOUR_API_KEY>" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "message": "TypeError: Cannot read properties of undefined (reading '\''x'\'')",
+    "stack": "TypeError: Cannot read properties of undefined\\n    at checkout (/app/src/cart.js:42:15)",
+    "env": "production",
+    "release": "v1.0.0",
+    "metadata": { "userId": "usr_123" }
+  }'`,
+        python: `# Python (HTTP requests example)
+# Install: pip install requests
+import os
+import requests
+
+FAULTLINE_API_KEY = os.getenv("FAULTLINE_API_KEY", "<YOUR_API_KEY>")
+FAULTLINE_API_URL = os.getenv("FAULTLINE_API_URL", "${FAULTLINE_API_ENDPOINT}")
+
+def report_error_to_faultline(error, release="1.0.0"):
+    if not FAULTLINE_API_KEY or FAULTLINE_API_KEY == "<YOUR_API_KEY>":
+        return
     payload = {
         "message": str(error),
         "stack": str(getattr(error, "__traceback__", error)),
         "env": os.getenv("ENV", "production"),
         "release": release,
+        "metadata": {"source": "python-app"},
     }
     try:
         requests.post(
-            "${API_ENDPOINT}",
+            FAULTLINE_API_URL,
             headers={
-                "Authorization": "Bearer ${keyStr}",
+                "Authorization": f"Bearer {FAULTLINE_API_KEY}",
                 "Content-Type": "application/json",
             },
             json=payload,
@@ -60,12 +81,12 @@ def report_error_to_faultline(error, release="v1.0.0"):
     };
 }
 
-function SdkSnippetGenerator({ apiKey, projectName }) {
-    const [activeTab, setActiveTab] = useState('curl');
+function SdkSnippetGenerator({ projectName }) {
+    const [activeTab, setActiveTab] = useState('node');
     const [copied, setCopied] = useState(false);
 
-    const snippets = getSnippets(apiKey);
-    const activeSnippet = snippets[activeTab] || snippets.curl;
+    const snippets = getSnippets();
+    const activeSnippet = snippets[activeTab] || snippets.node;
 
     const handleCopy = async () => {
         try {
@@ -73,7 +94,6 @@ function SdkSnippetGenerator({ apiKey, projectName }) {
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
         } catch {
-            // Fallback for environments without navigator.clipboard
             const textarea = document.createElement('textarea');
             textarea.value = activeSnippet;
             document.body.appendChild(textarea);
@@ -91,24 +111,24 @@ function SdkSnippetGenerator({ apiKey, projectName }) {
                 <div className="sdk-snippet-tabs">
                     <button
                         type="button"
-                        className={`sdk-tab ${activeTab === 'curl' ? 'active' : ''}`}
-                        onClick={() => setActiveTab('curl')}
-                    >
-                        cURL
-                    </button>
-                    <button
-                        type="button"
                         className={`sdk-tab ${activeTab === 'node' ? 'active' : ''}`}
                         onClick={() => setActiveTab('node')}
                     >
-                        Node.js
+                        Node.js / Express
+                    </button>
+                    <button
+                        type="button"
+                        className={`sdk-tab ${activeTab === 'curl' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('curl')}
+                    >
+                        HTTP / cURL
                     </button>
                     <button
                         type="button"
                         className={`sdk-tab ${activeTab === 'python' ? 'active' : ''}`}
                         onClick={() => setActiveTab('python')}
                     >
-                        Python
+                        Python (HTTP)
                     </button>
                 </div>
                 <button
@@ -123,11 +143,9 @@ function SdkSnippetGenerator({ apiKey, projectName }) {
             <pre className="sdk-code-block">
                 <code>{activeSnippet}</code>
             </pre>
-            {projectName && (
-                <p className="sdk-snippet-note">
-                    Send events for <strong>{projectName}</strong> to <code>{API_ENDPOINT}</code> using Bearer header authentication.
-                </p>
-            )}
+            <p className="sdk-snippet-note">
+                Ingestion endpoint: <code>{FAULTLINE_API_ENDPOINT}</code> with <code>Authorization: Bearer &lt;API_KEY&gt;</code>. Required: <code>message</code>, <code>stack</code>. Optional: <code>env</code>, <code>release</code>, <code>metadata</code>.
+            </p>
         </div>
     );
 }

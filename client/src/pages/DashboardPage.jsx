@@ -567,7 +567,7 @@ function DashboardPage() {
                                                     )
                                                 }
                                             >
-                                                {selectedSnippetProjectId === project.id ? 'Hide' : 'SDK'}
+                                                {selectedSnippetProjectId === project.id ? 'Hide' : 'Setup'}
                                             </button>
                                             {selectedSnippetProjectId === project.id && (
                                                 <div style={{ marginTop: '0.5rem' }}>
@@ -626,14 +626,59 @@ function DashboardPage() {
                 {createError && <p className="alert alert-error" role="alert" style={{ marginTop: '0.75rem' }}>{createError}</p>}
 
                 {newApiKey && (
-                    <div className="alert alert-info" role="alert" style={{ marginTop: '1rem' }}>
-                        <p style={{ margin: '0 0 0.4rem 0' }}>
-                            <strong>Save this API key now — shown only once:</strong>
-                        </p>
-                        <code className="api-key-reveal">{newApiKey}</code>
-                        <div style={{ marginTop: '0.75rem' }}>
-                            <strong style={{ fontSize: '0.82rem' }}>SDK Onboarding:</strong>
-                            <SdkSnippetGenerator apiKey={newApiKey} projectName={newProjectName} />
+                    <div className="setup-guide" style={{ marginTop: '1.25rem' }}>
+                        <div className="setup-guide-header">
+                            <h3 className="setup-guide-title">Project Created: {newProjectName}</h3>
+                            <p className="setup-guide-desc">
+                                Save your ingestion API key and configure your application to report runtime errors.
+                            </p>
+                        </div>
+
+                        <div className="setup-steps">
+                            <div className="setup-step">
+                                <div className="setup-step-heading">
+                                    <span className="setup-step-num">01</span>
+                                    <h4 className="setup-step-title">Save your Ingestion API Key (Shown Once)</h4>
+                                </div>
+                                <p className="setup-step-body">
+                                    This raw key will <strong>not be displayed again</strong>. Store it as an environment variable (<code>FAULTLINE_API_KEY</code>) on your server. Never commit it to source control or expose it in client-side code.
+                                </p>
+                                <code className="api-key-reveal">{newApiKey}</code>
+                                {githubRepo && (
+                                    <div className="setup-notice">
+                                        <strong>GitHub Context:</strong> <code>{githubRepo}</code> is linked for AI source analysis. It does <em>not</em> auto-instrument your application.
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="setup-step">
+                                <div className="setup-step-heading">
+                                    <span className="setup-step-num">02</span>
+                                    <h4 className="setup-step-title">Add Error Reporting to Your Application</h4>
+                                </div>
+                                <p className="setup-step-body">
+                                    Send runtime exceptions via authenticated HTTP to Faultline.
+                                </p>
+                                <SdkSnippetGenerator projectName={newProjectName} />
+                            </div>
+
+                            <div className="setup-step">
+                                <div className="setup-step-heading">
+                                    <span className="setup-step-num">03</span>
+                                    <h4 className="setup-step-title">Next Steps</h4>
+                                </div>
+                                <p className="setup-step-body">
+                                    1. Save <code>FAULTLINE_API_KEY</code> in your application environment.<br />
+                                    2. Add error reporting to your server error handler.<br />
+                                    3. Trigger or send a test error.<br />
+                                    4. Return to your project dashboard to verify that events appear.
+                                </p>
+                                <div style={{ marginTop: '0.4rem' }}>
+                                    <Link to="/docs" className="topbar-link" style={{ fontSize: '0.78rem', textDecoration: 'underline' }}>
+                                        View complete API reference →
+                                    </Link>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}

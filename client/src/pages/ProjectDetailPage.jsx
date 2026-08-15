@@ -280,22 +280,32 @@ function ProjectDetailPage() {
                         )}
                     </div>
 
-                    {/* Simulate Error */}
-                    <div className="simulate-action">
+                    {/* Action Bar */}
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                         <button
                             type="button"
-                            className="simulate-btn"
-                            onClick={handleSimulate}
-                            disabled={simulating || loading}
+                            className={`btn-tab ${showSdkSnippet ? 'active' : ''}`}
+                            onClick={() => setShowSdkSnippet((prev) => !prev)}
+                            style={{ height: '24px', fontSize: '0.72rem' }}
                         >
-                            {simulating ? 'simulating…' : 'simulate-error'}
+                            {showSdkSnippet ? 'Hide Setup' : 'Integration Setup'}
                         </button>
-                        {simulateResult && (
-                            <span className="simulate-result">
-                                {simulateResult.isNewGroup ? 'New group.' : 'Duplicate recorded.'}
-                            </span>
-                        )}
-                        {simulateError && <span className="alert alert-error" role="alert" style={{ margin: 0, padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}>{simulateError}</span>}
+                        <div className="simulate-action">
+                            <button
+                                type="button"
+                                className="simulate-btn"
+                                onClick={handleSimulate}
+                                disabled={simulating || loading}
+                            >
+                                {simulating ? 'simulating…' : 'simulate-error'}
+                            </button>
+                            {simulateResult && (
+                                <span className="simulate-result">
+                                    {simulateResult.isNewGroup ? 'New group.' : 'Duplicate recorded.'}
+                                </span>
+                            )}
+                            {simulateError && <span className="alert alert-error" role="alert" style={{ margin: 0, padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}>{simulateError}</span>}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -442,64 +452,135 @@ function ProjectDetailPage() {
                     ))}
                 </div>
             ) : groups.length === 0 ? (
-                <div className="empty-state">
-                    <h3>No error groups match</h3>
-                    <p className="cell-muted" style={{ fontSize: '0.82rem' }}>
-                        Try adjusting filters, or click <strong style={{ color: 'var(--color-text)' }}>simulate-error</strong> above.
-                    </p>
-                </div>
-            ) : (
-                <div className="incident-list incident-list-scroll">
-                    {groups.map((group) => {
-                        const severity = group.aiSummary?.severity?.toLowerCase();
-                        const severityColor = SEVERITY_COLOR[severity] || 'var(--color-text-faint)';
-                        return (
-                            <div key={group.id} className="incident-row">
-                                <div
-                                    className="incident-severity"
-                                    style={{ color: severityColor }}
-                                >
-                                    {SEVERITY_LABEL[severity] || '—'}
+                statusFilter !== 'all' || severityFilter !== 'all' || Boolean(searchQuery.trim()) ? (
+                    <div className="empty-state">
+                        <h3>No error groups match</h3>
+                        <p className="cell-muted" style={{ fontSize: '0.82rem' }}>
+                            No errors match your current filter settings. Try resetting filters, or click <strong style={{ color: 'var(--color-text)' }}>simulate-error</strong> above.
+                        </p>
+                    </div>
+                ) : (
+                    <div className="setup-guide">
+                        <div className="setup-guide-header">
+                            <h3 className="setup-guide-title">Connect your application</h3>
+                            <p className="setup-guide-desc">
+                                Faultline tracks runtime errors sent from your application via authenticated HTTP ingestion.
+                            </p>
+                        </div>
+
+                        <div className="setup-steps">
+                            <div className="setup-step">
+                                <div className="setup-step-heading">
+                                    <span className="setup-step-num">01</span>
+                                    <h4 className="setup-step-title">Obtain and configure your API key</h4>
                                 </div>
-                                <div className="incident-content">
-                                    <Link to={`/groups/${group.id}`} className="incident-message">
-                                        {group.message}
-                                    </Link>
-                                    <div className="incident-meta">
-                                        <select
-                                            id={`status-${group.id}`}
-                                            name={`status-${group.id}`}
-                                            aria-label={`Status for ${group.message}`}
-                                            value={group.status}
-                                            disabled={updatingGroupId === group.id}
-                                            onChange={(e) => handleStatusChange(group.id, e.target.value)}
-                                            className={`select-status badge-status-${group.status}`}
-                                        >
-                                            {STATUS_OPTIONS.map((status) => (
-                                                <option key={status} value={status}>
-                                                    {status}
-                                                </option>
-                                            ))}
-                                        </select>
-                                        {group.firstSeenRelease && <>{' · '}<span className="mono" style={{ fontSize: '0.72rem' }}>{group.firstSeenRelease}</span></>}
-                                        {group.aiSummary?.rootCause && <>{' · '}<span style={{ color: 'var(--color-text-faint)', fontSize: '0.72rem' }}>{group.aiSummary.rootCause.length > 60 ? group.aiSummary.rootCause.slice(0, 60) + '…' : group.aiSummary.rootCause}</span></>}
+                                <p className="setup-step-body">
+                                    API keys authenticate runtime error ingestion. Set your project key as an environment variable (e.g. <code>FAULTLINE_API_KEY</code>). Store this key securely and never commit it to source control or expose it in frontend code.
+                                </p>
+                                {project?.githubRepo && (
+                                    <div className="setup-notice">
+                                        <strong>GitHub Repository Context:</strong> <code>{project.githubRepo}</code> is linked for AI source-code grounding during analysis. It does <em>not</em> automatically instrument your application — your code must send error events.
                                     </div>
+                                )}
+                            </div>
+
+                            <div className="setup-step">
+                                <div className="setup-step-heading">
+                                    <span className="setup-step-num">02</span>
+                                    <h4 className="setup-step-title">Configure your application to report errors</h4>
                                 </div>
-                                <div className="incident-stats">
-                                    <div className="incident-count">{group.count}</div>
-                                    <div>{formatRelativeTime(group.lastSeen)}</div>
+                                <p className="setup-step-body">
+                                    Send JSON error payloads to <code>POST /api/events</code> with <code>Authorization: Bearer &lt;API_KEY&gt;</code>.
+                                </p>
+                                <SdkSnippetGenerator projectName={project?.name} />
+                            </div>
+
+                            <div className="setup-step">
+                                <div className="setup-step-heading">
+                                    <span className="setup-step-num">03</span>
+                                    <h4 className="setup-step-title">Send your first error</h4>
+                                </div>
+                                <p className="setup-step-body">
+                                    1. Configure your application with the API key.<br />
+                                    2. Capture or trigger an exception in your code.<br />
+                                    3. Send the exception payload to Faultline.<br />
+                                    4. Return to this page to view the resulting error group, stack trace, and AI root cause analysis.
+                                </p>
+                                <div style={{ marginTop: '0.4rem', display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                                    <Link to="/docs" className="topbar-link" style={{ fontSize: '0.78rem', textDecoration: 'underline' }}>
+                                        View complete API reference →
+                                    </Link>
+                                    <span className="cell-muted" style={{ fontSize: '0.75rem' }}>
+                                        Tip: You can also click <strong>simulate-error</strong> above to test dashboard functionality immediately.
+                                    </span>
                                 </div>
                             </div>
-                        );
-                    })}
-                </div>
-            )}
-
-            {/* SDK Snippet Toggle */}
-            {showSdkSnippet && (
-                <div style={{ marginTop: '1rem' }}>
-                    <SdkSnippetGenerator projectName={project.name} />
-                </div>
+                        </div>
+                    </div>
+                )
+            ) : (
+                <>
+                    {showSdkSnippet && (
+                        <div className="setup-guide" style={{ marginBottom: '1.25rem' }}>
+                            <div className="setup-guide-header">
+                                <h3 className="setup-guide-title">Integration Setup</h3>
+                                <p className="setup-guide-desc">
+                                    HTTP error reporting configuration for <strong>{project?.name}</strong>.
+                                </p>
+                            </div>
+                            <SdkSnippetGenerator projectName={project?.name} />
+                            <div style={{ marginTop: '0.5rem' }}>
+                                <Link to="/docs" className="topbar-link" style={{ fontSize: '0.78rem', textDecoration: 'underline' }}>
+                                    View complete API reference →
+                                </Link>
+                            </div>
+                        </div>
+                    )}
+                    <div className="incident-list incident-list-scroll">
+                        {groups.map((group) => {
+                            const severity = group.aiSummary?.severity?.toLowerCase();
+                            const severityColor = SEVERITY_COLOR[severity] || 'var(--color-text-faint)';
+                            return (
+                                <div key={group.id} className="incident-row">
+                                    <div
+                                        className="incident-severity"
+                                        style={{ color: severityColor }}
+                                    >
+                                        {SEVERITY_LABEL[severity] || '—'}
+                                    </div>
+                                    <div className="incident-content">
+                                        <Link to={`/groups/${group.id}`} className="incident-message">
+                                            {group.message}
+                                        </Link>
+                                        <div className="incident-meta">
+                                            <select
+                                                id={`status-${group.id}`}
+                                                name={`status-${group.id}`}
+                                                aria-label={`Status for ${group.message}`}
+                                                value={group.status}
+                                                disabled={updatingGroupId === group.id}
+                                                onChange={(e) => handleStatusChange(group.id, e.target.value)}
+                                                className={`select-status badge-status-${group.status}`}
+                                            >
+                                                {STATUS_OPTIONS.map((status) => (
+                                                    <option key={status} value={status}>
+                                                        {status}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            {group.firstSeenRelease && <>{' · '}<span className="mono" style={{ fontSize: '0.72rem' }}>{group.firstSeenRelease}</span></>}
+                                            {group.aiSummary?.rootCause && <>{' · '}<span style={{ color: 'var(--color-text-faint)', fontSize: '0.72rem' }}>{group.aiSummary.rootCause.length > 60 ? group.aiSummary.rootCause.slice(0, 60) + '…' : group.aiSummary.rootCause}</span></>}
+                                        </div>
+                                    </div>
+                                    <div className="incident-stats">
+                                        <div className="incident-count">{group.count}</div>
+                                        <div>{formatRelativeTime(group.lastSeen)}</div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </>
             )}
         </div>
     );

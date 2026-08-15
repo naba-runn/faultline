@@ -3,6 +3,86 @@
 Updated as endpoints are implemented. Nothing here is aspirational —
 if it's listed, it exists in code.
 
+## Getting Started: Connecting Your Application
+
+Faultline receives runtime errors from your external applications via an authenticated, language-agnostic HTTP ingestion endpoint.
+
+```
+External Application                 Faultline Ingestion Engine
+[ Error Thrown / Caught ]
+           │
+           ▼ (POST /api/events with Bearer flt_...)
+[ HTTP Ingestion ] ────────────► 1. API Key SHA-256 Auth
+                                 2. Payload Validation & Sanitization
+                                 3. Stack Trace Fingerprinting (Dedup)
+                                 4. Atomic ErrorGroup Upsert + ErrorEvent Insert
+                                 5. Live SSE Broadcast + Async AI Enrichment
+```
+
+### 1. Obtain an Ingestion API Key
+
+1. Create a project via the Dashboard or `POST /api/projects`.
+2. Save the returned `apiKey` (`flt_<64-hex-chars>`) immediately.
+3. Store this key in your server environment (e.g. `FAULTLINE_API_KEY`).
+
+> **Security Note:** Raw API keys are displayed exactly once at creation time. Faultline persists only SHA-256 hashes of API keys. Never commit API keys to source control or embed them in client-side / browser code.
+
+### 2. GitHub Repository vs. Application Instrumentation
+
+- **GitHub Repository (`owner/repo`):** Provides source-code context for Faultline's AI root cause analysis and source map resolution. Linking a repository does **not** instrument your application.
+- **Application Instrumentation:** Your server application must explicitly report errors to Faultline's HTTP ingestion endpoint.
+
+### 3. Ingestion Contract (`POST /api/events`)
+
+- **URL:** `http://localhost:5050/api/events` (or your configured `FAULTLINE_API_URL`)
+- **Headers:**
+  - `Authorization: Bearer <YOUR_API_KEY>`
+  - `Content-Type: application/json`
+- **Request Body Fields:**
+  - `message` *(string, required, max 1,000 chars)*: Error message.
+  - `stack` *(string, required, max 10,000 chars)*: Full stack trace.
+  - `env` *(string, optional)*: Deployment environment (e.g. `"production"`, `"staging"`).
+  - `release` *(string, optional)*: Semantic version or git SHA (e.g. `"v1.4.2"`).
+  - `metadata` *(object, optional)*: Arbitrary key-value context (e.g. `{ "userId": "123" }`).
+
+### 4. Canonical Integration: Node.js & Express
+
+```javascript
+// Install: none (uses native fetch in Node 18+)
+const FAULTLINE_API_URL = process.env.FAULTLINE_API_URL || 'http://localhost:5050/api/events';
+const FAULTLINE_API_KEY = process.env.FAULTLINE_API_KEY || '<YOUR_API_KEY>';
+
+async function reportErrorToFaultline(error, release = '1.0.0') {
+  if (!FAULTLINE_API_KEY || FAULTLINE_API_KEY === '<YOUR_API_KEY>') return;
+  try {
+    await fetch(FAULTLINE_API_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${FAULTLINE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        message: error.message,
+        stack: error.stack,
+        env: process.env.NODE_ENV || 'production',
+        release: release,
+        metadata: { source: 'backend-api' },
+      }),
+    });
+  } catch (err) {
+    console.error('Failed to report error to Faultline:', err.message);
+  }
+}
+
+// Express error-handling middleware (mount AFTER all routes)
+app.use((err, req, res, next) => {
+  reportErrorToFaultline(err);
+  res.status(500).json({ error: 'Internal Server Error' });
+});
+```
+
+---
+
 ## Health
 
 | Method | Route | Auth | Purpose |
