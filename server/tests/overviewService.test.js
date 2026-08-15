@@ -38,7 +38,7 @@ function chainable(result) {
   return chain;
 }
 
-function withMocks({ projects, events, spikingCount, spikingGroups, recentReleaseGroups }, fn) {
+function withMocks({ projects, events, spikingCount, spikingGroups, recentReleaseGroups, unresolvedCount }, fn) {
   const originals = {
     projectFind: Project.find,
     eventFind: ErrorEvent.find,
@@ -48,7 +48,15 @@ function withMocks({ projects, events, spikingCount, spikingGroups, recentReleas
 
   Project.find = () => chainable(projects);
   ErrorEvent.find = () => chainable(events);
-  ErrorGroup.countDocuments = () => Promise.resolve(spikingCount);
+
+  // countDocuments is now called twice: once for spikingCount
+  // (filter has isSpiking), once for unresolvedCount (filter has
+  // status: 'open'). Distinguish by filter shape.
+  ErrorGroup.countDocuments = (filter) => {
+    if (filter.isSpiking !== undefined) return Promise.resolve(spikingCount);
+    if (filter.status !== undefined) return Promise.resolve(unresolvedCount ?? 0);
+    return Promise.resolve(0);
+  };
 
   // ErrorGroup.find is called twice (spiking groups, then recent
   // releases) with different filters — distinguish by the filter's
@@ -71,7 +79,7 @@ function withMocks({ projects, events, spikingCount, spikingGroups, recentReleas
 
 test('getDashboardOverview: no owned projects -> empty shape, still a full zero-filled series', async () => {
   await withMocks(
-    { projects: [], events: [], spikingCount: 0, spikingGroups: [], recentReleaseGroups: [] },
+    { projects: [], events: [], spikingCount: 0, spikingGroups: [], recentReleaseGroups: [], unresolvedCount: 0 },
     async () => {
       const result = await getDashboardOverview('owner-1');
       assert.equal(result.alerts.totalProjects, 0);
@@ -79,6 +87,7 @@ test('getDashboardOverview: no owned projects -> empty shape, still a full zero-
       assert.equal(result.alerts.spikingCount, 0);
       assert.deepEqual(result.alerts.spikingGroups, []);
       assert.deepEqual(result.releases.recent, []);
+      assert.equal(result.unresolvedCount, 0);
       assert.equal(result.trend.windowHours, 24);
       // 24 trailing full hours + the in-progress current hour = 25 points.
       assert.equal(result.trend.series.length, 25);
@@ -148,11 +157,15 @@ test('getDashboardOverview: shapes spiking groups and recent releases with proje
     { _id: 'g1', projectId: 'p1', message: 'Payment timeout', lastSeen: new Date('2026-08-13T10:00:00Z'), count: 42 },
   ];
   const recentReleaseGroups = [
-    { _id: 'g2', projectId: 'p1', message: 'Null pointer in cart', firstSeen: new Date('2026-08-12T09:00:00Z'), firstSeenRelease: 'v1.4.2' },
+    {
+      _id: 'g2', projectId: 'p1', message: 'Null pointer in cart',
+      firstSeen: new Date('2026-08-12T09:00:00Z'), firstSeenRelease: 'v1.4.2',
+      status: 'open', count: 18, aiSummary: { severity: 'high' },
+    },
   ];
 
   await withMocks(
-    { projects, events: [], spikingCount: 1, spikingGroups, recentReleaseGroups },
+    { projects, events: [], spikingCount: 1, spikingGroups, recentReleaseGroups, unresolvedCount: 5 },
     async () => {
       const result = await getDashboardOverview('owner-1');
 
@@ -165,6 +178,11 @@ test('getDashboardOverview: shapes spiking groups and recent releases with proje
       assert.equal(result.releases.recent.length, 1);
       assert.equal(result.releases.recent[0].projectName, 'Checkout Service');
       assert.equal(result.releases.recent[0].release, 'v1.4.2');
+      assert.equal(result.releases.recent[0].status, 'open');
+      assert.equal(result.releases.recent[0].count, 18);
+      assert.equal(result.releases.recent[0].severity, 'high');
+
+      assert.equal(result.unresolvedCount, 5);
     }
   );
 });
