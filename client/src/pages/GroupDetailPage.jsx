@@ -555,7 +555,7 @@ function GroupDetailPage() {
                     {events.map((event) => (
                         <div key={event.id} className="event-row">
                             <span className="event-timestamp">{formatTime(event.receivedAt)}</span>
-                            <span className="event-env">{event.env || 'simulated'}</span>
+                            <span className="event-env">{event.env || '—'}</span>
                             {event.release ? (
                                 <span className="event-release">{event.release}</span>
                             ) : (

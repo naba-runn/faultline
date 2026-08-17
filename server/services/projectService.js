@@ -1,4 +1,7 @@
 const Project = require('../models/Project');
+const ErrorGroup = require('../models/ErrorGroup');
+const ErrorEvent = require('../models/ErrorEvent');
+const SourceMap = require('../models/SourceMap');
 const { generateApiKey, hashApiKey } = require('../utils/apiKey');
 
 /**
@@ -129,12 +132,24 @@ async function updateProject({ ownerId, projectId, name, githubRepo }) {
 }
 
 /**
- * Deletes a project, scoped to its owner. Returns true if a document
+ * Deletes a project, scoped to its owner, along with all associated
+ * error groups, error events, and source maps. Returns true if a document
  * was deleted, false under the same not-found-or-not-yours ambiguity.
  */
 async function deleteProject({ ownerId, projectId }) {
   const result = await Project.deleteOne({ _id: projectId, ownerId });
-  return result.deletedCount > 0;
+  if (result.deletedCount === 0) {
+    return false;
+  }
+
+  const groupIds = await ErrorGroup.find({ projectId }).distinct('_id');
+  if (groupIds.length > 0) {
+    await ErrorEvent.deleteMany({ errorGroupId: { $in: groupIds } });
+    await ErrorGroup.deleteMany({ projectId });
+  }
+  await SourceMap.deleteMany({ projectId });
+
+  return true;
 }
 
 module.exports = {

@@ -1,7 +1,17 @@
+const mongoose = require('mongoose');
 const sourceMapJs = require('source-map-js');
 const SourceMap = require('../models/SourceMap');
 const { parseStackFrames } = require('../utils/stackNormalizer');
 const AppError = require('../utils/AppError');
+
+function normalizeProjectId(projectId) {
+  if (!projectId) return projectId;
+  if (projectId instanceof mongoose.Types.ObjectId) return projectId;
+  if (mongoose.Types.ObjectId.isValid(projectId)) {
+    return new mongoose.Types.ObjectId(projectId);
+  }
+  return projectId;
+}
 
 /**
  * Validates whether a provided object or JSON string is a valid Source Map v3.
@@ -43,9 +53,10 @@ async function uploadSourceMap({ projectId, filename, release = null, map }) {
   const validMap = validateSourceMap(map);
   const cleanRelease = release ? String(release).trim() : null;
   const cleanFilename = String(filename).trim();
+  const normalizedProjectId = normalizeProjectId(projectId);
 
   const doc = await SourceMap.findOneAndUpdate(
-    { projectId, release: cleanRelease, filename: cleanFilename },
+    { projectId: normalizedProjectId, release: cleanRelease, filename: cleanFilename },
     {
       $set: {
         map: validMap,
@@ -67,7 +78,8 @@ async function uploadSourceMap({ projectId, filename, release = null, map }) {
  * Lists metadata of all uploaded source maps for a project.
  */
 async function listSourceMaps(projectId) {
-  const maps = await SourceMap.find({ projectId }).sort({ uploadedAt: -1 });
+  const normalizedProjectId = normalizeProjectId(projectId);
+  const maps = await SourceMap.find({ projectId: normalizedProjectId }).sort({ uploadedAt: -1 });
 
   return maps.map((m) => ({
     id: m._id,
@@ -81,7 +93,8 @@ async function listSourceMaps(projectId) {
  * Deletes an uploaded source map by ID for a specific project.
  */
 async function deleteSourceMap({ projectId, mapId }) {
-  const doc = await SourceMap.findOneAndDelete({ _id: mapId, projectId });
+  const normalizedProjectId = normalizeProjectId(projectId);
+  const doc = await SourceMap.findOneAndDelete({ _id: mapId, projectId: normalizedProjectId });
   if (!doc) {
     throw new AppError('Source map not found', 404);
   }
@@ -116,7 +129,8 @@ async function resolveStack({ projectId, stack, release = null }) {
   }
 
   // Fetch all source maps for this project
-  const sourceMapDocs = await SourceMap.find({ projectId });
+  const normalizedProjectId = normalizeProjectId(projectId);
+  const sourceMapDocs = await SourceMap.find({ projectId: normalizedProjectId });
   if (!sourceMapDocs || sourceMapDocs.length === 0) {
     return frames.map((f) => ({
       ...f,

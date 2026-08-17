@@ -19,7 +19,12 @@ async function sourcemapUploadAuth(req, res, next) {
 }
 
 // Task 32: Source-map routes (placed before router.use(authMiddleware) for flexible auth)
-router.post('/:id/sourcemaps', sourcemapUploadAuth, sourceMapController.uploadSourceMap);
+router.post(
+  '/:id/sourcemaps',
+  express.json({ limit: '5mb' }),
+  sourcemapUploadAuth,
+  sourceMapController.uploadSourceMap
+);
 router.get('/:id/sourcemaps', authMiddleware, sourceMapController.listSourceMaps);
 router.delete('/:id/sourcemaps/:mapId', authMiddleware, sourceMapController.deleteSourceMap);
 

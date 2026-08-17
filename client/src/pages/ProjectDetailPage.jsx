@@ -220,8 +220,10 @@ function ProjectDetailPage() {
     }
 
     const totalGroupsCount = groups.length;
-    const openGroupsCount = groups.filter(g => g.status === 'OPEN').length;
-    const highSeverityCount = groups.filter(g => g.severity === 'HIGH' || g.severity === 'CRITICAL').length;
+    const openGroupsCount = groups.filter((g) => g.status === 'open').length;
+    const highSeverityCount = groups.filter(
+        (g) => g.aiSummary?.severity === 'high' || g.aiSummary?.severity === 'critical'
+    ).length;
 
     return (
         <div className="page">

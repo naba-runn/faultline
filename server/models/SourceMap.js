@@ -3,7 +3,8 @@ const mongoose = require('mongoose');
 const sourceMapSchema = new mongoose.Schema(
   {
     projectId: {
-      type: mongoose.Schema.Types.Mixed,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Project',
       required: [true, 'projectId is required'],
       index: true,
     },

@@ -35,9 +35,8 @@ app.use(
 );
 
 // Body parsing with a size cap — prevents unbounded payloads from
-// reaching route handlers. Ingestion-specific field-level validation
-// (stackSample/metadata max length) is a separate concern, added in
-// Task 21.
+// reaching route handlers. Sourcemap uploads allow up to 5mb.
+app.use('/api/projects/:id/sourcemaps', express.json({ limit: '5mb' }));
 app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 

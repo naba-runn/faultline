@@ -21,3 +21,10 @@ coverage/
 # IDE
 .vscode/
 .idea/
+
+# Redis / DB dumps
+*.rdb
+dump.rdb
+
+# Vite
+.vite/

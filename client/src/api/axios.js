@@ -2,9 +2,9 @@ import axios from 'axios';
 
 // Single axios instance for all API calls. Base URL points at the
 // Express API (see server/.env's CLIENT_ORIGIN / PORT — server runs on
-// :5000, this client on :5173, per docs/API.md + server/.env.example).
+// :5050, this client on :5173, per docs/API.md + server/.env.example).
 const api = axios.create({
-    baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api',
+    baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5050/api',
 });
 
 // Request interceptor — attaches the JWT (if present) to every

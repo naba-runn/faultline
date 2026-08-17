@@ -36,6 +36,10 @@ const register = catchAsync(async (req, res) => {
     return sendError(res, 400, 'name, email, and password are all required');
   }
 
+  if (password.length < 8) {
+    return sendError(res, 400, 'password must be at least 8 characters long');
+  }
+
   const { user, token } = await authService.register({ name, email, password });
 
   return sendSuccess(res, 201, { user, token });
