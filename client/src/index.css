@@ -1,22 +1,161 @@
 /*
  * Faultline — global styles.
  *
- * Design: the login page's visual language (near-black, restrained
- * teal-blue accent, thin borders, minimal decoration) extended to
- * every screen. An engineering observability tool — information-dense,
- * functional hierarchy, deliberate grouping.
+ * Design: refined Swiss modernist and luxury editorial visual language.
+ * Near-black surfaces, restrained teal-blue interactive accent, hairline borders.
  *
- * Type: IBM Plex Sans for all UI text (body, headings, navigation,
- * labels, descriptions). IBM Plex Sans Condensed for label-caps and
- * brand. IBM Plex Mono ONLY for technical values: error messages,
- * file paths, stack traces, routes, release IDs, code, timestamps,
- * counts. One superfamily, three distinct jobs.
- *
- * Layout: sections separated by whitespace and dividers, not cards.
- * Cards used only where containment genuinely aids comprehension
- * (code viewers, forms with API key reveal). Dense rows with subtle
- * separators for incident lists and event timelines.
+ * Type System:
+ * - Neue Haas Grotesk Display Pro: Primary interface, body, navigation,
+ *   tables, controls, and data views. Pristine Swiss optical balance.
+ * - Ariata Display: High-contrast transitional serif for brand wordmarks,
+ *   hero headlines, and editorial accents.
+ * - Ariata Text: Editorial serif for rich documentation text and notes.
+ * - Monospace: ui-monospace / SFMono for code, stack traces, and hex SHAs.
  */
+
+/* ==========================================================================
+   Typography: Custom Webfonts
+   ========================================================================== */
+
+/* --- Neue Haas Grotesk Display Pro (Primary Interface Sans) --- */
+@font-face {
+    font-family: 'Neue Haas Grotesk Display Pro';
+    src: url('/fonts/NeueHaasDisplayLight.ttf') format('truetype');
+    font-weight: 300;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Neue Haas Grotesk Display Pro';
+    src: url('/fonts/NeueHaasDisplayLightItalic.ttf') format('truetype');
+    font-weight: 300;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Neue Haas Grotesk Display Pro';
+    src: url('/fonts/NeueHaasDisplayRoman.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Neue Haas Grotesk Display Pro';
+    src: url('/fonts/NeueHaasDisplayRomanItalic.ttf') format('truetype');
+    font-weight: 400;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Neue Haas Grotesk Display Pro';
+    src: url('/fonts/NeueHaasDisplayMediu.ttf') format('truetype');
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Neue Haas Grotesk Display Pro';
+    src: url('/fonts/NeueHaasDisplayMediumItalic.ttf') format('truetype');
+    font-weight: 500;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Neue Haas Grotesk Display Pro';
+    src: url('/fonts/NeueHaasDisplayBold.ttf') format('truetype');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Neue Haas Grotesk Display Pro';
+    src: url('/fonts/NeueHaasDisplayBoldItalic.ttf') format('truetype');
+    font-weight: 700;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Neue Haas Grotesk Display Pro';
+    src: url('/fonts/NeueHaasDisplayBlack.ttf') format('truetype');
+    font-weight: 900;
+    font-style: normal;
+    font-display: swap;
+}
+
+/* --- Ariata Display (Luxury Editorial & Brand) --- */
+@font-face {
+    font-family: 'Ariata Display';
+    src: url('/fonts/Ariata%20Display%20Regular.otf') format('opentype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Ariata Display';
+    src: url('/fonts/Ariata%20Display%20Medium.otf') format('opentype');
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Ariata Display';
+    src: url('/fonts/Ariata%20Display%20Bold.otf') format('opentype');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Ariata Display';
+    src: url('/fonts/Ariata%20Display%20Black.otf') format('opentype');
+    font-weight: 900;
+    font-style: normal;
+    font-display: swap;
+}
+
+/* --- Ariata Text (Editorial Serif) --- */
+@font-face {
+    font-family: 'Ariata Text';
+    src: url('/fonts/Ariata%20Text%20Regular.otf') format('opentype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Ariata Text';
+    src: url('/fonts/Ariata%20Text%20Medium.otf') format('opentype');
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Ariata Text';
+    src: url('/fonts/Ariata%20Text%20Bold.otf') format('opentype');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
+/* --- Mariposa Sans Std Bold (Sculptural Display Sans) --- */
+@font-face {
+    font-family: 'Mariposa Sans Std';
+    src: url('/fonts/Mariposa%20Sans%20Std%20Bold.otf') format('opentype');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
 
 :root {
     /* Cool near-black palette, matching login page tone */
@@ -52,9 +191,11 @@
     --color-success: #57ab5a;
     --color-success-bg: rgba(87, 171, 90, 0.12);
 
-    --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-    --font-display: 'IBM Plex Sans Condensed', var(--font-sans);
-    --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --font-sans: 'Neue Haas Grotesk Display Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --font-display: 'Ariata Display', 'Neue Haas Grotesk Display Pro', Georgia, serif;
+    --font-brand: 'Ariata Display', 'Neue Haas Grotesk Display Pro', serif;
+    --font-serif: 'Ariata Text', Georgia, serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
 
     --radius: 4px;
     --radius-sm: 3px;
@@ -80,6 +221,9 @@ body {
     font-size: 14px;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
     scrollbar-width: thin;
     scrollbar-color: var(--color-border-strong) var(--color-surface);
 }
@@ -114,11 +258,12 @@ h3 {
     font-family: var(--font-sans);
     font-weight: 600;
     margin: 0 0 0.5em 0;
+    letter-spacing: -0.02em;
 }
 
 h1 {
     font-size: 1.6rem;
-    letter-spacing: -0.015em;
+    letter-spacing: -0.025em;
     font-weight: 700;
 }
 
@@ -127,10 +272,12 @@ h2 {
     color: var(--color-text);
     margin-top: 0;
     margin-bottom: 0.75rem;
+    letter-spacing: -0.015em;
 }
 
 h3 {
     font-size: 0.85rem;
+    letter-spacing: -0.01em;
 }
 
 p {
@@ -231,14 +378,16 @@ select:focus-visible {
 
 .mono {
     font-family: var(--font-mono);
+    font-feature-settings: 'tnum', 'zero';
+    font-variant-numeric: tabular-nums;
 }
 
 .font-label-caps,
 .label-caps {
-    font-family: var(--font-display);
+    font-family: var(--font-sans);
     font-size: 11px;
     line-height: 16px;
-    letter-spacing: 0.07em;
+    letter-spacing: 0.06em;
     font-weight: 600;
     text-transform: uppercase;
     color: var(--color-text-muted);
@@ -248,7 +397,7 @@ select:focus-visible {
     font-family: var(--font-sans);
     font-size: 28px;
     line-height: 34px;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.025em;
     font-weight: 600;
 }
 
@@ -256,6 +405,7 @@ select:focus-visible {
     font-family: var(--font-sans);
     font-size: 22px;
     line-height: 28px;
+    letter-spacing: -0.02em;
     font-weight: 600;
 }
 
@@ -263,7 +413,14 @@ select:focus-visible {
     font-family: var(--font-sans);
     font-size: 17px;
     line-height: 22px;
+    letter-spacing: -0.015em;
     font-weight: 600;
+}
+
+.font-display-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.02em;
 }
 
 .font-code-md,
@@ -415,7 +572,7 @@ select:focus-visible {
 }
 
 .section-label {
-    font-family: var(--font-display);
+    font-family: var(--font-sans);
     font-size: 0.68rem;
     font-weight: 600;
     text-transform: uppercase;
@@ -459,10 +616,10 @@ select:focus-visible {
 }
 
 .sub-heading {
-    font-family: var(--font-display);
+    font-family: var(--font-sans);
     font-size: 0.7rem;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
     color: var(--color-text-faint);
     margin: 0 0 0.5rem 0;
     font-weight: 600;
@@ -1305,11 +1462,11 @@ table select {
 }
 
 .filter-label {
-    font-family: var(--font-display);
+    font-family: var(--font-sans);
     font-size: 0.68rem;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
     color: var(--color-text-faint);
     margin-right: 0.4rem;
 }
@@ -1517,11 +1674,12 @@ table select {
 }
 
 .target-label {
-    font-family: var(--font-display);
+    font-family: var(--font-sans);
     font-size: 0.62rem;
     color: var(--color-text-faint);
-    letter-spacing: 0.04em;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
+    font-weight: 600;
 }
 
 .target-file {
@@ -2001,7 +2159,7 @@ table select {
 }
 
 .docs-toc-title {
-    font-family: var(--font-display);
+    font-family: var(--font-sans);
     font-size: 0.62rem;
     font-weight: 600;
     text-transform: uppercase;
