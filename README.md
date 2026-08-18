@@ -198,25 +198,55 @@ npm test
 
 ## Production Deployment
 
-### Frontend Deployment (Vercel)
-1. Import `client/` into Vercel.
-2. Build Command: `npm run build`
-3. Output Directory: `dist`
-4. The repository includes `client/vercel.json` configured for SPA routing rewrites.
 
-### Backend Deployment (Render)
-1. **Database and Queue**: Create a MongoDB Atlas cluster and a Render Key Value (Redis) instance.
-2. **API Web Service**:
-   - Build Command: `cd server && npm install`
-   - Start Command: `cd server && node server.js`
-3. **Background Worker Service**:
-   - Service Type: Render Background Worker
-   - Start Command: `cd server && node worker.js`
+Faultline supports two production deployment architectures:
+
+### Option A: Decoupled Deployment (Vercel + Render / Railway)
+
+1. **Backend API Web Service (Render / Railway / Fly.io)**:
+   - Root Directory: `server`
+   - Build Command: `npm install`
+   - Start Command: `node server.js`
+   - Required Environment Variables:
+     - `NODE_ENV=production`
+     - `MONGODB_URI=mongodb+srv://...`
+     - `REDIS_URL=redis://...`
+     - `JWT_SECRET=your_long_secure_secret`
+     - `CLIENT_ORIGIN=https://your-frontend.vercel.app` (supports comma-separated origins)
+     - `GEMINI_API_KEY=your_gemini_key` (optional for AI summaries)
+     - `RESEND_API_KEY=re_...` (optional for email alerts)
+
+2. **Background Worker Service (Render / Railway Background Worker)**:
+   - Root Directory: `server`
+   - Start Command: `node worker.js`
+   - Environment Variables: Same `MONGODB_URI`, `REDIS_URL`, `GEMINI_API_KEY`, `RESEND_API_KEY` as above.
+
+3. **Frontend SPA (Vercel / Netlify / Cloudflare Pages)**:
+   - Root Directory: `client`
+   - Build Command: `npm run build`
+   - Output Directory: `dist`
+   - Environment Variable: `VITE_API_BASE_URL=https://your-backend-api.onrender.com/api`
+   - Includes `client/vercel.json` for seamless SPA client-side routing rewrites.
+
+### Option B: Unified Single-Service Deployment (Docker / Monorepo Container)
+
+When running in production, the Express backend automatically serves the prebuilt `client/dist` static assets and handles SPA routing fallback for any non-API routes.
+
+1. Build both client and server:
+   ```bash
+   cd client && npm install && npm run build
+   cd ../server && npm install
+   ```
+2. Start the service:
+   ```bash
+   cd server && node server.js
+   ```
+3. The app is accessible at `http://<your-server-domain>:<PORT>` with zero CORS configuration required.
 
 ---
 
 ## License and Documentation
 
-- **Live API Documentation**: Accessible within the running app at `/docs` or in `docs/API.md`.
+- **Live API Documentation**: Accessible within the running app at `/docs`.
 - **System Decisions**: Architectural Decision Records in `docs/DECISIONS.md`.
 - **License**: MIT

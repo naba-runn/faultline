@@ -21,7 +21,11 @@ import {
 } from 'lucide-react';
 import AppLayout from '../components/AppLayout.jsx';
 
-const API_BASE_URL = 'http://localhost:5050/api';
+const API_BASE_URL =
+    import.meta.env.VITE_API_BASE_URL ||
+    (typeof window !== 'undefined' && import.meta.env.PROD
+        ? `${window.location.origin}/api`
+        : 'http://localhost:5050/api');
 
 const DOC_SECTIONS = [
     {

@@ -13,19 +13,36 @@ const groupRoutes = require('./routes/groupRoutes');
 const sseRoutes = require('./routes/sseRoutes');
 const docsRoutes = require('./routes/docsRoutes');
 
+const path = require('path');
+const fs = require('fs');
+
 const app = express();
 
-// Security headers
-app.use(helmet());
+// Security headers — configure CSP to allow modern frontend assets and SSE
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+  })
+);
 
-// CORS — allow configured client origin, plus any localhost port in development
+// CORS — allow configured client origin(s), wildcards, and any localhost port in development
+const allowedOrigins = config.clientOrigin
+  ? config.clientOrigin.split(',').map((s) => s.trim())
+  : [];
+
 app.use(
   cors({
     origin: (origin, callback) => {
+      // Allow requests with no origin (e.g. mobile apps, curl, server-to-server SDK ingestion)
       if (!origin || /^http:\/\/(localhost|127\.0\.0\.1):[0-9]+$/.test(origin)) {
         return callback(null, true);
       }
-      if (origin === config.clientOrigin) {
+      if (
+        config.clientOrigin === '*' ||
+        allowedOrigins.includes(origin) ||
+        origin === config.clientOrigin
+      ) {
         return callback(null, true);
       }
       callback(new Error('Not allowed by CORS'));
@@ -67,6 +84,18 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+// Serve frontend build if client/dist exists (single-service deployment support)
+const clientDistPath = path.join(__dirname, '../client/dist');
+if (fs.existsSync(clientDistPath)) {
+  app.use(express.static(clientDistPath));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/health')) {
+      return next();
+    }
+    res.sendFile(path.join(clientDistPath, 'index.html'));
+  });
+}
 
 // 404 handler — no route matched
 app.use((req, res) => {

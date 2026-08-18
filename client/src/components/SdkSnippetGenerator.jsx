@@ -1,7 +1,11 @@
 import { useState } from 'react';
 
 const FAULTLINE_API_ENDPOINT =
-    import.meta.env.VITE_FAULTLINE_API_URL || 'http://localhost:5050/api/events';
+    import.meta.env.VITE_FAULTLINE_API_URL ||
+    (import.meta.env.VITE_API_BASE_URL ? `${import.meta.env.VITE_API_BASE_URL}/events` : null) ||
+    (typeof window !== 'undefined' && import.meta.env.PROD
+        ? `${window.location.origin}/api/events`
+        : 'http://localhost:5050/api/events');
 
 function getSnippets() {
     return {
