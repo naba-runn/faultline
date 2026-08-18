@@ -56,13 +56,13 @@ export default function RegisterPage() {
                     </div>
 
                     <div className="form-group">
-                        <label htmlFor="email">Work email</label>
+                        <label htmlFor="email">Email address</label>
                         <input
                             id="email"
                             type="email"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            placeholder="alex@company.com"
+                            placeholder="you@example.com"
                             required
                         />
                     </div>
