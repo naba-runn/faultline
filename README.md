@@ -85,15 +85,19 @@
 
 ### Observability Dashboard Overview
 ![Faultline Dashboard Overview](docs/assets/dashboard-overview.png)
-*Figure 2: Real-time incident list showing error groups, severity badges, spike indicators, and 24-hour volume metrics.*
+*Figure 2: Real-time multi-project dashboard showing error volume trends, active spike anomalies, unresolved counts, and recent incident triage.*
 
-### AI Root-Cause Analysis and Source Map Viewer
+### Project Error Groups & Triage
+![Project Error Groups and Filtering](docs/assets/project-error-groups.png)
+*Figure 3: Dedicated project view with instant search, severity/status filters, release tracking, simulation triggers, and pagination.*
+
+### AI Root-Cause Analysis & Source Map Viewer
 ![Gemini 2.5 Flash AI Root Cause Analysis](docs/assets/group-detail-ai.png)
-*Figure 3: Deep inspection view featuring Gemini 2.5 Flash root cause diagnosis, proposed code diffs, and source-mapped stack traces.*
+*Figure 4: Grounded AI root cause diagnosis with confidence metrics, affected file & function detection, suggested remediation checklist, and source-mapped stack traces.*
 
-### Interactive API Documentation and SDK Setup
+### Interactive API Documentation & SDK Setup
 ![API Documentation and SDK Snippet Generator](docs/assets/api-docs-sdks.png)
-*Figure 4: Built-in API explorer and copyable client integration snippets.*
+*Figure 5: Built-in developer documentation with live endpoint search, parameter tables, JSON schemas, and multi-language client snippets.*
 
 ---
 
