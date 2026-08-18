@@ -2,19 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 
-// See LoginPage.jsx for what this draws and why.
-function TraceMark() {
-    return (
-        <svg className="auth-trace" viewBox="0 0 96 28" aria-hidden="true">
-            <path
-                className="auth-trace-path"
-                d="M0 14 H30 L36 4 L42 24 L48 8 L54 14 H96"
-            />
-        </svg>
-    );
-}
-
-function RegisterPage() {
+export default function RegisterPage() {
     const { register } = useAuth();
     const navigate = useNavigate();
 
@@ -33,8 +21,6 @@ function RegisterPage() {
             await register(name, email, password);
             navigate('/dashboard');
         } catch (err) {
-            // docs/API.md: 400 (missing fields / validation) and 409
-            // (duplicate email) both return { success: false, error: "<msg>" }.
             const message = err.response?.data?.error || 'Registration failed. Please try again.';
             setError(message);
         } finally {
@@ -43,43 +29,46 @@ function RegisterPage() {
     }
 
     return (
-        <div className="auth-shell">
-            <div className="auth-panel">
-                <div className="auth-mark">
-                    <TraceMark />
-                    <p className="auth-wordmark">FAULTLINE</p>
-                </div>
-
-                <div className="auth-copy">
-                    <h1>Create account</h1>
-                    <p>Start monitoring runtime errors with grounded root-cause analysis.</p>
+        <div className="auth-wrapper">
+            <div className="auth-card">
+                <div className="auth-brand-header">
+                    <div className="brand-fault-mark" style={{ width: '32px', height: '32px' }}>
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M4 4l7 9-3 7" />
+                            <path d="M20 4l-7 9 3 7" />
+                        </svg>
+                    </div>
+                    <h1>Create Faultline account</h1>
+                    <p>Start monitoring runtime telemetry with AI root-cause analysis</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="auth-form">
-                    <div className="field">
+                    <div className="form-group">
                         <label htmlFor="name">Full name</label>
                         <input
                             id="name"
                             type="text"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
-                            placeholder="Nabarun Dey"
+                            placeholder="Alex Smith"
                             required
                         />
                     </div>
-                    <div className="field">
-                        <label htmlFor="email">Email address</label>
+
+                    <div className="form-group">
+                        <label htmlFor="email">Work email</label>
                         <input
                             id="email"
                             type="email"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            placeholder="user@domain.com"
+                            placeholder="alex@company.com"
                             required
                         />
                     </div>
-                    <div className="field">
-                        <label htmlFor="password">Password</label>
+
+                    <div className="form-group">
+                        <label htmlFor="password">Password (min. 8 characters)</label>
                         <input
                             id="password"
                             type="password"
@@ -90,18 +79,27 @@ function RegisterPage() {
                             required
                         />
                     </div>
-                    {error && <p className="alert alert-error" role="alert">{error}</p>}
-                    <button type="submit" className="btn btn-primary btn-full" disabled={submitting}>
-                        {submitting ? 'Creating account...' : 'Create account'}
+
+                    {error && (
+                        <div style={{ color: 'var(--critical)', fontSize: '0.78rem', padding: '0.4rem 0.6rem', backgroundColor: 'var(--critical-bg)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--critical-border)' }}>
+                            {error}
+                        </div>
+                    )}
+
+                    <button
+                        type="submit"
+                        className="btn btn-primary"
+                        disabled={submitting}
+                        style={{ width: '100%', marginTop: '0.5rem', height: '36px' }}
+                    >
+                        {submitting ? 'Creating account…' : 'Create account'}
                     </button>
                 </form>
 
-                <div className="auth-footer">
-                    <span>Already have an account?</span> <Link to="/login" className="auth-link">Log in</Link>
+                <div className="auth-footer-text">
+                    Already have an account? <Link to="/login">Sign in</Link>
                 </div>
             </div>
         </div>
     );
 }
-
-export default RegisterPage;

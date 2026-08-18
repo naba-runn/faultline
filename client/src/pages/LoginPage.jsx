@@ -2,22 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 
-// A flat baseline that settles after one small disturbance — the
-// thing this whole product watches for, drawn once on load rather
-// than looping. See .auth-trace-path's stroke-draw animation in
-// index.css (respects prefers-reduced-motion via the global rule).
-function TraceMark() {
-    return (
-        <svg className="auth-trace" viewBox="0 0 96 28" aria-hidden="true">
-            <path
-                className="auth-trace-path"
-                d="M0 14 H30 L36 4 L42 24 L48 8 L54 14 H96"
-            />
-        </svg>
-    );
-}
-
-function LoginPage() {
+export default function LoginPage() {
     const { login } = useAuth();
     const navigate = useNavigate();
 
@@ -35,11 +20,7 @@ function LoginPage() {
             await login(email, password);
             navigate('/dashboard');
         } catch (err) {
-            // docs/API.md: both the 400 (missing fields) and 401 (bad
-            // credentials) cases return { success: false, error: "<msg>" }.
-            // Falling back to a generic message covers network failures /
-            // unexpected shapes without throwing inside the catch block.
-            const message = err.response?.data?.error || 'Login failed. Please try again.';
+            const message = err.response?.data?.error || 'Login failed. Please verify your credentials.';
             setError(message);
         } finally {
             setSubmitting(false);
@@ -47,31 +28,33 @@ function LoginPage() {
     }
 
     return (
-        <div className="auth-shell">
-            <div className="auth-panel">
-                <div className="auth-mark">
-                    <TraceMark />
-                    <p className="auth-wordmark">FAULTLINE</p>
-                </div>
-
-                <div className="auth-copy">
-                    <h1>Welcome back</h1>
-                    <p>Sign in to monitor your telemetry.</p>
+        <div className="auth-wrapper">
+            <div className="auth-card">
+                <div className="auth-brand-header">
+                    <div className="brand-fault-mark" style={{ width: '32px', height: '32px' }}>
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M4 4l7 9-3 7" />
+                            <path d="M20 4l-7 9 3 7" />
+                        </svg>
+                    </div>
+                    <h1>Sign in to Faultline</h1>
+                    <p>Developer observability and error intelligence</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="auth-form">
-                    <div className="field">
+                    <div className="form-group">
                         <label htmlFor="email">Email address</label>
                         <input
                             id="email"
                             type="email"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            placeholder="user@domain.com"
+                            placeholder="developer@company.com"
                             required
                         />
                     </div>
-                    <div className="field">
+
+                    <div className="form-group">
                         <label htmlFor="password">Password</label>
                         <input
                             id="password"
@@ -82,18 +65,27 @@ function LoginPage() {
                             required
                         />
                     </div>
-                    {error && <p className="alert alert-error" role="alert">{error}</p>}
-                    <button type="submit" className="btn btn-primary btn-full" disabled={submitting}>
-                        {submitting ? 'Logging in...' : 'Log in'}
+
+                    {error && (
+                        <div style={{ color: 'var(--critical)', fontSize: '0.78rem', padding: '0.4rem 0.6rem', backgroundColor: 'var(--critical-bg)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--critical-border)' }}>
+                            {error}
+                        </div>
+                    )}
+
+                    <button
+                        type="submit"
+                        className="btn btn-primary"
+                        disabled={submitting}
+                        style={{ width: '100%', marginTop: '0.5rem', height: '36px' }}
+                    >
+                        {submitting ? 'Authenticating…' : 'Sign in'}
                     </button>
                 </form>
 
-                <div className="auth-footer">
-                    <span>Don't have an account?</span> <Link to="/register" className="auth-link">Register</Link>
+                <div className="auth-footer-text">
+                    Don't have an account? <Link to="/register">Create one</Link>
                 </div>
             </div>
         </div>
     );
 }
-
-export default LoginPage;

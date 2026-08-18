@@ -1,22 +1,26 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
+import {
+    ArrowLeft,
+    Search,
+    Code2,
+    Terminal,
+    CheckCircle2,
+    GitBranch,
+    Bookmark,
+    Trash2,
+    Filter
+} from 'lucide-react';
 import api from '../api/axios.js';
 import { useProjectSSE } from '../hooks/useProjectSSE.js';
+import AppLayout from '../components/AppLayout.jsx';
 import SdkSnippetGenerator from '../components/SdkSnippetGenerator.jsx';
-import { useAuth } from '../context/AuthContext.jsx';
 
 const SEVERITY_LABEL = {
     low: 'Low',
     medium: 'Medium',
     high: 'High',
     critical: 'Critical',
-};
-
-const SEVERITY_COLOR = {
-    critical: 'var(--color-danger)',
-    high: 'var(--color-warning)',
-    medium: 'var(--color-caution)',
-    low: 'var(--color-text-muted)',
 };
 
 const STATUS_OPTIONS = ['open', 'resolved', 'ignored'];
@@ -30,6 +34,7 @@ const PRESETS = [
 ];
 
 function formatRelativeTime(iso) {
+    if (!iso) return '—';
     const diffMs = Date.now() - new Date(iso).getTime();
     const minutes = Math.round(diffMs / 60000);
     if (minutes < 1) return 'just now';
@@ -40,9 +45,52 @@ function formatRelativeTime(iso) {
     return `${days}d ago`;
 }
 
-function ProjectDetailPage() {
+function ErrorGroupsTableSkeleton({ count = 4 }) {
+    return (
+        <div className="table-wrap" aria-busy="true" aria-label="Loading error groups">
+            <table>
+                <thead>
+                    <tr>
+                        <th style={{ width: '85px' }}>Severity</th>
+                        <th>Issue</th>
+                        <th style={{ width: '120px' }}>Release</th>
+                        <th style={{ width: '85px', textAlign: 'right' }}>Events</th>
+                        <th style={{ width: '120px' }}>Last Seen</th>
+                        <th style={{ width: '110px' }}>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {Array.from({ length: count }).map((_, i) => (
+                        <tr key={i}>
+                            <td>
+                                <span className="skeleton" style={{ width: '55px', height: '18px' }} />
+                            </td>
+                            <td>
+                                <span className="skeleton" style={{ width: `${180 + (i * 40) % 120}px`, height: '16px' }} />
+                                <span className="skeleton" style={{ width: '120px', height: '11px', display: 'block', marginTop: '4px' }} />
+                            </td>
+                            <td>
+                                <span className="skeleton" style={{ width: '70px', height: '18px' }} />
+                            </td>
+                            <td style={{ textAlign: 'right' }}>
+                                <span className="skeleton" style={{ width: '30px', height: '14px' }} />
+                            </td>
+                            <td>
+                                <span className="skeleton" style={{ width: '60px', height: '12px' }} />
+                            </td>
+                            <td>
+                                <span className="skeleton" style={{ width: '75px', height: '22px' }} />
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
+export default function ProjectDetailPage() {
     const { id } = useParams();
-    const { user, logout } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
 
     const [project, setProject] = useState(null);
@@ -119,6 +167,9 @@ function ProjectDetailPage() {
 
     const projectLoadedRef = useRef(false);
 
+    const [nextCursor, setNextCursor] = useState(null);
+    const [loadingMore, setLoadingMore] = useState(false);
+
     useEffect(() => {
         projectLoadedRef.current = false;
     }, [id]);
@@ -136,11 +187,15 @@ function ProjectDetailPage() {
                         status: statusFilter,
                         severity: severityFilter,
                         search: searchQuery,
+                        limit: 100,
                     },
                 }),
             ]);
-            setProject(projectRes.data.data.project);
-            setGroups(groupsRes.data.data.groups);
+            const fetchedProject = projectRes.data?.data?.project || projectRes.data?.project || projectRes.data?.data;
+            const fetchedGroups = groupsRes.data?.data?.groups || groupsRes.data?.groups || (Array.isArray(groupsRes.data?.data) ? groupsRes.data.data : []);
+            setProject(fetchedProject || null);
+            setGroups(Array.isArray(fetchedGroups) ? fetchedGroups : []);
+            setNextCursor(groupsRes.data?.data?.nextCursor || null);
             projectLoadedRef.current = true;
         } catch (err) {
             setError(err.response?.data?.error || 'Failed to load project.');
@@ -149,23 +204,44 @@ function ProjectDetailPage() {
         }
     }, [id, statusFilter, severityFilter, searchQuery]);
 
+    const handleLoadMore = async () => {
+        if (!nextCursor || loadingMore) return;
+        setLoadingMore(true);
+        try {
+            const res = await api.get(`/projects/${id}/groups`, {
+                params: {
+                    status: statusFilter,
+                    severity: severityFilter,
+                    search: searchQuery,
+                    limit: 100,
+                    cursor: nextCursor,
+                },
+            });
+            const moreGroups = res.data?.data?.groups || [];
+            setGroups((prev) => [...prev, ...moreGroups]);
+            setNextCursor(res.data?.data?.nextCursor || null);
+        } catch (err) {
+            console.error('Failed to load more groups', err);
+        } finally {
+            setLoadingMore(false);
+        }
+    };
+
     useEffect(() => {
         fetchData();
     }, [fetchData]);
 
-    const refetchDebounceRef = useRef(null);
-    const { connected: liveConnected } = useProjectSSE(id, () => {
-        if (refetchDebounceRef.current) clearTimeout(refetchDebounceRef.current);
-        refetchDebounceRef.current = setTimeout(() => {
-            fetchData(true);
-        }, 400);
-    });
+    // Live real-time SSE updates
+    const handleSSEMessage = useCallback(
+        (data) => {
+            if (data.type === 'new_event' || data.type === 'group_updated' || data.type === 'heartbeat') {
+                fetchData(true);
+            }
+        },
+        [fetchData]
+    );
 
-    useEffect(() => {
-        return () => {
-            if (refetchDebounceRef.current) clearTimeout(refetchDebounceRef.current);
-        };
-    }, []);
+    const { status: sseStatus } = useProjectSSE(id, handleSSEMessage);
 
     const handleStatusChange = async (groupId, newStatus) => {
         setStatusError('');
@@ -184,408 +260,328 @@ function ProjectDetailPage() {
     };
 
     const handleSimulate = async () => {
-        setSimulateErrorMsg('');
-        setSimulateResult(null);
         setSimulating(true);
+        setSimulateResult(null);
+        setSimulateErrorMsg('');
         try {
             const res = await api.post(`/projects/${id}/simulate`);
-            const { isNewGroup } = res.data.data;
-            setSimulateResult({ isNewGroup });
-            await fetchData(true);
+            setSimulateResult(res.data.data);
+            fetchData(true);
         } catch (err) {
-            setSimulateErrorMsg(err.response?.data?.error || 'Failed to simulate error.');
+            setSimulateErrorMsg(err.response?.data?.error || 'Simulation failed.');
         } finally {
             setSimulating(false);
         }
     };
 
-    if (error && !project) {
-        return (
-            <div className="page">
-                <header className="topbar">
-                    <div className="topbar-left">
-                        <div className="topbar-brand">
-                            <h1 className="brand-logo-text">FAULTLINE</h1>
-                        </div>
-                        <nav className="topbar-nav">
-                            <Link to="/dashboard" className="topbar-link">Dashboard</Link>
-                            <Link to="/docs" className="topbar-link">API Docs</Link>
-                        </nav>
-                    </div>
-                </header>
-                <p className="alert alert-error" role="alert">{error}</p>
-                <Link to="/dashboard" className="back-link">← Back to dashboard</Link>
-            </div>
-        );
-    }
+    // Preset active state check
+    const currentPresetId = PRESETS.find(
+        (p) => p.status === statusFilter && p.severity === severityFilter && p.search === searchQuery
+    )?.id;
 
-    const totalGroupsCount = groups.length;
-    const openGroupsCount = groups.filter((g) => g.status === 'open').length;
-    const highSeverityCount = groups.filter(
-        (g) => g.aiSummary?.severity === 'high' || g.aiSummary?.severity === 'critical'
-    ).length;
+    // Counts
+    const openCount = groups.filter((g) => g.status === 'open').length;
+    const highSevCount = groups.filter((g) => g.severity === 'critical' || g.severity === 'high').length;
 
     return (
-        <div className="page">
-            {/* Topbar */}
-            <header className="topbar">
-                <div className="topbar-left">
-                    <div className="topbar-brand">
-                        <h1 className="brand-logo-text">FAULTLINE</h1>
+        <AppLayout currentProjectId={id}>
+            {/* Back link */}
+            <div style={{ marginBottom: '1rem' }}>
+                <Link
+                    to="/dashboard"
+                    style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        fontSize: '0.8rem',
+                        color: 'var(--text-secondary)',
+                        fontWeight: 500
+                    }}
+                >
+                    <ArrowLeft size={14} /> Back to dashboard
+                </Link>
+            </div>
+
+            {/* Project Header */}
+            <div className="dash-header-bar" style={{ marginBottom: '1.5rem' }}>
+                <div className="dash-header-info">
+                    <h1>{project?.name || 'Project'}</h1>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginTop: '0.35rem', flexWrap: 'wrap' }}>
+                        {project?.repo && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                <GitBranch size={13} />
+                                {project.repo}
+                            </span>
+                        )}
+                        <span className="system-status-badge">
+                            <span className="system-status-dot" />
+                            <span>{sseStatus === 'connected' ? 'Live' : 'Connecting'}</span>
+                        </span>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            {groups.length} error groups · {openCount} open · {highSevCount} high severity
+                        </span>
                     </div>
-                    <nav className="topbar-nav">
-                        <Link to="/dashboard" className="topbar-link">Dashboard</Link>
-                        <Link to="/docs" className="topbar-link">API Docs</Link>
-                    </nav>
                 </div>
-                <div className="topbar-meta">
-                    <span className="topbar-user">{user?.name}</span>
-                    <button type="button" className="btn-ghost btn-sm" onClick={logout}>
-                        Log out
+
+                <div className="dash-header-actions">
+                    <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setShowSdkSnippet(!showSdkSnippet)}
+                    >
+                        <Code2 size={13} />
+                        Integration Setup
+                    </button>
+
+                    <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={handleSimulate}
+                        disabled={simulating}
+                        title="Inject a test error into this project"
+                    >
+                        <Terminal size={13} />
+                        {simulating ? 'Simulating…' : '$ simulate-error'}
                     </button>
                 </div>
-            </header>
+            </div>
 
-            {/* Page Header */}
-            <div style={{ marginBottom: '1.25rem' }}>
-                <Link to="/dashboard" className="back-link" style={{ marginBottom: '0.5rem' }}>← Projects</Link>
+            {/* Simulation feedback */}
+            {simulateResult && (
+                <div className="empty-state-compact" style={{ marginBottom: '1.25rem', borderColor: 'var(--accent)' }}>
+                    <span className="empty-state-compact-title">Simulation recorded</span>
+                    <span className="empty-state-compact-desc">
+                        {simulateResult.isDuplicate ? 'Duplicate event recorded.' : 'New error group created.'} Event ID: {simulateResult.eventId}
+                    </span>
+                </div>
+            )}
 
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
-                    <div>
-                        {loading && !project ? (
-                            <>
-                                <span className="skeleton" style={{ width: '220px', height: '24px', marginBottom: '0.35rem', display: 'block' }} />
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginTop: '0.2rem' }}>
-                                    <span className="skeleton" style={{ width: '130px', height: '14px' }} />
-                                    <span className="skeleton" style={{ width: '45px', height: '14px' }} />
-                                </div>
-                                <div style={{ marginTop: '0.35rem' }}>
-                                    <span className="skeleton" style={{ width: '260px', height: '12px' }} />
-                                </div>
-                            </>
-                        ) : (
-                            <>
-                                <h1 style={{ margin: '0 0 0.2rem 0', fontSize: '1.35rem' }}>{project?.name}</h1>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
-                                    {project?.githubRepo && (
-                                        <span className="mono" style={{ fontSize: '0.75rem' }}>{project.githubRepo}</span>
-                                    )}
-                                    <span className={`live-indicator${liveConnected ? ' is-connected' : ''}`}>
-                                        <span className="live-indicator-dot" />
-                                        {liveConnected ? 'Live' : 'Connecting…'}
-                                    </span>
-                                </div>
-                                <div style={{ marginTop: '0.35rem', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
-                                    {totalGroupsCount} error groups · {openGroupsCount} open · {highSeverityCount} high severity
-                                </div>
-                            </>
+            {/* SDK Snippet Drawer */}
+            {showSdkSnippet && (
+                <div style={{ marginBottom: '1.5rem' }}>
+                    <SdkSnippetGenerator
+                        projectId={id}
+                        projectName={project?.name}
+                        onClose={() => setShowSdkSnippet(false)}
+                    />
+                </div>
+            )}
+
+            {/* Filter Toolbar & Presets */}
+            <div className="filter-presets-bar">
+                {PRESETS.map((p) => (
+                    <button
+                        key={p.id}
+                        type="button"
+                        className={`filter-preset-btn ${currentPresetId === p.id ? 'active' : ''}`}
+                        onClick={() => applyFilters(p.status, p.severity, p.search)}
+                    >
+                        {p.label}
+                    </button>
+                ))}
+
+                {savedViews.map((sv) => (
+                    <button
+                        key={sv.id}
+                        type="button"
+                        className={`filter-preset-btn ${
+                            statusFilter === sv.status && severityFilter === sv.severity && searchQuery === sv.search ? 'active' : ''
+                        }`}
+                        onClick={() => applyFilters(sv.status, sv.severity, sv.search)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                    >
+                        <Bookmark size={11} />
+                        {sv.name}
+                        <span
+                            onClick={(e) => handleDeleteCustomView(sv.id, e)}
+                            style={{ marginLeft: '4px', opacity: 0.6 }}
+                            title="Delete view"
+                        >
+                            ×
+                        </span>
+                    </button>
+                ))}
+
+                <button
+                    type="button"
+                    className="filter-preset-btn"
+                    onClick={handleSaveCustomView}
+                    title="Save current filters as a named view"
+                >
+                    + Save view
+                </button>
+            </div>
+
+            {/* Search & Custom Controls */}
+            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+                <div style={{ position: 'relative', flex: '1 1 240px' }}>
+                    <Search
+                        size={14}
+                        style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}
+                    />
+                    <input
+                        type="text"
+                        placeholder="Filter by error message or location…"
+                        value={searchQuery}
+                        onChange={(e) => {
+                            setSearchQuery(e.target.value);
+                            updateUrlParams(statusFilter, severityFilter, e.target.value);
+                        }}
+                        style={{ paddingLeft: '32px', width: '100%' }}
+                    />
+                </div>
+
+                <select
+                    value={statusFilter}
+                    onChange={(e) => {
+                        setStatusFilter(e.target.value);
+                        updateUrlParams(e.target.value, severityFilter, searchQuery);
+                    }}
+                    style={{ width: '130px' }}
+                    aria-label="Filter by status"
+                >
+                    <option value="all">All Statuses</option>
+                    <option value="open">Open</option>
+                    <option value="resolved">Resolved</option>
+                    <option value="ignored">Ignored</option>
+                </select>
+
+                <select
+                    value={severityFilter}
+                    onChange={(e) => {
+                        setSeverityFilter(e.target.value);
+                        updateUrlParams(statusFilter, e.target.value, searchQuery);
+                    }}
+                    style={{ width: '130px' }}
+                    aria-label="Filter by severity"
+                >
+                    <option value="all">All Severities</option>
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                </select>
+            </div>
+
+            {/* Error Groups Section */}
+            <section className="dash-section">
+                <div className="dash-section-header">
+                    <h2 className="dash-section-title">
+                        Error Groups <span className="dash-section-meta">{groups.length} groups</span>
+                    </h2>
+                </div>
+
+                {loading ? (
+                    <ErrorGroupsTableSkeleton count={4} />
+                ) : groups.length === 0 ? (
+                    <div className="empty-state-card">
+                        <div className="empty-state-icon-wrap">
+                            <CheckCircle2 size={22} />
+                        </div>
+                        <h3 className="empty-state-title">No matching errors</h3>
+                        <p className="empty-state-desc">
+                            No error groups found matching the active filters. Ingest errors via the SDK, adjust your filter criteria, or click "Simulate error" above.
+                        </p>
+                        {(statusFilter !== 'all' || severityFilter !== 'all' || searchQuery) && (
+                            <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                style={{ marginTop: '0.75rem' }}
+                                onClick={() => handlePresetClick(PRESETS[0])}
+                            >
+                                Reset all filters
+                            </button>
                         )}
                     </div>
+                ) : (
+                    <div className="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style={{ width: '85px' }}>Severity</th>
+                                    <th>Issue</th>
+                                    <th style={{ width: '120px' }}>Release</th>
+                                    <th style={{ width: '85px', textAlign: 'right' }}>Events</th>
+                                    <th style={{ width: '120px' }}>Last Seen</th>
+                                    <th style={{ width: '110px' }}>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {groups.map((group) => {
+                                    const groupId = group.id || group._id;
+                                    const sev = group.severity || group.aiSummary?.severity || 'medium';
+                                    const rootSnippet = group.aiSummary?.rootCause;
+                                    const affectedLoc = group.aiSummary?.affectedFile
+                                        ? `${group.aiSummary.affectedFile}${group.aiSummary.affectedFunction ? ` > ${group.aiSummary.affectedFunction}()` : ''}`
+                                        : null;
 
-                    {/* Action Bar */}
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                        <button
-                            type="button"
-                            className={`btn-tab ${showSdkSnippet ? 'active' : ''}`}
-                            onClick={() => setShowSdkSnippet((prev) => !prev)}
-                            style={{ height: '24px', fontSize: '0.72rem' }}
-                        >
-                            {showSdkSnippet ? 'Hide Setup' : 'Integration Setup'}
-                        </button>
-                        <div className="simulate-action">
-                            <button
-                                type="button"
-                                className="simulate-btn"
-                                onClick={handleSimulate}
-                                disabled={simulating || loading}
-                            >
-                                {simulating ? 'simulating…' : 'simulate-error'}
-                            </button>
-                            {simulateResult && (
-                                <span className="simulate-result">
-                                    {simulateResult.isNewGroup ? 'New group.' : 'Duplicate recorded.'}
-                                </span>
-                            )}
-                            {simulateError && <span className="alert alert-error" role="alert" style={{ margin: 0, padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}>{simulateError}</span>}
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Filter Toolbar */}
-            <div className="filter-toolbar">
-                <div className="filter-presets">
-                    {PRESETS.map((p) => {
-                        const isActive =
-                            statusFilter === p.status &&
-                            severityFilter === p.severity &&
-                            searchQuery === p.search;
-                        return (
-                            <button
-                                key={p.id}
-                                type="button"
-                                className={`preset-tab ${isActive ? 'active' : ''}`}
-                                onClick={() => applyFilters(p.status, p.severity, p.search)}
-                            >
-                                {p.label}
-                            </button>
-                        );
-                    })}
-                    {savedViews.map((sv) => {
-                        const isActive =
-                            statusFilter === sv.status &&
-                            severityFilter === sv.severity &&
-                            searchQuery === sv.search;
-                        return (
-                            <span
-                                key={sv.id}
-                                className={`preset-pill custom ${isActive ? 'active' : ''}`}
-                                onClick={() => applyFilters(sv.status, sv.severity, sv.search)}
-                            >
-                                {sv.name}
+                                    return (
+                                        <tr key={groupId} className={`row-hoverable row-${sev}`}>
+                                            <td>
+                                                <span className={`badge badge-severity-${sev}`}>
+                                                    {SEVERITY_LABEL[sev] || sev}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div className="issue-cell">
+                                                    <Link to={`/groups/${groupId}`} className="issue-title-link">
+                                                        {group.message}
+                                                    </Link>
+                                                    {(affectedLoc || rootSnippet) && (
+                                                        <span className="issue-subcontext" title={affectedLoc || rootSnippet}>
+                                                             {affectedLoc || rootSnippet}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td>
+                                                {group.firstSeenRelease ? (
+                                                    <span className="badge-release">{group.firstSeenRelease}</span>
+                                                ) : (
+                                                    <span style={{ color: 'var(--text-muted)' }}>—</span>
+                                                )}
+                                            </td>
+                                            <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                                {group.count}
+                                            </td>
+                                            <td style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                                                {formatRelativeTime(group.lastSeen)}
+                                            </td>
+                                            <td>
+                                                <select
+                                                    value={group.status}
+                                                    onChange={(e) => handleStatusChange(groupId, e.target.value)}
+                                                    disabled={updatingGroupId === groupId}
+                                                    className={`select-status badge-status-${group.status}`}
+                                                    aria-label={`Change status for ${group.message}`}
+                                                >
+                                                    {STATUS_OPTIONS.map((opt) => (
+                                                        <option key={opt} value={opt}>
+                                                             {opt.toUpperCase()}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                        {nextCursor && (
+                            <div style={{ padding: '0.85rem', textAlign: 'center', borderTop: '1px solid var(--border)', background: 'var(--bg-subtle)' }}>
                                 <button
                                     type="button"
-                                    className="delete-view-btn"
-                                    onClick={(e) => handleDeleteCustomView(sv.id, e)}
-                                    title="Delete saved view"
+                                    className="btn btn-secondary btn-sm"
+                                    onClick={handleLoadMore}
+                                    disabled={loadingMore}
                                 >
-                                    ×
+                                    {loadingMore ? 'Loading older errors…' : 'Load older errors'}
                                 </button>
-                            </span>
-                        );
-                    })}
-                    <button type="button" className="btn-secondary btn-sm" onClick={handleSaveCustomView}>
-                        + Save view
-                    </button>
-                </div>
-
-                <div className="filter-controls">
-                    <div className="filter-field">
-                        <label htmlFor="search-input">Search</label>
-                        <input
-                            id="search-input"
-                            type="text"
-                            placeholder="Filter by error message…"
-                            value={searchQuery}
-                            onChange={(e) => {
-                                setSearchQuery(e.target.value);
-                                updateUrlParams(statusFilter, severityFilter, e.target.value);
-                            }}
-                        />
+                            </div>
+                        )}
                     </div>
-                    <div className="filter-field">
-                        <label htmlFor="status-filter">Status</label>
-                        <select
-                            id="status-filter"
-                            value={statusFilter}
-                            onChange={(e) => {
-                                setStatusFilter(e.target.value);
-                                updateUrlParams(e.target.value, severityFilter, searchQuery);
-                            }}
-                        >
-                            <option value="all">All</option>
-                            <option value="open">open</option>
-                            <option value="resolved">resolved</option>
-                            <option value="ignored">ignored</option>
-                        </select>
-                    </div>
-                    <div className="filter-field">
-                        <label htmlFor="severity-filter">Severity</label>
-                        <select
-                            id="severity-filter"
-                            value={severityFilter}
-                            onChange={(e) => {
-                                setSeverityFilter(e.target.value);
-                                updateUrlParams(statusFilter, e.target.value, searchQuery);
-                            }}
-                        >
-                            <option value="all">All</option>
-                            <option value="low">low</option>
-                            <option value="medium">medium</option>
-                            <option value="high">high</option>
-                            <option value="critical">critical</option>
-                        </select>
-                    </div>
-                    {(statusFilter !== 'all' || severityFilter !== 'all' || searchQuery !== '') && (
-                        <button
-                            type="button"
-                            className="btn-ghost btn-sm"
-                            onClick={() => applyFilters('all', 'all', '')}
-                            style={{ alignSelf: 'flex-end' }}
-                        >
-                            Reset
-                        </button>
-                    )}
-                </div>
-            </div>
-
-            {/* Error Groups */}
-            <div className="section-header-inline">
-                <h2 style={{ fontSize: '0.85rem' }}>Error Groups</h2>
-                {loading && groups.length === 0 ? (
-                    <span className="skeleton" style={{ width: '45px', height: '14px' }} />
-                ) : (
-                    <span className="mono-count">{groups.length} groups</span>
                 )}
-            </div>
-
-            {statusError && <p className="alert alert-error" role="alert">{statusError}</p>}
-
-            {loading && groups.length === 0 ? (
-                <div className="incident-list" aria-busy="true" aria-label="Loading error groups">
-                    {Array.from({ length: 4 }).map((_, i) => (
-                        <div key={i} className="incident-row" style={{ pointerEvents: 'none' }}>
-                            <div className="incident-severity">
-                                <span className="skeleton" style={{ width: '50px', height: '14px' }} />
-                            </div>
-                            <div className="incident-content">
-                                <span className="skeleton" style={{ width: `${60 + (i * 10) % 25}%`, height: '14px' }} />
-                                <div className="incident-meta" style={{ marginTop: '0.25rem' }}>
-                                    <span className="skeleton" style={{ width: '60px', height: '16px' }} />
-                                    {' · '}
-                                    <span className="skeleton" style={{ width: `${40 + (i * 7) % 30}%`, height: '12px' }} />
-                                </div>
-                            </div>
-                            <div className="incident-stats">
-                                <span className="skeleton" style={{ width: '20px', height: '14px', marginBottom: '2px', display: 'block', marginLeft: 'auto' }} />
-                                <span className="skeleton" style={{ width: '42px', height: '11px' }} />
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            ) : groups.length === 0 ? (
-                statusFilter !== 'all' || severityFilter !== 'all' || Boolean(searchQuery.trim()) ? (
-                    <div className="empty-state">
-                        <h3>No error groups match</h3>
-                        <p className="cell-muted" style={{ fontSize: '0.82rem' }}>
-                            No errors match your current filter settings. Try resetting filters, or click <strong style={{ color: 'var(--color-text)' }}>simulate-error</strong> above.
-                        </p>
-                    </div>
-                ) : (
-                    <div className="setup-guide">
-                        <div className="setup-guide-header">
-                            <h3 className="setup-guide-title">Connect your application</h3>
-                            <p className="setup-guide-desc">
-                                Faultline tracks runtime errors sent from your application via authenticated HTTP ingestion.
-                            </p>
-                        </div>
-
-                        <div className="setup-steps">
-                            <div className="setup-step">
-                                <div className="setup-step-heading">
-                                    <span className="setup-step-num">01</span>
-                                    <h4 className="setup-step-title">Obtain and configure your API key</h4>
-                                </div>
-                                <p className="setup-step-body">
-                                    API keys authenticate runtime error ingestion. Set your project key as an environment variable (e.g. <code>FAULTLINE_API_KEY</code>). Store this key securely and never commit it to source control or expose it in frontend code.
-                                </p>
-                                {project?.githubRepo && (
-                                    <div className="setup-notice">
-                                        <strong>GitHub Repository Context:</strong> <code>{project.githubRepo}</code> is linked for AI source-code grounding during analysis. It does <em>not</em> automatically instrument your application — your code must send error events.
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="setup-step">
-                                <div className="setup-step-heading">
-                                    <span className="setup-step-num">02</span>
-                                    <h4 className="setup-step-title">Configure your application to report errors</h4>
-                                </div>
-                                <p className="setup-step-body">
-                                    Send JSON error payloads to <code>POST /api/events</code> with <code>Authorization: Bearer &lt;API_KEY&gt;</code>.
-                                </p>
-                                <SdkSnippetGenerator projectName={project?.name} />
-                            </div>
-
-                            <div className="setup-step">
-                                <div className="setup-step-heading">
-                                    <span className="setup-step-num">03</span>
-                                    <h4 className="setup-step-title">Send your first error</h4>
-                                </div>
-                                <p className="setup-step-body">
-                                    1. Configure your application with the API key.<br />
-                                    2. Capture or trigger an exception in your code.<br />
-                                    3. Send the exception payload to Faultline.<br />
-                                    4. Return to this page to view the resulting error group, stack trace, and AI root cause analysis.
-                                </p>
-                                <div style={{ marginTop: '0.4rem', display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                                    <Link to="/docs" className="topbar-link" style={{ fontSize: '0.78rem', textDecoration: 'underline' }}>
-                                        View complete API reference →
-                                    </Link>
-                                    <span className="cell-muted" style={{ fontSize: '0.75rem' }}>
-                                        Tip: You can also click <strong>simulate-error</strong> above to test dashboard functionality immediately.
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )
-            ) : (
-                <>
-                    {showSdkSnippet && (
-                        <div className="setup-guide" style={{ marginBottom: '1.25rem' }}>
-                            <div className="setup-guide-header">
-                                <h3 className="setup-guide-title">Integration Setup</h3>
-                                <p className="setup-guide-desc">
-                                    HTTP error reporting configuration for <strong>{project?.name}</strong>.
-                                </p>
-                            </div>
-                            <SdkSnippetGenerator projectName={project?.name} />
-                            <div style={{ marginTop: '0.5rem' }}>
-                                <Link to="/docs" className="topbar-link" style={{ fontSize: '0.78rem', textDecoration: 'underline' }}>
-                                    View complete API reference →
-                                </Link>
-                            </div>
-                        </div>
-                    )}
-                    <div className="incident-list incident-list-scroll">
-                        {groups.map((group) => {
-                            const severity = group.aiSummary?.severity?.toLowerCase();
-                            const severityColor = SEVERITY_COLOR[severity] || 'var(--color-text-faint)';
-                            return (
-                                <div key={group.id} className="incident-row">
-                                    <div
-                                        className="incident-severity"
-                                        style={{ color: severityColor }}
-                                    >
-                                        {SEVERITY_LABEL[severity] || '—'}
-                                    </div>
-                                    <div className="incident-content">
-                                        <Link to={`/groups/${group.id}`} className="incident-message">
-                                            {group.message}
-                                        </Link>
-                                        <div className="incident-meta">
-                                            <select
-                                                id={`status-${group.id}`}
-                                                name={`status-${group.id}`}
-                                                aria-label={`Status for ${group.message}`}
-                                                value={group.status}
-                                                disabled={updatingGroupId === group.id}
-                                                onChange={(e) => handleStatusChange(group.id, e.target.value)}
-                                                className={`select-status badge-status-${group.status}`}
-                                            >
-                                                {STATUS_OPTIONS.map((status) => (
-                                                    <option key={status} value={status}>
-                                                        {status}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                            {group.firstSeenRelease && <>{' · '}<span className="mono" style={{ fontSize: '0.72rem' }}>{group.firstSeenRelease}</span></>}
-                                            {group.aiSummary?.rootCause && <>{' · '}<span style={{ color: 'var(--color-text-faint)', fontSize: '0.72rem' }}>{group.aiSummary.rootCause.length > 60 ? group.aiSummary.rootCause.slice(0, 60) + '…' : group.aiSummary.rootCause}</span></>}
-                                        </div>
-                                    </div>
-                                    <div className="incident-stats">
-                                        <div className="incident-count">{group.count}</div>
-                                        <div>{formatRelativeTime(group.lastSeen)}</div>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </>
-            )}
-        </div>
+            </section>
+        </AppLayout>
     );
 }
-
-export default ProjectDetailPage;

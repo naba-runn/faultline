@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
 
 <head>
     <meta charset="UTF-8" />
@@ -7,7 +7,19 @@
     <title>Faultline - Developer Observability Platform</title>
     <link rel="preload" href="/fonts/NeueHaasDisplayRoman.ttf" as="font" type="font/ttf" crossorigin>
     <link rel="preload" href="/fonts/NeueHaasDisplayMediu.ttf" as="font" type="font/ttf" crossorigin>
-    <link rel="preload" href="/fonts/Ariata%20Display%20Medium.otf" as="font" type="font/otf" crossorigin>
+    <script>
+        (function() {
+            try {
+                var theme = localStorage.getItem('faultline_theme');
+                if (theme === 'dark') {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                    document.documentElement.classList.add('light');
+                }
+            } catch (e) {}
+        })();
+    </script>
 </head>
 
 <body>

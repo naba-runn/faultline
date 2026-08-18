@@ -1,8 +1,20 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import {
+    ArrowLeft,
+    Sparkles,
+    Copy,
+    Check,
+    Terminal,
+    Clock,
+    Layers,
+    AlertCircle,
+    CheckCircle2,
+    Activity
+} from 'lucide-react';
 import api from '../api/axios.js';
 import { useProjectSSE } from '../hooks/useProjectSSE.js';
-import { useAuth } from '../context/AuthContext.jsx';
+import AppLayout from '../components/AppLayout.jsx';
 
 const SEVERITY_LABEL = {
     low: 'Low',
@@ -11,28 +23,10 @@ const SEVERITY_LABEL = {
     critical: 'Critical',
 };
 
-function formatDate(iso) {
-    return new Date(iso).toLocaleString();
-}
-
-function formatTime(iso) {
-    const d = new Date(iso);
-    const now = new Date();
-    const isToday = d.toDateString() === now.toDateString();
-    const time = d.toLocaleTimeString(undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-    });
-    if (isToday) return time;
-    const date = d.toLocaleDateString(undefined, {
-        month: 'short',
-        day: 'numeric',
-    });
-    return `${date} ${time}`;
-}
+const STATUS_OPTIONS = ['open', 'resolved', 'ignored'];
 
 function formatRelativeTime(iso) {
+    if (!iso) return '—';
     const diffMs = Date.now() - new Date(iso).getTime();
     const minutes = Math.round(diffMs / 60000);
     if (minutes < 1) return 'just now';
@@ -43,73 +37,13 @@ function formatRelativeTime(iso) {
     return `${days}d ago`;
 }
 
-function SeverityBadge({ severity }) {
-    if (!severity) return <span className="cell-muted">—</span>;
-    return (
-        <span className={`badge badge-severity-${severity}`}>
-            {SEVERITY_LABEL[severity] || severity}
-        </span>
-    );
-}
-
-function StatusBadge({ status }) {
-    return <span className={`badge badge-status-${status}`}>{status}</span>;
-}
-
-// Trend status display
-function TrendStatus({ trend }) {
-    const isInsufficient = !trend || trend.status === 'insufficient_history';
-    const currentCount = trend?.currentHourCount || 0;
-    const rate = trend?.baselineHourlyRate;
-    const rateLabel = Number.isFinite(rate) && rate !== null ? rate.toFixed(1) : null;
-    const ratio = rate > 0 ? (currentCount / rate).toFixed(1) : null;
-
-    if (isInsufficient) {
-        const isElevated = currentCount >= 5;
-        return (
-            <div>
-                <div className="trend-headline">
-                    <span className="trend-big">{currentCount}</span>
-                    <span className="trend-unit">events this hour</span>
-                </div>
-                <div style={{ marginBottom: '0.5rem' }}>
-                    {isElevated ? (
-                        <span className="badge badge-trend-spiking">↑ elevated activity</span>
-                    ) : (
-                        <span className="badge badge-trend-normal">normal (baseline building)</span>
-                    )}
-                </div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--color-text-faint)' }}>
-                    Collecting 24h baseline…
-                </div>
-            </div>
-        );
-    }
-
-    return (
-        <div>
-            <div className="trend-headline">
-                <span className="trend-big">{trend.currentHourCount}</span>
-                <span className="trend-unit">events this hour</span>
-                {rateLabel !== null && (
-                    <span className="trend-baseline">
-                        {rateLabel}/hr baseline
-                    </span>
-                )}
-            </div>
-            {trend.isSpiking ? (
-                <div style={{ marginBottom: '0.5rem' }}>
-                    <span className="badge badge-trend-spiking">
-                        ↑ {ratio ? `${ratio}× baseline · ` : ''}spiking
-                    </span>
-                </div>
-            ) : (
-                <div style={{ marginBottom: '0.5rem' }}>
-                    <span className="badge badge-trend-normal">normal</span>
-                </div>
-            )}
-        </div>
-    );
+function formatTime(iso) {
+    const d = new Date(iso);
+    return d.toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+    });
 }
 
 // 24-hour hourly sparkline chart from events
@@ -144,429 +78,462 @@ function buildHourlySparklineBuckets(events) {
 
 function Sparkline({ buckets }) {
     if (!buckets || buckets.length === 0) {
-        return <p className="cell-muted" style={{ fontSize: '0.78rem' }}>No event data to chart.</p>;
+        return <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>No event data to chart.</p>;
     }
 
-    const width = 300;
-    const height = 60;
-    const maxCount = Math.max(1, ...buckets.map((b) => b.count));
-    const stepX = width / (buckets.length - 1);
+    const width = 320;
+    const height = 48;
+    const padding = 4;
+    const innerW = width - padding * 2;
+    const innerH = height - padding * 2;
 
-    const points = buckets
-        .map((bucket, index) => {
-            const x = index * stepX;
-            const y = height - (bucket.count / maxCount) * (height - 14) - 6;
-            return `${x.toFixed(1)},${y.toFixed(1)}`;
-        })
-        .join(' ');
+    const counts = buckets.map((b) => b.count);
+    const max = Math.max(1, ...counts);
+    const step = buckets.length > 1 ? innerW / (buckets.length - 1) : 0;
 
-    const areaPoints = `0,${height} ${points} ${width},${height}`;
+    const points = buckets.map((b, idx) => {
+        const x = padding + idx * step;
+        const y = padding + innerH - (b.count / max) * innerH;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    const polylineStr = points.join(' ');
+
+    const lastIdx = buckets.length - 1;
+    const areaPoints = [
+        `${padding},${padding + innerH}`,
+        ...points,
+        `${padding + lastIdx * step},${padding + innerH}`,
+    ].join(' ');
+
+    const peakBucket = buckets.reduce((p, c) => (c.count > p.count ? c : p), buckets[0]);
 
     return (
-        <div className="sparkline-wrap" style={{ marginTop: '0.5rem' }}>
-            <div className="sparkline-header">
-                <span>Peak: <strong>{maxCount}/hr</strong></span>
+        <div style={{ marginTop: '0.75rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                <span>Peak: {peakBucket.count}/hr</span>
                 <span>Trailing 24h</span>
             </div>
             <svg
-                viewBox={`0 0 ${width} ${height}`}
-                width="100%"
-                height={height}
+                viewBox={`0 0 ${width} ${height + 16}`}
+                style={{ width: '100%', height: 'auto', display: 'block' }}
                 role="img"
-                aria-label="Event count per hour"
-                className="sparkline-svg"
+                aria-label="Hourly error rate sparkline"
             >
-                <defs>
-                    <linearGradient id="sparkline-grad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="var(--color-accent)" stopOpacity="0.3" />
-                        <stop offset="100%" stopColor="var(--color-accent)" stopOpacity="0.0" />
-                    </linearGradient>
-                </defs>
-                <line x1="0" y1={height - 1} x2={width} y2={height - 1} stroke="var(--color-border-strong)" strokeWidth="1" />
-                <polygon points={areaPoints} fill="url(#sparkline-grad)" />
-                <polyline points={points} fill="none" stroke="var(--color-accent)" strokeWidth="2" />
+                <polygon points={areaPoints} fill="var(--accent-subtle)" />
+                <polyline
+                    points={polylineStr}
+                    fill="none"
+                    stroke="var(--accent)"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                />
+                <line x1={padding} y1={padding + innerH} x2={padding + lastIdx * step} y2={padding + innerH} stroke="var(--border)" strokeWidth="1" />
+                <text x={padding} y={height + 12} fontSize="9" fill="var(--text-muted)">
+                    {buckets[0].label}
+                </text>
+                <text x={padding + lastIdx * step} y={height + 12} fontSize="9" textAnchor="end" fill="var(--text-muted)">
+                    now
+                </text>
             </svg>
-            <div className="sparkline-footer">
-                <span>{buckets[0].label}</span>
-                <span>now</span>
-            </div>
         </div>
     );
 }
 
-// Remediation checklist
-function AiChecklist({ suggestedFix }) {
-    const [checked, setChecked] = useState({});
-
-    function toggle(index) {
-        setChecked((prev) => ({ ...prev, [index]: !prev[index] }));
-    }
-
-    return (
-        <ul>
-            {suggestedFix.map((step, index) => (
-                <li key={index}>
-                    <label className="field-inline">
-                        <input
-                            id={`fix-step-${index}`}
-                            name={`fix-step-${index}`}
-                            type="checkbox"
-                            checked={Boolean(checked[index])}
-                            onChange={() => toggle(index)}
-                        />
-                        <span style={{ fontSize: '0.82rem' }}>{step}</span>
-                    </label>
-                </li>
-            ))}
-        </ul>
-    );
-}
-
-function GroupDetailPage() {
+export default function GroupDetailPage() {
     const { id } = useParams();
-    const { user, logout } = useAuth();
 
     const [group, setGroup] = useState(null);
     const [events, setEvents] = useState([]);
     const [trend, setTrend] = useState(null);
-    const [environments, setEnvironments] = useState([]);
-    const [showRawStack, setShowRawStack] = useState(false);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [statusError, setStatusError] = useState('');
+    const [updatingStatus, setUpdatingStatus] = useState(false);
+    const [stackView, setStackView] = useState('parsed'); // 'parsed' | 'raw'
+    const [copied, setCopied] = useState(false);
 
-    const fetchData = useCallback(async (silent = false) => {
+    const [checkedTasks, setCheckedTasks] = useState({});
+
+    const fetchGroup = useCallback(async (silent = false) => {
         if (!silent) setLoading(true);
         setError('');
         try {
             const res = await api.get(`/groups/${id}`);
-            setGroup(res.data.data.group);
-            setEvents(res.data.data.events);
-            setTrend(res.data.data.trend);
-            setEnvironments(res.data.data.environments || []);
+            const data = res.data?.data || res.data || {};
+            setGroup(data.group || null);
+            setEvents(data.events || []);
+            setTrend(data.trend || null);
         } catch (err) {
             setError(err.response?.data?.error || 'Failed to load error group.');
         } finally {
-            if (!silent) setLoading(false);
+            setLoading(false);
         }
     }, [id]);
 
     useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+        fetchGroup();
+    }, [fetchGroup]);
 
-    const refetchDebounceRef = useRef(null);
-    const { connected: liveConnected } = useProjectSSE(group?.projectId, (type, payload) => {
-        if (payload?.errorGroupId === id) {
-            if (refetchDebounceRef.current) clearTimeout(refetchDebounceRef.current);
-            refetchDebounceRef.current = setTimeout(() => {
-                fetchData(true);
-            }, 400);
+    // Live SSE updates for this project's errors
+    const handleSSEMessage = useCallback(
+        (data) => {
+            if (data.type === 'new_event' || data.type === 'group_updated' || data.type === 'heartbeat') {
+                fetchGroup(true);
+            }
+        },
+        [fetchGroup]
+    );
+
+    const { status: sseStatus } = useProjectSSE(group?.projectId, handleSSEMessage);
+
+    const handleStatusChange = async (newStatus) => {
+        setStatusError('');
+        setUpdatingStatus(true);
+        try {
+            const res = await api.patch(`/groups/${id}/status`, { status: newStatus });
+            setGroup(res.data.data.group);
+        } catch (err) {
+            setStatusError(err.response?.data?.error || 'Failed to update status.');
+        } finally {
+            setUpdatingStatus(false);
         }
-    });
+    };
 
-    useEffect(() => {
-        return () => {
-            if (refetchDebounceRef.current) clearTimeout(refetchDebounceRef.current);
-        };
-    }, []);
+    const handleCopyStack = () => {
+        const raw = group?.rawStackTrace || (group?.resolvedStack || []).map((f) => `    at ${f.functionName || 'unknown'} (${f.file || 'unknown'}:${f.lineNumber || '?'}:${f.columnNumber || '?'})`).join('\n');
+        if (!raw) return;
+        navigator.clipboard.writeText(raw);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
 
-    if (error && !group) {
+    const toggleTask = (idx) => {
+        setCheckedTasks((prev) => ({ ...prev, [idx]: !prev[idx] }));
+    };
+
+    const sparklineBuckets = buildHourlySparklineBuckets(events);
+
+    if (loading) {
         return (
-            <div className="page">
-                <header className="topbar">
-                    <div className="topbar-left">
-                        <div className="topbar-brand">
-                            <h1 className="brand-logo-text">FAULTLINE</h1>
-                        </div>
-                        <nav className="topbar-nav">
-                            <Link to="/dashboard" className="topbar-link">Dashboard</Link>
-                            <Link to="/docs" className="topbar-link">API Docs</Link>
-                        </nav>
-                    </div>
-                </header>
-                <p className="alert alert-error" role="alert">{error}</p>
-                <Link to="/dashboard" className="back-link">← Back to dashboard</Link>
-            </div>
+            <AppLayout currentProjectId={group?.projectId}>
+                <div className="page-loading-state">
+                    <div className="loading-spinner" />
+                </div>
+            </AppLayout>
         );
     }
 
-    const aiSummary = group?.aiSummary;
-    const buckets = buildHourlySparklineBuckets(events);
+    if (error || !group) {
+        return (
+            <AppLayout>
+                <div className="empty-state-card" style={{ marginTop: '2rem' }}>
+                    <AlertCircle size={24} style={{ color: 'var(--critical)', marginBottom: '0.75rem' }} />
+                    <h3 className="empty-state-title">Error group not found</h3>
+                    <p className="empty-state-desc">{error || 'This error group does not exist.'}</p>
+                    <Link to="/dashboard" className="btn btn-secondary btn-sm">
+                        Return to dashboard
+                    </Link>
+                </div>
+            </AppLayout>
+        );
+    }
+
+    const sev = group.severity || group.aiSummary?.severity || 'medium';
+    
+    // Support resolved source-mapped stack, fallback to parsing raw stackSample for older errors
+    let parsedStack = Array.isArray(group.resolvedStack) && group.resolvedStack.length > 0 ? group.resolvedStack : [];
+    if (parsedStack.length === 0 && (group.stackSample || group.rawStackTrace)) {
+        const raw = group.stackSample || group.rawStackTrace || '';
+        const lines = raw.split('\n');
+        parsedStack = lines
+            .filter((l) => l.trim().startsWith('at '))
+            .map((l) => {
+                const match = l.trim().match(/^at\s+(?:(.+?)\s+\((.+?):(\d+):(\d+)\)|(.+?):(\d+):(\d+)|(.+))$/);
+                if (!match) return { functionName: l.trim().replace(/^at\s+/, ''), file: '', lineNumber: '', columnNumber: '' };
+                if (match[1]) return { functionName: match[1], file: match[2], lineNumber: match[3], columnNumber: match[4] };
+                if (match[5]) return { functionName: '<anonymous>', file: match[5], lineNumber: match[6], columnNumber: match[7] };
+                return { functionName: match[8] || '', file: '', lineNumber: '', columnNumber: '' };
+            });
+    }
+
+    const hasAiSummary = Boolean(group.aiSummary && group.aiSummary.rootCause);
+    
+    // Normalize suggested remediation checklist (can be array or newline-separated string)
+    const remediationList = Array.isArray(group.aiSummary?.suggestedFix)
+        ? group.aiSummary.suggestedFix
+        : typeof group.aiSummary?.suggestedFix === 'string'
+            ? group.aiSummary.suggestedFix.split('\n').filter(Boolean)
+            : [];
 
     return (
-        <div className="page">
-            {/* Topbar */}
-            <header className="topbar">
-                <div className="topbar-left">
-                    <div className="topbar-brand">
-                        <h1 className="brand-logo-text">FAULTLINE</h1>
-                    </div>
-                    <nav className="topbar-nav">
-                        <Link to="/dashboard" className="topbar-link">Dashboard</Link>
-                        <Link to="/docs" className="topbar-link">API Docs</Link>
-                    </nav>
-                </div>
-                <div className="topbar-meta">
-                    <span className="topbar-user">{user?.name}</span>
-                    <button type="button" className="btn-ghost btn-sm" onClick={logout}>
-                        Log out
-                    </button>
-                </div>
-            </header>
-
-            {/* Back Link */}
-            <Link to={group ? `/projects/${group.projectId}` : '/dashboard'} className="back-link" style={{ marginBottom: '0.75rem' }}>
-                ← Back to project
-            </Link>
-
-            {/* Error Header */}
-            <header className="group-detail-header">
-                {loading && !group ? (
-                    <>
-                        <span className="skeleton" style={{ width: '55%', height: '24px', display: 'block', marginBottom: '0.5rem' }} />
-                        <div className="group-meta-bar">
-                            <span className="skeleton skeleton-badge" />
-                            <span className="skeleton skeleton-badge" />
-                            <span className="skeleton skeleton-badge" style={{ width: '65px' }} />
-                        </div>
-                        <div style={{ marginTop: '0.35rem' }}>
-                            <span className="skeleton" style={{ width: '240px', height: '12px' }} />
-                        </div>
-                    </>
-                ) : (
-                    <>
-                        <h1 className="group-title">{group?.message}</h1>
-                        <div className="group-meta-bar">
-                            <StatusBadge status={group.status} />
-                            <SeverityBadge severity={aiSummary?.severity} />
-                            {environments.map((env) => (
-                                <span key={env} className="badge badge-env">{env}</span>
-                            ))}
-                            {group.firstSeenRelease && (
-                                <span className="badge badge-release mono">{group.firstSeenRelease}</span>
-                            )}
-                            <span className={`live-indicator${liveConnected ? ' is-connected' : ''}`}>
-                                <span className="live-indicator-dot" />
-                                {liveConnected ? 'Live' : 'Connecting…'}
-                            </span>
-                        </div>
-                        <div className="group-timestamps" style={{ marginTop: '0.35rem' }}>
-                            <span className="mono" style={{ fontSize: '0.72rem' }}>{group.count}</span> occurrences
-                            {' · '}First seen {formatRelativeTime(group.firstSeen)}
-                            {' · '}Last seen {formatRelativeTime(group.lastSeen)}
-                        </div>
-                    </>
-                )}
-            </header>
-
-            {/* AI Analysis + Trend — 2-column grid, AI visually dominant */}
-            <div className="group-detail-grid">
-                {/* AI Root Cause — dominant section */}
-                <section className="ai-section">
-                    <div className="ai-section-header">
-                        <h2>AI Root Cause Analysis</h2>
-                        {loading && !group ? (
-                            <span className="skeleton" style={{ width: '85px', height: '14px' }} />
-                        ) : aiSummary ? (
-                            <span className="ai-confidence">
-                                Confidence <strong>{typeof aiSummary.confidence === 'number' ? `${Math.round(aiSummary.confidence * 100)}%` : '—'}</strong>
-                            </span>
-                        ) : null}
-                    </div>
-
-                    {loading && !group ? (
-                        <div>
-                            <div className="ai-target-box" style={{ background: 'var(--color-bg)' }}>
-                                <span className="skeleton" style={{ width: '65%', height: '14px' }} />
-                            </div>
-                            <div className="sub-heading">Root Cause</div>
-                            <div className="root-cause-text" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <span className="skeleton" style={{ width: '95%', height: '12px' }} />
-                                <span className="skeleton" style={{ width: '85%', height: '12px' }} />
-                                <span className="skeleton" style={{ width: '60%', height: '12px' }} />
-                            </div>
-                            <div className="ai-checklist-wrap">
-                                <div className="sub-heading">Suggested Remediation</div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    <span className="skeleton" style={{ width: '100%', height: '30px' }} />
-                                    <span className="skeleton" style={{ width: '100%', height: '30px' }} />
-                                </div>
-                            </div>
-                        </div>
-                    ) : aiSummary ? (
-                        <div>
-                            {aiSummary.affectedFile && (
-                                <div className="ai-target-box">
-                                    <span className="target-label">AFFECTED:</span>
-                                    <code className="target-file">{aiSummary.affectedFile}</code>
-                                    {aiSummary.affectedFunction && <code className="target-func">&gt; {aiSummary.affectedFunction}()</code>}
-                                </div>
-                            )}
-
-                            <div className="sub-heading">Root Cause</div>
-                            <p className="root-cause-text">{aiSummary.rootCause}</p>
-
-                            {aiSummary.suggestedFix && aiSummary.suggestedFix.length > 0 && (
-                                <div className="ai-checklist-wrap">
-                                    <div className="sub-heading">Suggested Remediation</div>
-                                    <AiChecklist suggestedFix={aiSummary.suggestedFix} />
-                                </div>
-                            )}
-                        </div>
-                    ) : (
-                        <div className="ai-loading-skeleton">
-                            <span className="live-indicator-dot" style={{ background: 'var(--color-warning)', flexShrink: 0 }} />
-                            <p style={{ margin: 0 }}>
-                                <strong>Analysis enqueued</strong> — worker is processing stack trace and grounding with code context…
-                            </p>
-                        </div>
-                    )}
-                </section>
-
-                {/* Error Rate Trend — compact, secondary */}
-                <section className="trend-section">
-                    <div className="sub-heading">Error Rate</div>
-                    {loading && !group ? (
-                        <div>
-                            <div className="trend-headline">
-                                <span className="skeleton" style={{ width: '50px', height: '26px' }} />
-                                <span className="skeleton" style={{ width: '45px', height: '14px' }} />
-                            </div>
-                            <div className="sparkline-wrap" style={{ marginTop: '0.5rem' }}>
-                                <div className="sparkline-header">
-                                    <span className="skeleton" style={{ width: '60px', height: '12px' }} />
-                                    <span className="skeleton" style={{ width: '65px', height: '12px' }} />
-                                </div>
-                                <div className="skeleton" style={{ width: '100%', height: '60px', margin: '4px 0' }} />
-                                <div className="sparkline-footer">
-                                    <span className="skeleton" style={{ width: '45px', height: '12px' }} />
-                                    <span className="skeleton" style={{ width: '25px', height: '12px' }} />
-                                </div>
-                            </div>
-                        </div>
-                    ) : (
-                        <>
-                            <TrendStatus trend={trend} />
-                            <Sparkline buckets={buckets} />
-                        </>
-                    )}
-                </section>
+        <AppLayout currentProjectId={group.projectId}>
+            {/* Back link */}
+            <div style={{ marginBottom: '1rem' }}>
+                <Link
+                    to={`/projects/${group.projectId}`}
+                    style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        fontSize: '0.8rem',
+                        color: 'var(--text-secondary)',
+                        fontWeight: 500
+                    }}
+                >
+                    <ArrowLeft size={14} /> Back to project
+                </Link>
             </div>
 
-            {/* Stack Trace */}
-            <hr className="section-divider" />
-            {loading && !group ? (
-                <section className="stack-section">
-                    <div className="stack-header">
-                        <h2 style={{ margin: 0 }}>Stack Trace</h2>
-                    </div>
-                    <div className="resolved-stack-wrap">
-                        {Array.from({ length: 4 }).map((_, idx) => (
-                            <div key={idx} className="resolved-frame" style={{ display: 'flex', gap: '8px', padding: '0.25rem 0' }}>
-                                <span className="skeleton" style={{ width: `${25 + (idx * 12) % 20}%`, height: '14px' }} />
-                                <span className="skeleton" style={{ width: `${40 + (idx * 9) % 25}%`, height: '14px' }} />
-                            </div>
+            {/* Error Identity Header */}
+            <div style={{ marginBottom: '1.75rem' }}>
+                <h1 style={{ fontFamily: 'var(--font-mono)', fontSize: '1.35rem', fontWeight: 600, color: 'var(--text-primary)', wordBreak: 'break-word', lineHeight: 1.3 }}>
+                    {group.message}
+                </h1>
+
+                {/* Metadata badges row */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.65rem', flexWrap: 'wrap' }}>
+                    <select
+                        value={group.status}
+                        onChange={(e) => handleStatusChange(e.target.value)}
+                        disabled={updatingStatus}
+                        className={`select-status badge-status-${group.status}`}
+                        aria-label="Change incident status"
+                    >
+                        {STATUS_OPTIONS.map((opt) => (
+                            <option key={opt} value={opt}>
+                                {opt.toUpperCase()}
+                            </option>
                         ))}
+                    </select>
+
+                    <span className={`badge badge-severity-${sev}`}>
+                        {SEVERITY_LABEL[sev] || sev}
+                    </span>
+
+                    {events[0]?.environment && (
+                        <span style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+                            {events[0].environment}
+                        </span>
+                    )}
+
+                    {group.firstSeenRelease && (
+                        <span className="badge-release">
+                            {group.firstSeenRelease}
+                        </span>
+                    )}
+
+                    <span className="system-status-badge">
+                        <span className="system-status-dot" />
+                        <span>Live</span>
+                    </span>
+                </div>
+
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                    {group.count} {group.count === 1 ? 'occurrence' : 'occurrences'} · First seen {formatRelativeTime(group.firstSeen)} · Last seen {formatRelativeTime(group.lastSeen)}
+                </div>
+            </div>
+
+            {/* Main Content Grid: Left Column (AI + Stack + Events), Right Column (Telemetry & Sparkline) */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 300px', gap: '1.75rem', alignItems: 'start' }}>
+                
+                {/* Left Column */}
+                <div>
+                    {/* AI Root Cause Analysis (Feature Surface) */}
+                    <div className="ai-panel">
+                        <div className="ai-panel-header">
+                            <div className="ai-panel-title-wrap">
+                                <Sparkles size={16} style={{ color: 'var(--accent)' }} />
+                                <span className="ai-panel-title">AI Root Cause Analysis</span>
+                            </div>
+                            {group.aiSummary?.confidence && (
+                                <span className="ai-confidence-pill">
+                                    Confidence {Math.round(group.aiSummary.confidence * 100)}%
+                                </span>
+                            )}
+                        </div>
+
+                        <div className="ai-panel-body">
+                            {!hasAiSummary ? (
+                                <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                                    Analysis enqueued — worker is processing stack trace and grounding with code context…
+                                </div>
+                            ) : (
+                                <>
+                                    {/* Affected file and function */}
+                                    {group.aiSummary.affectedFile && (
+                                        <div className="ai-target-box">
+                                            <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 600, display: 'block', marginBottom: '2px' }}>
+                                                AFFECTED TARGET
+                                            </span>
+                                            <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{group.aiSummary.affectedFile}</span>
+                                            {group.aiSummary.affectedFunction && (
+                                                <span style={{ color: 'var(--text-secondary)' }}> &gt; {group.aiSummary.affectedFunction}()</span>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Root Cause */}
+                                    <div>
+                                        <div className="ai-section-label">Root Cause</div>
+                                        <div className="ai-section-content">{group.aiSummary.rootCause}</div>
+                                    </div>
+
+                                    {/* Suggested Remediation Checklist */}
+                                    {remediationList.length > 0 && (
+                                        <div>
+                                            <div className="ai-section-label">Suggested Remediation</div>
+                                            <div className="ai-remediation-list">
+                                                {remediationList.map((line, idx) => (
+                                                    <label key={idx} className="ai-remediation-item" style={{ cursor: 'pointer' }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={Boolean(checkedTasks[idx])}
+                                                            onChange={() => toggleTask(idx)}
+                                                            className="ai-remediation-checkbox"
+                                                        />
+                                                        <span style={{ textDecoration: checkedTasks[idx] ? 'line-through' : 'none', color: checkedTasks[idx] ? 'var(--text-muted)' : 'var(--text-primary)' }}>
+                                                            {line.replace(/^[-*•\d.]+\s*/, '')}
+                                                        </span>
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
                     </div>
-                </section>
-            ) : group ? (() => {
-                const hasResolvedFrames = group.resolvedStack && group.resolvedStack.some((f) => f.resolved);
-                const hasParsedFrames = group.resolvedStack && group.resolvedStack.length > 0;
-                return (
-                    <section className="stack-section">
-                        <div className="stack-header">
-                            <h2 style={{ margin: 0 }}>Stack Trace</h2>
-                            <div className="stack-toggle">
-                                {hasResolvedFrames && (
-                                    <span className="badge badge-sourcemap">source mapped</span>
-                                )}
-                                {hasParsedFrames && (
-                                    <>
-                                        <button
-                                            type="button"
-                                            className={`btn-tab ${!showRawStack ? 'active' : ''}`}
-                                            onClick={() => setShowRawStack(false)}
-                                        >
-                                            {hasResolvedFrames ? 'Resolved' : 'Parsed'}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className={`btn-tab ${showRawStack ? 'active' : ''}`}
-                                            onClick={() => setShowRawStack(true)}
-                                        >
-                                            Raw
-                                        </button>
-                                    </>
-                                )}
+
+                    {/* Developer Stack Trace Console */}
+                    <div className="stack-console">
+                        <div className="stack-console-header">
+                            <span className="stack-console-title">Stack Trace</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <div className="stack-toggle-group">
+                                    <button
+                                        type="button"
+                                        className={`stack-toggle-btn ${stackView === 'parsed' ? 'active' : ''}`}
+                                        onClick={() => setStackView('parsed')}
+                                    >
+                                        Parsed
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={`stack-toggle-btn ${stackView === 'raw' ? 'active' : ''}`}
+                                        onClick={() => setStackView('raw')}
+                                    >
+                                        Raw
+                                    </button>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleCopyStack}
+                                    style={{ background: 'transparent', border: 'none', color: '#9DA39D', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem' }}
+                                    title="Copy stack trace"
+                                >
+                                    {copied ? <Check size={13} style={{ color: 'var(--success)' }} /> : <Copy size={13} />}
+                                    {copied ? 'Copied' : 'Copy'}
+                                </button>
                             </div>
                         </div>
 
-                        {!showRawStack && hasParsedFrames ? (
-                            <div className="resolved-stack-wrap">
-                                {group.resolvedStack.map((frame, idx) => (
-                                    <div key={idx} className={`resolved-frame ${frame.resolved ? 'is-resolved' : 'is-unresolved'}`}>
-                                        {frame.resolved ? (
-                                            <>
-                                                <span className="frame-func">at {frame.originalFunctionName || 'anonymous'}</span>
-                                                <span className="frame-loc">({frame.originalFile}:{frame.originalLine}:{frame.originalColumn})</span>
-                                                <span className="frame-raw-muted">← {frame.file}:{frame.line}:{frame.column}</span>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <span className="frame-func">at {frame.functionName || 'anonymous'}</span>
-                                                <span className="frame-loc">({frame.file}:{frame.line}:{frame.column})</span>
-                                            </>
-                                        )}
+                        {stackView === 'parsed' && parsedStack.length > 0 ? (
+                            <div className="stack-frames-list">
+                                {parsedStack.map((frame, i) => (
+                                    <div key={i} className="stack-frame-row">
+                                        <span style={{ color: '#5C6370', fontSize: '0.72rem', minWidth: '20px' }}>{i + 1}</span>
+                                        <span className="stack-frame-fn">at {frame.functionName || '<anonymous>'}</span>
+                                        <span className="stack-frame-file">
+                                            ({frame.file || 'unknown'}:{frame.lineNumber || '?'}:{frame.columnNumber || '?'})
+                                        </span>
                                     </div>
                                 ))}
                             </div>
                         ) : (
-                            <pre className="stack-sample mono">{group.stackSample || 'No stack trace available.'}</pre>
+                            <pre className="stack-raw-pre">
+                                {group.stackSample || group.rawStackTrace || 'No raw stack trace available.'}
+                            </pre>
                         )}
-                    </section>
-                );
-            })() : null}
+                    </div>
 
-            {/* Recent Events — compact timeline */}
-            <hr className="section-divider" />
-            <div className="section-header-inline">
-                <h2 style={{ fontSize: '0.85rem' }}>Recent Events</h2>
-                {loading && events.length === 0 ? (
-                    <span className="skeleton" style={{ width: '45px', height: '14px' }} />
-                ) : (
-                    <span className="mono-count">{events.length} fetched</span>
-                )}
-            </div>
-
-            {loading && events.length === 0 ? (
-                <div className="events-timeline" aria-busy="true" aria-label="Loading events">
-                    {Array.from({ length: 4 }).map((_, idx) => (
-                        <div key={idx} className="event-row">
-                            <span className="skeleton" style={{ width: '70px', height: '14px' }} />
-                            <span className="skeleton" style={{ width: '60px', height: '14px' }} />
-                            <span className="skeleton" style={{ width: '50px', height: '14px' }} />
+                    {/* Chronological Events Stream */}
+                    <section className="dash-section">
+                        <div className="dash-section-header">
+                            <h2 className="dash-section-title">
+                                Recent Events <span className="dash-section-meta">{events.length} fetched</span>
+                            </h2>
                         </div>
-                    ))}
+
+                        <div className="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th style={{ width: '90px' }}>Time</th>
+                                        <th style={{ width: '100px' }}>Environment</th>
+                                        <th style={{ width: '120px' }}>Release</th>
+                                        <th>Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {events.slice(0, 10).map((evt) => (
+                                        <tr key={evt.id || evt._id}>
+                                            <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                                {formatTime(evt.receivedAt)}
+                                            </td>
+                                            <td>
+                                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                                    {evt.env || evt.environment || 'production'}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                {evt.release ? (
+                                                    <span className="badge-release">{evt.release}</span>
+                                                ) : (
+                                                    <span style={{ color: 'var(--text-muted)' }}>—</span>
+                                                )}
+                                            </td>
+                                            <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                                                {evt.id || evt._id}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
                 </div>
-            ) : events.length === 0 ? (
-                <p className="cell-muted" style={{ fontSize: '0.78rem' }}>No events recorded yet.</p>
-            ) : (
-                <div className="events-timeline events-timeline-scroll">
-                    {events.map((event) => (
-                        <div key={event.id} className="event-row">
-                            <span className="event-timestamp">{formatTime(event.receivedAt)}</span>
-                            <span className="event-env">{event.env || '—'}</span>
-                            {event.release ? (
-                                <span className="event-release">{event.release}</span>
+
+                {/* Right Column: Error Rate & Telemetry */}
+                <div>
+                    <div className="chart-surface" style={{ padding: '1.15rem' }}>
+                        <div className="ai-section-label" style={{ marginBottom: '0.4rem' }}>Error Rate</div>
+                        
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.45rem', marginBottom: '0.35rem' }}>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1.45rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                {trend?.currentHourCount ?? events.length}
+                            </span>
+                            <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>events this hour</span>
+                        </div>
+
+                        <div style={{ marginBottom: '0.85rem' }}>
+                            {trend?.isSpiking ? (
+                                <span className="badge badge-severity-critical">
+                                    ↑ Spiking ({trend.baselineHourlyRate ? `${(trend.currentHourCount / trend.baselineHourlyRate).toFixed(1)}× baseline` : 'elevated'})
+                                </span>
                             ) : (
-                                <span className="cell-muted" style={{ fontSize: '0.72rem' }}>—</span>
+                                <span className="badge" style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
+                                    Normal (baseline active)
+                                </span>
                             )}
                         </div>
-                    ))}
+
+                        {/* 24h Hourly Sparkline */}
+                        <Sparkline buckets={sparklineBuckets} />
+                    </div>
                 </div>
-            )}
-        </div>
+
+            </div>
+        </AppLayout>
     );
 }
-
-export default GroupDetailPage;

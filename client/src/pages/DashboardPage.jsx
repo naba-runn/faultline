@@ -1,24 +1,30 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext.jsx';
+import {
+    Activity,
+    AlertTriangle,
+    Layers,
+    Clock,
+    Plus,
+    FolderKanban,
+    ChevronRight,
+    ExternalLink,
+    Code2,
+    CheckCircle2
+} from 'lucide-react';
 import api from '../api/axios.js';
+import AppLayout from '../components/AppLayout.jsx';
 import SdkSnippetGenerator from '../components/SdkSnippetGenerator.jsx';
 
 const SEVERITY_LABEL = {
-    low: 'LOW',
-    medium: 'MEDIUM',
-    high: 'HIGH',
-    critical: 'CRITICAL',
-};
-
-const SEVERITY_COLOR = {
-    critical: 'var(--color-danger)',
-    high: 'var(--color-warning)',
-    medium: 'var(--color-caution)',
-    low: 'var(--color-text-muted)',
+    low: 'Low',
+    medium: 'Medium',
+    high: 'High',
+    critical: 'Critical',
 };
 
 function formatRelativeTime(iso) {
+    if (!iso) return '—';
     const diffMs = Date.now() - new Date(iso).getTime();
     const minutes = Math.round(diffMs / 60000);
     if (minutes < 1) return 'just now';
@@ -33,170 +39,99 @@ function formatHourLabel(iso) {
     return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric' });
 }
 
-// 25-point hourly bar chart for the trailing 24h trend.
+// 25-point hourly area/bar chart for the trailing 24h trend with subtle teal styling
 function TrendChart({ series }) {
+    const [hoveredIndex, setHoveredIndex] = useState(null);
     const totalCount = series.reduce((sum, b) => sum + b.count, 0);
     const maxCount = Math.max(1, ...series.map((b) => b.count));
-    const width = 700;
-    const height = 50;
-    const barGap = 3;
+    const width = 800;
+    const height = 64;
+    const barGap = 4;
     const barWidth = (width - barGap * (series.length - 1)) / series.length;
 
+    if (totalCount === 0) {
+        return (
+            <div className="empty-state-compact">
+                <span className="empty-state-compact-title">No error activity</span>
+                <span className="empty-state-compact-desc">Your applications have reported no errors in the trailing 24 hours.</span>
+            </div>
+        );
+    }
+
     return (
-        <div style={{ position: 'relative', marginTop: '0.35rem' }}>
-            <svg
-                viewBox={`0 0 ${width} ${height + 20}`}
-                className="trend-chart-svg"
-                role="img"
-                aria-label="Hourly error volume over the last 24 hours"
-            >
-                {/* Horizontal baseline */}
-                <line
-                    x1="0"
-                    y1={height}
-                    x2={width}
-                    y2={height}
-                    stroke="var(--color-border-strong)"
-                    strokeWidth="1"
-                />
+        <div className="chart-surface">
+            <div className="trend-chart-container">
+                <svg
+                    viewBox={`0 0 ${width} ${height + 26}`}
+                    className="trend-chart-svg"
+                    role="img"
+                    aria-label="Hourly error volume over the last 24 hours"
+                >
+                    <defs>
+                        <linearGradient id="tealTrendGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.85" />
+                            <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.45" />
+                        </linearGradient>
+                    </defs>
 
-                {series.map((bucket, i) => {
-                    const hasCount = bucket.count > 0;
-                    const barHeight = hasCount ? Math.max(4, (bucket.count / maxCount) * height) : 2;
-                    const x = i * (barWidth + barGap);
-                    const y = height - barHeight;
-                    const isCurrentHour = i === series.length - 1;
+                    {/* Subtle grid baselines */}
+                    <line x1="0" y1={height / 2} x2={width} y2={height / 2} stroke="var(--border-light)" strokeWidth="1" strokeDasharray="3 3" />
+                    <line x1="0" y1={height} x2={width} y2={height} stroke="var(--border)" strokeWidth="1" />
 
-                    return (
-                        <g key={bucket.hour}>
-                            <rect
-                                x={x}
-                                y={y}
-                                width={barWidth}
-                                height={barHeight}
-                                rx={1}
-                                fill={hasCount ? (isCurrentHour ? 'var(--color-accent)' : 'var(--color-accent-strong)') : 'var(--color-border-strong)'}
-                                opacity={hasCount ? (isCurrentHour ? 1 : 0.7) : 0.3}
+                    {series.map((bucket, i) => {
+                        const hasCount = bucket.count > 0;
+                        const barHeight = hasCount ? Math.max(5, (bucket.count / maxCount) * height) : 2;
+                        const x = i * (barWidth + barGap);
+                        const y = height - barHeight;
+                        const isHovered = hoveredIndex === i;
+
+                        return (
+                            <g
+                                key={bucket.hour}
+                                onMouseEnter={() => setHoveredIndex(i)}
+                                onMouseLeave={() => setHoveredIndex(null)}
                             >
-                                <title>{`${formatHourLabel(bucket.hour)}: ${bucket.count} error${bucket.count === 1 ? '' : 's'}`}</title>
-                            </rect>
-                        </g>
-                    );
-                })}
-                <text x={0} y={height + 16} className="trend-chart-axis-label">
-                    {formatHourLabel(series[0].hour)}
-                </text>
-                <text x={width} y={height + 16} textAnchor="end" className="trend-chart-axis-label">
-                    now
-                </text>
-            </svg>
-            {totalCount === 0 && (
-                <div style={{
-                    position: 'absolute',
-                    top: '30%',
-                    left: '50%',
-                    transform: 'translate(-50%, -50%)',
-                    fontSize: '0.75rem',
-                    color: 'var(--color-text-faint)',
-                    pointerEvents: 'none',
-                }}>
-                    No error activity in trailing 24h
-                </div>
-            )}
+                                <rect
+                                    x={x}
+                                    y={y}
+                                    width={barWidth}
+                                    height={barHeight}
+                                    rx={2}
+                                    fill={hasCount ? 'url(#tealTrendGrad)' : 'var(--border-light)'}
+                                    opacity={hasCount ? (isHovered ? 1 : 0.8) : 0.4}
+                                    style={{ transition: 'opacity 150ms ease' }}
+                                >
+                                    <title>{`${formatHourLabel(bucket.hour)}: ${bucket.count} error${bucket.count === 1 ? '' : 's'}`}</title>
+                                </rect>
+                            </g>
+                        );
+                    })}
+
+                    {/* Axis Labels */}
+                    <text x={0} y={height + 18} className="trend-chart-axis-label">
+                        {formatHourLabel(series[0].hour)} (24h ago)
+                    </text>
+                    <text x={width / 2} y={height + 18} textAnchor="middle" className="trend-chart-axis-label">
+                        {formatHourLabel(series[12].hour)}
+                    </text>
+                    <text x={width} y={height + 18} textAnchor="end" className="trend-chart-axis-label">
+                        Now
+                    </text>
+                </svg>
+            </div>
         </div>
     );
 }
 
 function DashboardMetricsSkeleton() {
     return (
-        <div className="metrics-row" aria-busy="true" aria-label="Loading metrics">
-            <div className="metric-item">
-                <span className="skeleton" style={{ width: '28px', height: '24px' }} />
-                <span className="skeleton" style={{ width: '48px', height: '12px' }} />
-            </div>
-            <div className="metric-item">
-                <span className="skeleton" style={{ width: '36px', height: '24px' }} />
-                <span className="skeleton" style={{ width: '68px', height: '12px' }} />
-            </div>
-            <div className="metric-item">
-                <span className="skeleton" style={{ width: '24px', height: '24px' }} />
-                <span className="skeleton" style={{ width: '56px', height: '12px' }} />
-            </div>
-            <div className="metric-item">
-                <span className="skeleton" style={{ width: '48px', height: '18px' }} />
-                <span className="skeleton" style={{ width: '54px', height: '12px' }} />
-            </div>
-        </div>
-    );
-}
-
-function TrendChartSkeleton() {
-    const width = 700;
-    const height = 50;
-    const count = 25;
-    const barGap = 3;
-    const barWidth = (width - barGap * (count - 1)) / count;
-
-    return (
-        <div style={{ position: 'relative', marginTop: '0.35rem' }} aria-busy="true" aria-label="Loading error volume chart">
-            <svg
-                viewBox={`0 0 ${width} ${height + 20}`}
-                className="trend-chart-svg"
-                role="img"
-            >
-                <line
-                    x1="0"
-                    y1={height}
-                    x2={width}
-                    y2={height}
-                    stroke="var(--color-border-strong)"
-                    strokeWidth="1"
-                />
-                {Array.from({ length: count }).map((_, i) => {
-                    const barHeight = 4 + ((i * 7 + 3) % 24);
-                    const x = i * (barWidth + barGap);
-                    const y = height - barHeight;
-                    return (
-                        <rect
-                            key={i}
-                            x={x}
-                            y={y}
-                            width={barWidth}
-                            height={barHeight}
-                            rx={1}
-                            fill="var(--color-surface-container)"
-                            opacity={0.5}
-                        />
-                    );
-                })}
-                <text x={0} y={height + 16} className="trend-chart-axis-label" fill="var(--color-text-faint)">
-                    24h ago
-                </text>
-                <text x={width} y={height + 16} textAnchor="end" className="trend-chart-axis-label" fill="var(--color-text-faint)">
-                    now
-                </text>
-            </svg>
-        </div>
-    );
-}
-
-function IncidentListSkeleton({ count = 3 }) {
-    return (
-        <div className="incident-list" aria-busy="true" aria-label="Loading incidents">
-            {Array.from({ length: count }).map((_, i) => (
-                <div key={i} className="incident-row" style={{ pointerEvents: 'none' }}>
-                    <div className="incident-severity">
-                        <span className="skeleton" style={{ width: '48px', height: '14px' }} />
+        <div className="metrics-grid" aria-busy="true" aria-label="Loading metrics">
+            {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="metric-panel">
+                    <div className="metric-panel-header">
+                        <span className="skeleton" style={{ width: '60px', height: '12px' }} />
                     </div>
-                    <div className="incident-content">
-                        <div className="incident-header-line">
-                            <span className="skeleton" style={{ width: `${55 + (i * 12) % 30}%`, height: '14px' }} />
-                            <span className="skeleton" style={{ width: '38px', height: '12px' }} />
-                        </div>
-                        <div className="incident-meta" style={{ marginTop: '0.25rem' }}>
-                            <span className="skeleton" style={{ width: `${35 + (i * 8) % 25}%`, height: '11px' }} />
-                        </div>
-                    </div>
+                    <span className="skeleton" style={{ width: '48px', height: '28px', marginTop: '0.25rem' }} />
                 </div>
             ))}
         </div>
@@ -213,7 +148,7 @@ function ProjectsTableSkeleton({ count = 3 }) {
                         <th>Repository</th>
                         <th>Created</th>
                         <th>Integration</th>
-                        <th style={{ textAlign: 'right' }}></th>
+                        <th style={{ textAlign: 'right' }}>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -229,7 +164,7 @@ function ProjectsTableSkeleton({ count = 3 }) {
                                 <span className="skeleton" style={{ width: '70px', height: '12px' }} />
                             </td>
                             <td>
-                                <span className="skeleton" style={{ width: '42px', height: '20px' }} />
+                                <span className="skeleton" style={{ width: '50px', height: '20px' }} />
                             </td>
                             <td style={{ textAlign: 'right' }}>
                                 <span className="skeleton" style={{ width: '80px', height: '22px' }} />
@@ -242,12 +177,12 @@ function ProjectsTableSkeleton({ count = 3 }) {
     );
 }
 
-function DashboardPage() {
-    const { user, logout } = useAuth();
-
+export default function DashboardPage() {
     const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState('');
+
+    const [selectedProjectId, setSelectedProjectId] = useState('all');
 
     const [name, setName] = useState('');
     const [githubRepo, setGithubRepo] = useState('');
@@ -318,212 +253,254 @@ function DashboardPage() {
         }
     }
 
-    // Compute aggregate metrics from overview data
-    const totalGroups = overview?.trend?.series
+    // Filter projects, spiking groups, and recent incidents based on selected project
+    const filteredProjects = useMemo(() => {
+        if (selectedProjectId === 'all') return projects;
+        return projects.filter((p) => String(p.id || p._id) === String(selectedProjectId));
+    }, [projects, selectedProjectId]);
+
+    const filteredSpikes = useMemo(() => {
+        const spikes = overview?.alerts?.spikingGroups || [];
+        if (selectedProjectId === 'all') return spikes;
+        return spikes.filter((s) => String(s.projectId) === String(selectedProjectId));
+    }, [overview, selectedProjectId]);
+
+    const filteredIncidents = useMemo(() => {
+        const incidents = overview?.releases?.recent || [];
+        if (selectedProjectId === 'all') return incidents;
+        return incidents.filter((i) => String(i.projectId) === String(selectedProjectId));
+    }, [overview, selectedProjectId]);
+
+    // Metrics computation
+    const totalEvents24h = overview?.trend?.series
         ? overview.trend.series.reduce((sum, b) => sum + b.count, 0)
-        : null;
-    const spikingCount = overview?.alerts?.spikingCount || 0;
-    const spikingGroups = overview?.alerts?.spikingGroups || [];
+        : 0;
+    const spikingCount = filteredSpikes.length;
+    const unresolvedCount = overview?.unresolvedCount ?? 0;
     const lastEventTime = overview?.lastEventAt
         ? formatRelativeTime(overview.lastEventAt)
-        : null;
-    const unresolvedCount = overview?.unresolvedCount ?? null;
+        : 'None';
 
     return (
-        <div className="page">
-            {/* Topbar */}
-            <header className="topbar">
-                <div className="topbar-left">
-                    <div className="topbar-brand">
-                        <h1 className="brand-logo-text">FAULTLINE</h1>
-                    </div>
-                    <nav className="topbar-nav">
-                        <Link to="/dashboard" className="topbar-link active">Dashboard</Link>
-                        <Link to="/docs" className="topbar-link">API Docs</Link>
-                    </nav>
-                </div>
-                <div className="topbar-meta">
-                    <span className="topbar-user">{user?.name}</span>
-                    <button type="button" className="btn-ghost btn-sm" onClick={logout}>
-                        Log out
-                    </button>
-                </div>
-            </header>
-
+        <AppLayout>
             {/* Page Header */}
-            <div className="dash-header">
-                <h1>Faultline</h1>
-                <div className="dash-header-sub">
-                    <span>Runtime errors across your applications</span>
-                    <span className="dash-status">
-                        <span className="dash-status-dot" />
-                        Operational
-                    </span>
+            <div className="dash-header-bar">
+                <div className="dash-header-info">
+                    <h1>Faultline</h1>
+                    <p className="dash-header-desc">Runtime errors across your applications</p>
+                </div>
+
+                <div className="dash-header-actions">
+                    <div className="system-status-badge">
+                        <span className="system-status-dot" aria-hidden="true" />
+                        <span>All systems operational</span>
+                    </div>
+
+                    <div className="project-filter-control">
+                        <select
+                            id="project-filter"
+                            className="project-filter-select"
+                            value={selectedProjectId}
+                            onChange={(e) => setSelectedProjectId(e.target.value)}
+                            aria-label="Filter dashboard by project"
+                        >
+                            <option value="all">All projects ({projects.length})</option>
+                            {projects.map((p) => (
+                                <option key={p.id || p._id} value={p.id || p._id}>
+                                    {p.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
                 </div>
             </div>
 
-            {/* Inline Metrics */}
+            {/* Metric Panels Grid */}
             {overviewLoading && !overview ? (
                 <DashboardMetricsSkeleton />
-            ) : overview ? (
-                <div className="metrics-row">
-                    <div className="metric-item">
-                        <span className="metric-value">{projects.length}</span>
-                        <span className="metric-label">projects</span>
+            ) : (
+                <div className="metrics-grid">
+                    <div className="metric-panel">
+                        <div className="metric-panel-header">
+                            <span className="metric-panel-label">Projects</span>
+                        </div>
+                        <div className="metric-panel-value">{filteredProjects.length}</div>
+                        <div className="metric-panel-sub">monitored</div>
                     </div>
-                    {totalGroups !== null && (
-                        <div className="metric-item">
-                            <span className="metric-value">{totalGroups}</span>
-                            <span className="metric-label">events (24h)</span>
-                        </div>
-                    )}
-                    {spikingCount > 0 && (
-                        <div className="metric-item">
-                            <span className="metric-value" style={{ color: 'var(--color-danger)' }}>{spikingCount}</span>
-                            <span className="metric-label">spiking</span>
-                        </div>
-                    )}
-                    {unresolvedCount !== null && (
-                        <div className="metric-item">
-                            <span className="metric-value" style={{ color: 'var(--color-warning)' }}>{unresolvedCount}</span>
-                            <span className="metric-label">unresolved</span>
-                        </div>
-                    )}
-                    {lastEventTime && (
-                        <div className="metric-item">
-                            <span className="metric-value" style={{ fontSize: '1rem' }}>{lastEventTime}</span>
-                            <span className="metric-label">last event</span>
-                        </div>
-                    )}
-                </div>
-            ) : null}
 
-            {/* Trend Chart — directly in the flow */}
-            {overviewLoading && !overview ? (
-                <div className="overview-section">
-                    <hr className="section-divider" />
-                    <div className="sub-heading">Error Volume — Last 24h</div>
-                    <TrendChartSkeleton />
-                </div>
-            ) : overview ? (
-                <div className="overview-section">
-                    <hr className="section-divider" />
-                    <div className="sub-heading">Error Volume — Last 24h</div>
-                    <TrendChart series={overview.trend.series} />
-                </div>
-            ) : null}
-            {!overviewLoading && overviewError && <p className="alert alert-error" role="alert">{overviewError}</p>}
-
-            {/* Spiking Incidents */}
-            {!overviewLoading && !overviewError && overview && spikingGroups.length > 0 && (
-                <div style={{ marginTop: '0.5rem' }}>
-                    <hr className="section-divider" />
-                    <div className="section-header-inline">
-                        <h2 style={{ fontSize: '0.85rem' }}>Recent Spikes</h2>
-                        <span className="mono-count">{spikingGroups.length}</span>
+                    <div className="metric-panel">
+                        <div className="metric-panel-header">
+                            <span className="metric-panel-label">Events (24h)</span>
+                        </div>
+                        <div className="metric-panel-value">{totalEvents24h}</div>
+                        <div className="metric-panel-sub">trailing volume</div>
                     </div>
-                    <div className="incident-list incident-list-scroll">
-                        {spikingGroups.map((g) => (
-                            <div key={g.groupId} className="incident-row">
-                                <div className="incident-severity severity-marker severity-marker-high">
-                                    SPIKE
-                                </div>
-                                <div className="incident-content">
-                                    <div className="incident-header-line">
-                                        <Link to={`/groups/${g.groupId}`} className="incident-message">
-                                            {g.message}
-                                        </Link>
-                                    </div>
-                                    <div className="incident-meta">
-                                        {g.projectName} · <span className="mono" style={{ fontSize: '0.72rem' }}>{g.count}</span> events · {formatRelativeTime(g.lastSeen)}
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
+
+                    <div className={`metric-panel ${spikingCount > 0 ? 'metric-panel-warning' : ''}`}>
+                        <div className="metric-panel-header">
+                            <span className="metric-panel-label">Spiking</span>
+                        </div>
+                        <div className="metric-panel-value">{spikingCount}</div>
+                        <div className="metric-panel-sub">{spikingCount === 1 ? 'active alert' : 'active alerts'}</div>
+                    </div>
+
+                    <div className={`metric-panel ${unresolvedCount > 0 ? 'metric-panel-danger' : ''}`}>
+                        <div className="metric-panel-header">
+                            <span className="metric-panel-label">Unresolved</span>
+                        </div>
+                        <div className="metric-panel-value">{unresolvedCount}</div>
+                        <div className="metric-panel-sub">open error groups</div>
+                    </div>
+
+                    <div className="metric-panel">
+                        <div className="metric-panel-header">
+                            <span className="metric-panel-label">Last Event</span>
+                        </div>
+                        <div className="metric-panel-value" style={{ fontSize: '1.25rem' }}>{lastEventTime}</div>
+                        <div className="metric-panel-sub">latest telemetry</div>
                     </div>
                 </div>
             )}
 
-            {/* Recent Incidents */}
-            {overviewLoading && !overview ? (
-                <div style={{ marginTop: '0.25rem' }}>
-                    <hr className="section-divider" />
-                    <div className="section-header-inline">
-                        <h2 style={{ fontSize: '0.85rem' }}>Recent Incidents</h2>
-                        <span className="skeleton" style={{ width: '24px', height: '14px' }} />
-                    </div>
-                    <IncidentListSkeleton count={3} />
+            {/* Error Volume Section (Open visualization area) */}
+            <section className="dash-section">
+                <div className="dash-section-header">
+                    <h2 className="dash-section-title">Error volume</h2>
+                    <span className="dash-section-meta">Trailing 24 hours</span>
                 </div>
-            ) : overview && overview.releases.recent.length > 0 ? (
-                <div style={{ marginTop: '0.25rem' }}>
-                    <hr className="section-divider" />
-                    <div className="section-header-inline">
-                        <h2 style={{ fontSize: '0.85rem' }}>Recent Incidents</h2>
-                        <span className="mono-count">{overview.releases.recent.length}</span>
+                {overviewLoading && !overview ? (
+                    <div className="skeleton" style={{ width: '100%', height: '70px', borderRadius: 'var(--radius-md)' }} />
+                ) : (
+                    <TrendChart series={overview?.trend?.series || []} />
+                )}
+            </section>
+
+            {/* Recent Spikes Section (Unboxed List with Hairline Dividers) */}
+            {filteredSpikes.length > 0 && (
+                <section className="dash-section">
+                    <div className="dash-section-header">
+                        <h2 className="dash-section-title">
+                            Recent Spikes <span className="dash-section-meta">{filteredSpikes.length}</span>
+                        </h2>
                     </div>
-                    <div className="incident-list incident-list-scroll">
-                        {overview.releases.recent.map((r) => {
-                            const sevKey = r.severity?.toLowerCase();
-                            const sevColor = SEVERITY_COLOR[sevKey] || 'var(--color-text-faint)';
-                            const sevLabel = SEVERITY_LABEL[sevKey] || '—';
-                            const statusKey = r.status || 'open';
-                            return (
-                                <div key={r.groupId} className="incident-row">
-                                    <div
-                                        className="incident-severity"
-                                        style={{ color: sevColor }}
-                                    >
-                                        {sevLabel}
-                                    </div>
-                                    <div className="incident-content">
-                                        <div className="incident-header-line">
-                                            <Link to={`/groups/${r.groupId}`} className="incident-message">
-                                                {r.message}
-                                            </Link>
-                                            <span className={`incident-status incident-status-${statusKey}`}>
-                                                {statusKey.toUpperCase()}
-                                            </span>
-                                        </div>
-                                        <div className="incident-meta">
-                                            {r.projectName}
-                                            {r.release && <>{' · '}<span className="mono" style={{ fontSize: '0.72rem' }}>{r.release}</span></>}
-                                            {' · '}<span className="mono" style={{ fontSize: '0.72rem' }}>{r.count}</span> events
-                                            {' · '}{formatRelativeTime(r.lastSeen || r.firstSeen)}
-                                        </div>
-                                    </div>
+                    <div className="spikes-list">
+                        {filteredSpikes.map((spike) => (
+                            <Link
+                                key={spike.groupId}
+                                to={`/groups/${spike.groupId}`}
+                                className="spike-row"
+                            >
+                                <div className="spike-left">
+                                    <span className="spike-tag">Spike</span>
+                                    <span className="spike-title">{spike.message}</span>
                                 </div>
-                            );
-                        })}
+                                <span className="spike-meta">
+                                    {spike.projectName ? `${spike.projectName} · ` : ''}
+                                    {spike.count} events · {formatRelativeTime(spike.lastSeen)}
+                                </span>
+                            </Link>
+                        ))}
                     </div>
-                </div>
-            ) : null}
+                </section>
+            )}
 
-            {/* Projects */}
-            <div className="project-table-section">
-                <hr className="section-divider" />
-                <div className="section-header-inline">
-                    <h2 style={{ fontSize: '0.85rem' }}>Projects</h2>
-                    {loading && projects.length === 0 ? (
-                        <span className="skeleton" style={{ width: '45px', height: '14px' }} />
-                    ) : (
-                        <span className="mono-count">{projects.length} total</span>
-                    )}
+            {/* Recent Incidents Section (Structured Observability Table) */}
+            <section className="dash-section">
+                <div className="dash-section-header">
+                    <h2 className="dash-section-title">
+                        Recent Incidents <span className="dash-section-meta">{filteredIncidents.length}</span>
+                    </h2>
                 </div>
 
-                {loading && projects.length === 0 && <ProjectsTableSkeleton count={3} />}
-                {!loading && loadError && <p className="alert alert-error" role="alert">{loadError}</p>}
-                {!loading && !loadError && projects.length === 0 && (
-                    <div className="empty-state">
-                        <svg className="empty-state-trace" width="64" height="20" viewBox="0 0 64 20" aria-hidden="true">
-                            <path d="M0 10 H64" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="1 5" strokeLinecap="round" />
-                        </svg>
-                        <h3>No projects monitored yet</h3>
-                        <p className="cell-muted" style={{ fontSize: '0.82rem' }}>
-                            Create your first project below to generate an API key.
-                        </p>
+                {filteredIncidents.length === 0 ? (
+                    <div className="empty-state-compact">
+                        <span className="empty-state-compact-title">No recent incidents</span>
+                        <span className="empty-state-compact-desc">No tagged incidents reported in the recent release window.</span>
+                    </div>
+                ) : (
+                    <div className="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style={{ width: '85px' }}>Severity</th>
+                                    <th>Issue</th>
+                                    <th style={{ width: '160px' }}>Project</th>
+                                    <th style={{ width: '120px' }}>Release</th>
+                                    <th style={{ width: '75px', textAlign: 'right' }}>Events</th>
+                                    <th style={{ width: '100px' }}>Last Seen</th>
+                                    <th style={{ width: '90px' }}>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredIncidents.map((incident) => {
+                                    const sev = incident.severity || 'medium';
+                                    return (
+                                        <tr key={incident.groupId} className={`row-hoverable row-${sev}`}>
+                                            <td>
+                                                <span className={`badge badge-severity-${sev}`}>
+                                                    {SEVERITY_LABEL[sev] || sev}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div className="issue-cell">
+                                                    <Link to={`/groups/${incident.groupId}`} className="issue-title-link">
+                                                        {incident.message}
+                                                    </Link>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                                    {incident.projectName || '—'}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                {incident.release ? (
+                                                    <span className="badge-release">{incident.release}</span>
+                                                ) : (
+                                                    <span style={{ color: 'var(--text-muted)' }}>—</span>
+                                                )}
+                                            </td>
+                                            <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                                                {incident.count}
+                                            </td>
+                                            <td style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                                                {formatRelativeTime(incident.lastSeen)}
+                                            </td>
+                                            <td>
+                                                <span className={`badge badge-status-${incident.status || 'open'}`}>
+                                                    {incident.status || 'open'}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
                     </div>
                 )}
-                {!loading && !loadError && projects.length > 0 && (
+            </section>
+
+            {/* Monitored Projects Section */}
+            <section className="dash-section" id="projects">
+                <div className="dash-section-header">
+                    <h2 className="dash-section-title">
+                        Projects <span className="dash-section-meta">{filteredProjects.length} total</span>
+                    </h2>
+                </div>
+
+                {loading ? (
+                    <ProjectsTableSkeleton count={3} />
+                ) : filteredProjects.length === 0 ? (
+                    <div className="empty-state-card">
+                        <div className="empty-state-icon-wrap">
+                            <FolderKanban size={22} />
+                        </div>
+                        <h3 className="empty-state-title">No projects monitored</h3>
+                        <p className="empty-state-desc">
+                            Create your first project below to receive an API key and start ingesting errors.
+                        </p>
+                    </div>
+                ) : (
                     <div className="table-wrap">
                         <table>
                             <thead>
@@ -532,53 +509,56 @@ function DashboardPage() {
                                     <th>Repository</th>
                                     <th>Created</th>
                                     <th>Integration</th>
-                                    <th style={{ textAlign: 'right' }}></th>
+                                    <th style={{ textAlign: 'right' }}>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {projects.map((project) => (
-                                    <tr key={project.id} className="row-hoverable">
+                                {filteredProjects.map((p) => (
+                                    <tr key={p.id || p._id} className="row-hoverable">
                                         <td>
-                                            <Link to={`/projects/${project.id}`} className="project-title-link">
-                                                {project.name}
+                                            <Link
+                                                to={`/projects/${p.id || p._id}`}
+                                                style={{ fontWeight: 600, color: 'var(--text-primary)' }}
+                                            >
+                                                {p.name}
                                             </Link>
                                         </td>
                                         <td>
-                                            {project.githubRepo ? (
-                                                <span className="badge-repo">{project.githubRepo}</span>
+                                            {(p.githubRepo || p.repo) ? (
+                                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem' }}>
+                                                    {p.githubRepo || p.repo}
+                                                </span>
                                             ) : (
-                                                <span className="cell-muted" style={{ fontSize: '0.75rem' }}>—</span>
+                                                <span style={{ color: 'var(--text-muted)' }}>—</span>
                                             )}
                                         </td>
-                                        <td className="cell-muted" style={{ fontSize: '0.75rem' }}>
-                                            {new Date(project.createdAt).toLocaleDateString(undefined, {
-                                                month: 'short',
+                                        <td style={{ color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
+                                            {new Date(p.createdAt).toLocaleDateString(undefined, {
                                                 day: 'numeric',
+                                                month: 'short',
                                                 year: 'numeric',
                                             })}
                                         </td>
                                         <td>
                                             <button
                                                 type="button"
-                                                className="btn-tab"
-                                                onClick={() =>
+                                                className="btn btn-secondary btn-sm"
+                                                onClick={() => {
                                                     setSelectedSnippetProjectId(
-                                                        selectedSnippetProjectId === project.id ? null : project.id
-                                                    )
-                                                }
+                                                        selectedSnippetProjectId === (p.id || p._id)
+                                                            ? null
+                                                            : (p.id || p._id)
+                                                    );
+                                                }}
                                             >
-                                                {selectedSnippetProjectId === project.id ? 'Hide' : 'Setup'}
+                                                <Code2 size={13} />
+                                                Setup
                                             </button>
-                                            {selectedSnippetProjectId === project.id && (
-                                                <div style={{ marginTop: '0.5rem' }}>
-                                                    <SdkSnippetGenerator projectName={project.name} />
-                                                </div>
-                                            )}
                                         </td>
                                         <td style={{ textAlign: 'right' }}>
                                             <Link
-                                                to={`/projects/${project.id}`}
-                                                className="btn-secondary"
+                                                to={`/projects/${p.id || p._id}`}
+                                                className="btn btn-secondary btn-sm"
                                             >
                                                 View errors →
                                             </Link>
@@ -589,102 +569,82 @@ function DashboardPage() {
                         </table>
                     </div>
                 )}
-            </div>
 
-            {/* Onboard Project */}
-            <div className="onboard-section">
-                <hr className="section-divider" />
-                <div className="section-header-inline">
-                    <h2 style={{ fontSize: '0.85rem' }}>Onboard a project</h2>
-                </div>
-                <form onSubmit={handleCreate} className="onboard-form">
-                    <div className="field">
-                        <label htmlFor="project-name">Project name</label>
-                        <input
-                            id="project-name"
-                            type="text"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            placeholder="e.g. auth-service"
-                            required
+                {/* Sdk Snippet Drawer if triggered */}
+                {selectedSnippetProjectId && (
+                    <div style={{ marginTop: '1.25rem' }}>
+                        <SdkSnippetGenerator
+                            projectId={selectedSnippetProjectId}
+                            projectName={projects.find((p) => (p.id || p._id) === selectedSnippetProjectId)?.name}
+                            onClose={() => setSelectedSnippetProjectId(null)}
                         />
-                    </div>
-                    <div className="field">
-                        <label htmlFor="project-repo">GitHub repo <span className="label-opt">(optional)</span></label>
-                        <input
-                            id="project-repo"
-                            type="text"
-                            value={githubRepo}
-                            onChange={(e) => setGithubRepo(e.target.value)}
-                            placeholder="owner/repo"
-                        />
-                    </div>
-                    <button type="submit" className="btn btn-primary" disabled={creating}>
-                        {creating ? 'Creating…' : 'Create project'}
-                    </button>
-                </form>
-                {createError && <p className="alert alert-error" role="alert" style={{ marginTop: '0.75rem' }}>{createError}</p>}
-
-                {newApiKey && (
-                    <div className="setup-guide" style={{ marginTop: '1.25rem' }}>
-                        <div className="setup-guide-header">
-                            <h3 className="setup-guide-title">Project Created: {newProjectName}</h3>
-                            <p className="setup-guide-desc">
-                                Save your ingestion API key and configure your application to report runtime errors.
-                            </p>
-                        </div>
-
-                        <div className="setup-steps">
-                            <div className="setup-step">
-                                <div className="setup-step-heading">
-                                    <span className="setup-step-num">01</span>
-                                    <h4 className="setup-step-title">Save your Ingestion API Key (Shown Once)</h4>
-                                </div>
-                                <p className="setup-step-body">
-                                    This raw key will <strong>not be displayed again</strong>. Store it as an environment variable (<code>FAULTLINE_API_KEY</code>) on your server. Never commit it to source control or expose it in client-side code.
-                                </p>
-                                <code className="api-key-reveal">{newApiKey}</code>
-                                {githubRepo && (
-                                    <div className="setup-notice">
-                                        <strong>GitHub Context:</strong> <code>{githubRepo}</code> is linked for AI source analysis. It does <em>not</em> auto-instrument your application.
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="setup-step">
-                                <div className="setup-step-heading">
-                                    <span className="setup-step-num">02</span>
-                                    <h4 className="setup-step-title">Add Error Reporting to Your Application</h4>
-                                </div>
-                                <p className="setup-step-body">
-                                    Send runtime exceptions via authenticated HTTP to Faultline.
-                                </p>
-                                <SdkSnippetGenerator projectName={newProjectName} />
-                            </div>
-
-                            <div className="setup-step">
-                                <div className="setup-step-heading">
-                                    <span className="setup-step-num">03</span>
-                                    <h4 className="setup-step-title">Next Steps</h4>
-                                </div>
-                                <p className="setup-step-body">
-                                    1. Save <code>FAULTLINE_API_KEY</code> in your application environment.<br />
-                                    2. Add error reporting to your server error handler.<br />
-                                    3. Trigger or send a test error.<br />
-                                    4. Return to your project dashboard to verify that events appear.
-                                </p>
-                                <div style={{ marginTop: '0.4rem' }}>
-                                    <Link to="/docs" className="topbar-link" style={{ fontSize: '0.78rem', textDecoration: 'underline' }}>
-                                        View complete API reference →
-                                    </Link>
-                                </div>
-                            </div>
-                        </div>
                     </div>
                 )}
-            </div>
-        </div>
+            </section>
+
+            {/* Onboard a Project Form (Refined Secondary Surface) */}
+            <section className="dash-section" id="onboard">
+                <div className="dash-section-header">
+                    <h2 className="dash-section-title">Onboard a project</h2>
+                </div>
+
+                <div className="chart-surface" style={{ padding: '1.25rem 1.5rem' }}>
+                    <form onSubmit={handleCreate} style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                        <div className="form-group" style={{ flex: '1 1 200px' }}>
+                            <label htmlFor="project-name">Project name</label>
+                            <input
+                                id="project-name"
+                                type="text"
+                                placeholder="e.g. auth-service"
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                required
+                            />
+                        </div>
+
+                        <div className="form-group" style={{ flex: '1 1 240px' }}>
+                            <label htmlFor="github-repo">
+                                GitHub repo <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span>
+                            </label>
+                            <input
+                                id="github-repo"
+                                type="text"
+                                placeholder="owner/repo"
+                                value={githubRepo}
+                                onChange={(e) => setGithubRepo(e.target.value)}
+                            />
+                        </div>
+
+                        <button
+                            type="submit"
+                            className="btn btn-primary"
+                            disabled={creating || !name.trim()}
+                            style={{ height: '34px' }}
+                        >
+                            <Plus size={15} />
+                            {creating ? 'Creating…' : 'Create project'}
+                        </button>
+                    </form>
+
+                    {createError && (
+                        <p style={{ color: 'var(--critical)', fontSize: '0.78rem', marginTop: '0.75rem' }}>
+                            {createError}
+                        </p>
+                    )}
+
+                    {/* New Project API Key Banner */}
+                    {newApiKey && (
+                        <div style={{ marginTop: '1.25rem' }}>
+                            <SdkSnippetGenerator
+                                projectId={projects[0]?.id || projects[0]?._id}
+                                apiKey={newApiKey}
+                                projectName={newProjectName}
+                                onClose={() => setNewApiKey(null)}
+                            />
+                        </div>
+                    )}
+                </div>
+            </section>
+        </AppLayout>
     );
 }
-
-export default DashboardPage;
