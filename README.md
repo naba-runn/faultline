@@ -2,9 +2,11 @@
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](#verification-and-test-suite)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D20.0.0-blue)](#tech-stack)
+[![React Version](https://img.shields.io/badge/react-18.x-61dafb)](#tech-stack)
+[![Vite Version](https://img.shields.io/badge/vite-6.x-646cff)](#tech-stack)
 [![License](https://img.shields.io/badge/license-MIT-green)](#license-and-documentation)
 
-> Faultline is a real-time error tracking and AI-grounded root-cause intelligence platform. It provides automated deduplication, source-map resolution, baseline anomaly detection, and asynchronous AI enrichment powered by Google Gemini 2.5 Flash.
+> **Faultline** is a modern, developer-first observability platform that captures runtime exceptions, normalizes stack traces with SHA-256 fingerprinting, deduplicates issues into error groups, resolves minified code via Source Maps v3, and delivers asynchronous AI-grounded root-cause diagnosis powered by **Google Gemini 2.5 Flash**.
 
 ---
 
@@ -12,70 +14,59 @@
 
 ![Faultline End-to-End Workflow](docs/assets/faultline-demo.gif)
 
-*Figure 1: End-to-end event execution path — Error Simulation -> Stack Fingerprinting & Grouping -> Async AI Enrichment -> Live SSE Dashboard Push.*
-
----
-
-## Deployed Environments
-
-| Service | Endpoint / URL | Status |
-| :--- | :--- | :--- |
-| **Web Dashboard UI** | [https://faultline-dashboard.vercel.app](https://faultline-dashboard.vercel.app) | Production |
-| **Express API Service** | [https://faultline-api.onrender.com](https://faultline-api.onrender.com) | Production |
-| **Live API Documentation** | [https://faultline-api.onrender.com/docs](https://faultline-api.onrender.com/docs) | Active |
-| **Health Check** | [https://faultline-api.onrender.com/health](https://faultline-api.onrender.com/health) | Active |
+*Figure 1: End-to-end telemetry execution path — Error Ingestion & Fingerprinting $\rightarrow$ Group Deduplication $\rightarrow$ Asynchronous Gemini AI Root Cause Analysis $\rightarrow$ Real-Time Server-Sent Events (SSE) Live Stream.*
 
 ---
 
 ## Key Features
 
-- **AI Root-Cause Intelligence**: Asynchronous background enrichment using Google Gemini 2.5 Flash, grounded with GitHub code repository context.
-- **Real-Time SSE Dashboard**: Server-Sent Events (SSE) stream live error occurrences, count updates, and enrichment completions directly to the client without page reloads.
-- **Source-Map Resolution**: Synchronous JavaScript Source Map v3 resolution (`source-map-js`) mapping minified production stack frames back to original source code files.
-- **Trend and Spike Detection**: Statistical baseline algorithm evaluating trailing 24-hour error frequency to detect real anomaly spikes.
-- **Multi-Channel Alerting**: Instant notification system supporting Resend email delivery for new error groups and volume spikes.
-- **Environment and Release Tagging**: Categorize issues by environment (`production`, `staging`) and trace bugs to exact release builds (`v1.4.2`).
-- **Search, Filters and Saved Views**: Deep error searching by regex message matching, status (`open`, `resolved`, `ignored`), and AI severity (`critical`, `high`, `medium`, `low`).
-- **SDK Snippet Generator**: Copyable onboarding code snippets for cURL, Node.js / Express, and Python.
-- **Live Public API Documentation**: Built-in interactive documentation available at `/docs` rendered dynamically from raw API specifications.
+- **Grounded AI Root-Cause Analysis**: Asynchronous background worker uses **Google Gemini 2.5 Flash** combined with GitHub code repository context to diagnose the exact trigger, calculate confidence scores, pinpoint affected functions, and suggest remediation steps.
+- **Real-Time Live Telemetry (SSE)**: Server-Sent Events push live error occurrences, count updates, and AI enrichment completions directly to open browser dashboards without polling.
+- **Source-Map v3 Stack Trace Resolution**: Synchronous stack re-mapping via `source-map-js` resolves minified production bundle traces (`bundle.min.js:1:2840`) back to original TypeScript/JavaScript source files (`src/services/paymentService.ts:42`).
+- **24-Hour Error Frequency & Spike Detection**: Statistical anomaly algorithm compares hourly error velocity against a trailing 24-hour moving baseline to detect and flag sudden incident surges.
+- **SHA-256 Stack Fingerprinting & Deduplication**: High-throughput ingestion engine normalizes dynamic values (IDs, hex hashes, memory addresses) and fingerprints frames for atomic error grouping.
+- **Interactive Multi-Language SDK Snippets**: Dynamic setup modal and dedicated documentation providing copy-paste integration snippets for **Node.js / Express**, **Python / Flask / FastAPI**, and **cURL**.
+- **Interactive API Documentation Portal (`/docs`)**: Built-in, searchable API reference with schema definitions, method badges, interactive code tabs, and architecture flowcharts.
+- **Multi-Channel Alerting**: Built-in alerting engine with support for email dispatch via the **Resend API** on new error groups and anomalous volume spikes.
+- **Light / Dark Theme Support**: Crafted custom CSS design system with typography, monospace telemetry viewer, and accessible contrast ratios.
 
 ---
 
-## Architecture Overview
+## System Architecture & Data Flow
 
-![Faultline Architecture Diagram](docs/assets/architecture.png)
+![Faultline System Architecture](docs/assets/architecture.png)
 
 ```
                       +-------------------+
-                      |   Client SDKs     |
+                      |   Client Apps     |
                       | (Node/Python/curl)|
                       +---------+---------+
                                 |
-                                | POST /api/events (API Key Authed)
+                                | POST /api/events (Bearer flt_...)
                                 v
                       +-------------------+
                       |   Express API     |
-                      |   (server.js)     |
+                      | (Ingestion Engine)|
                       +----+---------+----+
                            |         |
          +-----------------+         +------------------+
-         |                                              |
+         | (Atomic Upsert)                              | (Enqueue Job)
          v                                              v
 +------------------+                          +-------------------+
-|  MongoDB Atlas   |                          | Render Key Value  |
-| (Groups & Events)|                          | (Redis Queue/PubSub)
+|  MongoDB Atlas   |                          |   Redis & BullMQ  |
+| (Groups & Events)|                          | (Queue & Pub/Sub) |
 +------------------+                          +---------+---------+
          ^                                              |
-         |                                              v
+         | (State Fetch)                                v
 +--------+---------+                          +-------------------+
 |  React Dashboard |<======== SSE Stream =====| Background Worker |
-| (Vite App @ /)   |   (Real-time push)       |    (worker.js)    |
+| (Vite SPA @ /)   |   (Live Push Updates)    |    (worker.js)    |
 +------------------+                          +---------+---------+
                                                         |
                                                         v
                                               +-------------------+
                                               | Google Gemini AI  |
-                                              | & GitHub API      |
+                                              | & GitHub Code VCS |
                                               +-------------------+
 ```
 
@@ -83,41 +74,70 @@
 
 ## Platform Screenshots
 
-### Observability Dashboard Overview
+### 1. Observability Dashboard Overview
 ![Faultline Dashboard Overview](docs/assets/dashboard-overview.png)
-*Figure 2: Real-time multi-project dashboard showing error volume trends, active spike anomalies, unresolved counts, and recent incident triage.*
+*Figure 2: Real-time multi-project overview featuring 24-hour error volume timeline, active spike indicators, unresolved counters, and recent incident triage.*
 
-### Project Error Groups & Triage
+### 2. Project Error Groups & Filtering
 ![Project Error Groups and Filtering](docs/assets/project-error-groups.png)
-*Figure 3: Dedicated project view with instant search, severity/status filters, release tracking, simulation triggers, and pagination.*
+*Figure 3: Dedicated project view with instant search, severity/status filters (All, Open, High/Critical, Resolved, Ignored), release tracking, and test simulation triggers.*
 
-### AI Root-Cause Analysis & Source Map Viewer
+### 3. AI Root-Cause Diagnosis & Source Map Viewer
 ![Gemini 2.5 Flash AI Root Cause Analysis](docs/assets/group-detail-ai.png)
-*Figure 4: Grounded AI root cause diagnosis with confidence metrics, affected file & function detection, suggested remediation checklist, and source-mapped stack traces.*
+*Figure 4: Grounded AI root-cause diagnosis card with 94% confidence score, affected file and function detection, interactive remediation checklist, and source-mapped stack trace console.*
 
-### Interactive API Documentation & SDK Setup
+### 4. Interactive API Documentation & SDK Setup
 ![API Documentation and SDK Snippet Generator](docs/assets/api-docs-sdks.png)
-*Figure 5: Built-in developer documentation with live endpoint search, parameter tables, JSON schemas, and multi-language client snippets.*
+*Figure 5: Built-in developer documentation portal with live endpoint search, parameter tables, request/response JSON schemas, and multi-language client snippets.*
 
 ---
 
 ## Tech Stack
 
 ### Frontend (`/client`)
-- **Framework**: React 18 + Vite
+- **Framework**: React 18 + Vite 6
 - **Routing**: React Router DOM v6
-- **Styling**: Vanilla CSS custom design system with dark-mode tokens and CSS grid layouts
-- **HTTP Client**: Axios with JWT interceptors
-- **Markdown Parsing**: `marked` v15
+- **Styling**: Vanilla CSS Design System with light/dark mode CSS tokens, responsive flex/grid layouts, and glassmorphic elevations
+- **HTTP Client**: Axios with automatic JWT bearer interceptors and dynamic environment resolution
+- **Real-Time Feed**: Browser native `EventSource` (SSE) with ticket-based authentication and auto-reconnect
+- **Markdown & Code Display**: `marked` v15 with custom sanitization
 
 ### Backend (`/server`)
-- **Runtime**: Node.js (ES Modules / CommonJS)
+- **Runtime**: Node.js (v20+)
 - **Framework**: Express.js
 - **Database**: MongoDB Atlas via Mongoose ORM
-- **Queue and Real-Time**: BullMQ + Redis (Render Key Value / local Redis)
-- **AI Integration**: `@google/genai` (Gemini 2.5 Flash)
-- **Email Delivery**: Resend API
-- **Source Maps**: `source-map-js`
+- **Queue & Event Pub/Sub**: Redis (local or Render Key Value) with BullMQ
+- **AI Intelligence**: `@google/genai` (Google Gemini 2.5 Flash)
+- **Source Maps**: `source-map-js` v1.2
+- **Email Notifications**: Resend API
+- **Security & Protection**: `helmet`, `cors`, `express-rate-limit`, `jsonwebtoken`, `bcryptjs`
+
+---
+
+## REST API Specifications
+
+| Method | Endpoint | Description | Auth Required |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/auth/register` | Register a new user account | Public |
+| `POST` | `/api/auth/login` | Authenticate user and receive JWT | Public |
+| `GET` | `/api/auth/me` | Fetch authenticated user profile | Bearer JWT |
+| `POST` | `/api/events` | Ingest runtime error event | API Key (`flt_...`) |
+| `POST` | `/api/sourcemaps` | Upload JavaScript `.map` file for a release | API Key (`flt_...`) |
+| `GET` | `/api/projects` | List all monitored projects | Bearer JWT |
+| `POST` | `/api/projects` | Create a new project & generate API key | Bearer JWT |
+| `GET` | `/api/projects/:id` | Get project metadata & stats | Bearer JWT |
+| `PATCH` | `/api/projects/:id` | Update project name or repository | Bearer JWT |
+| `DELETE`| `/api/projects/:id` | Delete project and cascade purge events | Bearer JWT |
+| `POST` | `/api/projects/:id/simulate` | Ingest simulated test runtime error | Bearer JWT |
+| `GET` | `/api/projects/:id/groups` | List paginated error groups with filters | Bearer JWT |
+| `GET` | `/api/groups/:id` | Fetch error group detail & AI root cause | Bearer JWT |
+| `PATCH` | `/api/groups/:id/status` | Update status (`open`, `resolved`, `ignored`)| Bearer JWT |
+| `POST` | `/api/sse/ticket` | Generate temporary single-use SSE ticket | Bearer JWT |
+| `GET` | `/api/sse/stream` | Subscribe to live Server-Sent Events feed | Query Ticket |
+| `GET` | `/api/alerts/:projectId` | Get project email alert configuration | Bearer JWT |
+| `PATCH` | `/api/alerts/:projectId` | Update alert thresholds and recipients | Bearer JWT |
+| `GET` | `/api/overview` | Aggregated multi-project dashboard stats | Bearer JWT |
+| `GET` | `/health` | System health check and status | Public |
 
 ---
 
@@ -126,88 +146,86 @@
 ### Prerequisites
 - **Node.js** `>= 20.0.0`
 - **npm** `>= 10.0.0`
-- **MongoDB Atlas** cluster (or local MongoDB)
+- **MongoDB Atlas** database URI (or local `mongod`)
 - **Redis** instance (local `redis-server` or cloud Redis)
-- **Gemini API Key** (from Google AI Studio)
+- **Google Gemini API Key** (from Google AI Studio)
 
-### 1. Repository Setup
+---
+
+### 1. Clone & Install Dependencies
 
 ```bash
 git clone https://github.com/naba-runn/faultline.git
 cd faultline
+
+# Install backend dependencies
+cd server && npm install
+
+# Install frontend dependencies
+cd ../client && npm install
 ```
 
-### 2. Backend Setup
+---
 
-```bash
-cd server
-npm install
-cp .env.example .env
-```
+### 2. Configure Backend Environment
 
-Configure environment variables in `.env`:
+Create `server/.env` with your credentials:
+
 ```env
 PORT=5050
+NODE_ENV=development
 MONGODB_URI=mongodb+srv://<user>:<password>@cluster.mongodb.net/faultline
-JWT_SECRET=your-super-secret-jwt-key
-GEMINI_API_KEY=your-gemini-api-key
+JWT_SECRET=your_super_secret_jwt_key_at_least_32_characters
 REDIS_URL=redis://127.0.0.1:6379
-RESEND_API_KEY=re_123456789 (optional for email alerts)
+GEMINI_API_KEY=your_google_gemini_api_key
+RESEND_API_KEY=re_123456789  # (Optional: for email alerts)
+CLIENT_ORIGIN=http://localhost:5173
 ```
 
-Start the development server and worker process:
+---
+
+### 3. Start Local Development Services
+
 ```bash
-# Terminal 1: API Server
+# Terminal 1: Express Ingestion API
+cd server
 npm run dev
 
-# Terminal 2: Background Enrichment Worker
+# Terminal 2: Background AI Enrichment Worker
+cd server
 npm run worker:dev
-```
 
-### 3. Frontend Setup
-
-```bash
-cd ../client
-npm install
+# Terminal 3: Vite React Frontend
+cd client
 npm run dev
 ```
 
-Access the UI at `http://localhost:5173`.
+Open **`http://localhost:5173`** in your browser to access the dashboard.
 
 ---
 
-## Demo Application
+## Verification & Test Suite
 
-Faultline includes a pre-configured demo application for testing event ingestion, minified source maps, and error spikes:
-
-```bash
-cd demo-app
-npm install
-node index.js          # Ingests sample runtime errors
-node minified-demo.js  # Demonstrates source-map upload and minified frame resolution
-```
-
----
-
-## Verification and Test Suite
-
-The server includes a suite of 54 unit and integration tests covering deduplication, trend calculation, spike evaluation, source map resolution, and API contracts:
+The backend contains 54 automated unit and integration tests covering deduplication algorithms, spike anomaly detection, source map resolution, and REST contracts:
 
 ```bash
 cd server
 npm test
 ```
 
+To run the full client production build check:
+```bash
+cd client
+npm run build
+```
+
 ---
 
 ## Production Deployment
 
+### Option A: Decoupled Cloud Deployment (Vercel + Render / Railway)
 
-Faultline supports two production deployment architectures:
-
-### Option A: Decoupled Deployment (Vercel + Render / Railway)
-
-1. **Backend API Web Service (Render / Railway / Fly.io)**:
+1. **Express API Web Service (Render / Railway / Fly.io)**:
    - Root Directory: `server`
    - Build Command: `npm install`
    - Start Command: `node server.js`
@@ -215,26 +233,29 @@ Faultline supports two production deployment architectures:
      - `NODE_ENV=production`
      - `MONGODB_URI=mongodb+srv://...`
      - `REDIS_URL=redis://...`
-     - `JWT_SECRET=your_long_secure_secret`
-     - `CLIENT_ORIGIN=https://your-frontend.vercel.app` (supports comma-separated origins)
-     - `GEMINI_API_KEY=your_gemini_key` (optional for AI summaries)
-     - `RESEND_API_KEY=re_...` (optional for email alerts)
+     - `JWT_SECRET=your_secure_secret`
+     - `CLIENT_ORIGIN=https://your-dashboard.vercel.app` (supports comma-separated origins)
+     - `GEMINI_API_KEY=your_gemini_key`
+     - `RESEND_API_KEY=re_...` (optional)
 
 2. **Background Worker Service (Render / Railway Background Worker)**:
    - Root Directory: `server`
+   - Build Command: `npm install`
    - Start Command: `node worker.js`
    - Environment Variables: Same `MONGODB_URI`, `REDIS_URL`, `GEMINI_API_KEY`, `RESEND_API_KEY` as above.
 
-3. **Frontend SPA (Vercel / Netlify / Cloudflare Pages)**:
+3. **Frontend Dashboard SPA (Vercel / Netlify / Cloudflare Pages)**:
    - Root Directory: `client`
    - Build Command: `npm run build`
    - Output Directory: `dist`
-   - Environment Variable: `VITE_API_BASE_URL=https://your-backend-api.onrender.com/api`
-   - Includes `client/vercel.json` for seamless SPA client-side routing rewrites.
+   - Environment Variable: `VITE_API_BASE_URL=https://your-api.onrender.com/api`
+   - Includes `client/vercel.json` for client-side SPA routing fallback.
 
-### Option B: Unified Single-Service Deployment (Docker / Monorepo Container)
+---
 
-When running in production, the Express backend automatically serves the prebuilt `client/dist` static assets and handles SPA routing fallback for any non-API routes.
+### Option B: Unified Single-Service Deployment (Docker / VPS / Monorepo Container)
+
+When running in production, the Express server automatically serves the prebuilt `client/dist` static assets and handles SPA routing fallback for all non-API web routes.
 
 1. Build both client and server:
    ```bash
@@ -245,12 +266,12 @@ When running in production, the Express backend automatically serves the prebuil
    ```bash
    cd server && node server.js
    ```
-3. The app is accessible at `http://<your-server-domain>:<PORT>` with zero CORS configuration required.
+3. The platform is accessible at `http://<your-domain>:<PORT>` with zero CORS configuration required.
 
 ---
 
-## License and Documentation
+## License & Documentation
 
-- **Live API Documentation**: Accessible within the running app at `/docs`.
-- **System Decisions**: Architectural Decision Records in `docs/DECISIONS.md`.
+- **Interactive API Documentation**: Accessible within the application at `/docs`.
+- **Architectural Decision Records**: Available in [`docs/DECISIONS.md`](docs/DECISIONS.md).
 - **License**: MIT
