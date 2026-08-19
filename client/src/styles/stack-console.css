@@ -1,0 +1,93 @@
+/* ==========================================================================
+   DEVELOPER STACK TRACE CONSOLE
+   ========================================================================== */
+
+.stack-console {
+    background-color: #161816;
+    color: #E2E4E0;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-strong);
+    overflow: hidden;
+    margin-bottom: 2rem;
+    font-family: var(--font-mono);
+}
+
+html.dark .stack-console {
+    background-color: #0E110F;
+    border-color: var(--border);
+}
+
+.stack-console-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.65rem 1rem;
+    background-color: #1F2320;
+    border-bottom: 1px solid #2B312D;
+}
+
+.stack-console-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #9DA39D;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.stack-toggle-group {
+    display: flex;
+    border: 1px solid #363D38;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.stack-toggle-btn {
+    background: transparent;
+    border: none;
+    color: #9DA39D;
+    padding: 2px 8px;
+    font-size: 0.72rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.stack-toggle-btn.active {
+    background-color: #363D38;
+    color: #FFFFFF;
+}
+
+.stack-frames-list {
+    padding: 0.75rem 0;
+    overflow-x: auto;
+}
+
+.stack-frame-row {
+    padding: 0.35rem 1rem;
+    font-size: 0.78rem;
+    display: flex;
+    align-items: baseline;
+    gap: 0.65rem;
+    transition: background 100ms ease;
+}
+
+.stack-frame-row:hover {
+    background-color: rgba(255, 255, 255, 0.04);
+}
+
+.stack-frame-fn {
+    color: #61AFEF;
+    font-weight: 500;
+}
+
+.stack-frame-file {
+    color: #8C938D;
+}
+
+.stack-raw-pre {
+    padding: 1rem;
+    font-size: 0.75rem;
+    line-height: 1.6;
+    overflow-x: auto;
+    color: #D1D5DB;
+}
+

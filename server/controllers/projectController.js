@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const projectService = require('../services/projectService');
 const errorGroupService = require('../services/errorGroupService');
+const overviewService = require('../services/overviewService');
 const { enqueueEnrichment } = require('../services/enrichmentQueue');
 const { enqueueNewGroupAlert, enqueueSpikeAlert } = require('../services/alertQueue');
 const sseHub = require('../services/sseHub');
@@ -176,7 +177,7 @@ const listProjects = catchAsync(async (req, res) => {
 // GET /:id so the literal path "/overview" isn't swallowed as a
 // project id.
 const getDashboardOverview = catchAsync(async (req, res) => {
-  const overview = await errorGroupService.getDashboardOverview(req.user._id);
+  const overview = await overviewService.getDashboardOverview(req.user._id);
 
   return sendSuccess(res, 200, overview);
 });

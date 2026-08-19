@@ -1,0 +1,93 @@
+/* ==========================================================================
+   SDK SNIPPET GENERATOR
+   ========================================================================== */
+
+.sdk-snippet-container {
+    background-color: #161816;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    color: #E8E9E5;
+    box-shadow: var(--shadow-sm);
+}
+
+html.dark .sdk-snippet-container {
+    background-color: #0E110F;
+    border-color: var(--border);
+}
+
+.sdk-snippet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.85rem;
+    background-color: #1F2320;
+    border-bottom: 1px solid #2B312D;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.sdk-snippet-tabs {
+    display: flex;
+    gap: 2px;
+}
+
+.sdk-tab {
+    background: transparent;
+    border: none;
+    color: #929993;
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 150ms ease, color 150ms ease;
+}
+
+.sdk-tab:hover {
+    color: #FFFFFF;
+}
+
+.sdk-tab.active {
+    background-color: #2D3430;
+    color: #FFFFFF;
+    font-weight: 600;
+}
+
+.btn-copy-snippet {
+    background-color: #2D3430;
+    border: 1px solid #3D4641;
+    color: #E8E9E5;
+    font-size: 0.72rem;
+    font-weight: 500;
+    padding: 3px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 150ms ease;
+}
+
+.btn-copy-snippet:hover {
+    background-color: #3D4641;
+}
+
+.sdk-code-block {
+    padding: 1rem 1.25rem;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    line-height: 1.55;
+    overflow-x: auto;
+    color: #E0E2DE;
+}
+
+.sdk-snippet-note {
+    padding: 0.65rem 1rem;
+    background-color: #1A1E1B;
+    border-top: 1px solid #252B27;
+    font-size: 0.72rem;
+    color: #8E9690;
+}
+
+.sdk-snippet-note code {
+    color: #61AFEF;
+}
+

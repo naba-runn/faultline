@@ -15,15 +15,9 @@ import api from '../api/axios.js';
 import { useProjectSSE } from '../hooks/useProjectSSE.js';
 import AppLayout from '../components/AppLayout.jsx';
 import SdkSnippetGenerator from '../components/SdkSnippetGenerator.jsx';
-
-const SEVERITY_LABEL = {
-    low: 'Low',
-    medium: 'Medium',
-    high: 'High',
-    critical: 'Critical',
-};
-
-const STATUS_OPTIONS = ['open', 'resolved', 'ignored'];
+import { formatRelativeTime } from '../utils/formatters.js';
+import { SEVERITY_LABEL, STATUS_OPTIONS } from '../utils/uiConstants.js';
+import ErrorGroupsTableSkeleton from '../components/project-detail/ErrorGroupsTableSkeleton.jsx';
 
 const PRESETS = [
     { id: 'all', label: 'All', status: 'all', severity: 'all', search: '' },
@@ -33,61 +27,6 @@ const PRESETS = [
     { id: 'ignored', label: 'Ignored', status: 'ignored', severity: 'all', search: '' },
 ];
 
-function formatRelativeTime(iso) {
-    if (!iso) return '—';
-    const diffMs = Date.now() - new Date(iso).getTime();
-    const minutes = Math.round(diffMs / 60000);
-    if (minutes < 1) return 'just now';
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.round(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.round(hours / 24);
-    return `${days}d ago`;
-}
-
-function ErrorGroupsTableSkeleton({ count = 4 }) {
-    return (
-        <div className="table-wrap" aria-busy="true" aria-label="Loading error groups">
-            <table>
-                <thead>
-                    <tr>
-                        <th style={{ width: '85px' }}>Severity</th>
-                        <th>Issue</th>
-                        <th style={{ width: '120px' }}>Release</th>
-                        <th style={{ width: '85px', textAlign: 'right' }}>Events</th>
-                        <th style={{ width: '120px' }}>Last Seen</th>
-                        <th style={{ width: '110px' }}>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {Array.from({ length: count }).map((_, i) => (
-                        <tr key={i}>
-                            <td>
-                                <span className="skeleton" style={{ width: '55px', height: '18px' }} />
-                            </td>
-                            <td>
-                                <span className="skeleton" style={{ width: `${180 + (i * 40) % 120}px`, height: '16px' }} />
-                                <span className="skeleton" style={{ width: '120px', height: '11px', display: 'block', marginTop: '4px' }} />
-                            </td>
-                            <td>
-                                <span className="skeleton" style={{ width: '70px', height: '18px' }} />
-                            </td>
-                            <td style={{ textAlign: 'right' }}>
-                                <span className="skeleton" style={{ width: '30px', height: '14px' }} />
-                            </td>
-                            <td>
-                                <span className="skeleton" style={{ width: '60px', height: '12px' }} />
-                            </td>
-                            <td>
-                                <span className="skeleton" style={{ width: '75px', height: '22px' }} />
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </div>
-    );
-}
 
 export default function ProjectDetailPage() {
     const { id } = useParams();

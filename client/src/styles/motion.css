@@ -1,0 +1,64 @@
+/* ==========================================================================
+   SKELETON & ANIMATIONS
+   ========================================================================== */
+
+.skeleton {
+    display: inline-block;
+    background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--bg-tertiary) 50%, var(--bg-secondary) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: var(--radius-sm);
+}
+
+@keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+.page-loading-state {
+    min-height: 60vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.loading-spinner {
+    width: 28px;
+    height: 28px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Responsive Overrides */
+@media (max-width: 860px) {
+    .app-sidebar {
+        position: fixed;
+        left: -250px;
+        transition: left var(--transition-normal);
+    }
+
+    .app-sidebar.open {
+        left: 0;
+    }
+
+    .sidebar-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.4);
+        z-index: 90;
+    }
+
+    .mobile-topbar {
+        display: flex;
+    }
+
+    .app-workspace {
+        padding: 1.5rem 1rem 3rem 1rem;
+    }
+}

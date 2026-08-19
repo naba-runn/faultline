@@ -1,0 +1,63 @@
+/* ==========================================================================
+   RECENT SPIKES (UNBOXED LIST WITH FAULTLINE SEVERITY MARKERS)
+   ========================================================================== */
+
+.spikes-list {
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid var(--border);
+}
+
+.spike-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.65rem 0.5rem;
+    border-bottom: 1px solid var(--border);
+    transition: background var(--transition-fast);
+    border-left: 3px solid var(--warning);
+    background-color: var(--bg-surface);
+    margin-bottom: 2px;
+}
+
+.spike-row:hover {
+    background-color: var(--bg-secondary);
+}
+
+.spike-left {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    min-width: 0;
+}
+
+.spike-tag {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background-color: var(--warning-bg);
+    color: var(--warning);
+    border: 1px solid var(--warning-border);
+    flex-shrink: 0;
+}
+
+.spike-title {
+    font-weight: 600;
+    font-size: 0.82rem;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.spike-meta {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    white-space: nowrap;
+}
+

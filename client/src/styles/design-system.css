@@ -1,0 +1,149 @@
+/* ==========================================================================
+   FAULTLINE DESIGN SYSTEM
+   Warm neutral ivory workspace + dark graphite sidebar + deep muted teal accent
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+
+:root {
+    /* Color Palette - Light (Default) */
+    --bg-primary: #F6F5F2;
+    --bg-surface: #FFFFFF;
+    --bg-secondary: #EFEEE9;
+    --bg-tertiary: #E6E4DE;
+
+    --text-primary: #1D1E1B;
+    --text-secondary: #686A65;
+    --text-muted: #91938D;
+    --text-faint: #B5B7B1;
+
+    --border: #DDDCD6;
+    --border-light: #EAE9E3;
+    --border-strong: #C4C2BA;
+
+    --accent: #365C5A;
+    --accent-hover: #294A48;
+    --accent-light: #E5EEEC;
+    --accent-subtle: rgba(54, 92, 90, 0.08);
+    --accent-rgb: 54, 92, 90;
+
+    --critical: #B5473A;
+    --critical-bg: rgba(181, 71, 58, 0.09);
+    --critical-border: rgba(181, 71, 58, 0.25);
+
+    --warning: #B17A32;
+    --warning-bg: rgba(177, 122, 50, 0.09);
+    --warning-border: rgba(177, 122, 50, 0.25);
+
+    --success: #4E765F;
+    --success-bg: rgba(78, 118, 95, 0.09);
+    --success-border: rgba(78, 118, 95, 0.25);
+
+    /* Sidebar Palette (Dark Graphite) */
+    --sidebar-bg: #202522;
+    --sidebar-surface: #272D2A;
+    --sidebar-border: #2B332F;
+    --sidebar-text: #E8E9E5;
+    --sidebar-muted: #929993;
+    --sidebar-accent: #3E6B68;
+    --sidebar-accent-hover: #4D807D;
+    --sidebar-accent-active: #365C5A;
+
+    /* Typography */
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, Monaco, Consolas, monospace;
+
+    /* Geometry & Elevation */
+    --radius-sm: 5px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.05);
+    --shadow-elevated: 0 10px 30px rgba(0, 0, 0, 0.07);
+
+    --transition-fast: 150ms cubic-bezier(0.16, 1, 0.3, 1);
+    --transition-normal: 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Dark Mode Console Palette */
+html.dark {
+    --bg-primary: #141715;
+    --bg-surface: #1B1F1C;
+    --bg-secondary: #222724;
+    --bg-tertiary: #2B312D;
+
+    --text-primary: #ECEEEA;
+    --text-secondary: #9DA39D;
+    --text-muted: #6E756F;
+    --text-faint: #4E544F;
+
+    --border: #2C332F;
+    --border-light: #232926;
+    --border-strong: #3D4641;
+
+    --accent: #5E9491;
+    --accent-hover: #73AAA7;
+    --accent-light: rgba(94, 148, 145, 0.15);
+    --accent-subtle: rgba(94, 148, 145, 0.10);
+    --accent-rgb: 94, 148, 145;
+
+    --critical: #DE6455;
+    --critical-bg: rgba(222, 100, 85, 0.12);
+    --critical-border: rgba(222, 100, 85, 0.28);
+
+    --warning: #D99B4B;
+    --warning-bg: rgba(217, 155, 75, 0.12);
+    --warning-border: rgba(217, 155, 75, 0.28);
+
+    --success: #679E7D;
+    --success-bg: rgba(103, 158, 125, 0.12);
+    --success-border: rgba(103, 158, 125, 0.28);
+
+    --sidebar-bg: #111412;
+    --sidebar-surface: #181D1A;
+    --sidebar-border: #222824;
+    --sidebar-text: #E8E9E5;
+    --sidebar-muted: #838A84;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.4);
+    --shadow-elevated: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* ==========================================================================
+   RESET & BASE
+   ========================================================================== */
+
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html, body {
+    height: 100%;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+a {
+    color: inherit;
+    text-decoration: none;
+}
+
+code, pre, kbd {
+    font-family: var(--font-mono);
+}
+

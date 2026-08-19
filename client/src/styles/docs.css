@@ -1,0 +1,100 @@
+/* ==========================================================================
+   API DOCS LAYOUT
+   ========================================================================== */
+
+.docs-layout {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 2.5rem;
+    align-items: start;
+}
+
+@media (max-width: 860px) {
+    .docs-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+.docs-sidebar {
+    position: sticky;
+    top: 0;
+    padding: 0.5rem 0;
+    max-height: calc(100vh - 4rem);
+    overflow-y: auto;
+}
+
+.docs-toc-title {
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+}
+
+.docs-toc-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.docs-toc-link {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    padding: 0.35rem 0.5rem;
+    border-radius: var(--radius-sm);
+    transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.docs-toc-link:hover {
+    color: var(--text-primary);
+    background-color: var(--bg-secondary);
+}
+
+.docs-content-body {
+    min-width: 0;
+}
+
+.endpoint-card {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 1.25rem;
+    margin-bottom: 1.5rem;
+    box-shadow: var(--shadow-sm);
+    scroll-margin-top: 2rem;
+}
+
+.docs-toc-link.active {
+    color: var(--accent);
+    background-color: var(--accent-light);
+    font-weight: 600;
+}
+
+.endpoint-header {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    margin-bottom: 0.75rem;
+}
+
+.method-badge {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.method-get { background: var(--accent-light); color: var(--accent); }
+.method-post { background: var(--success-bg); color: var(--success); }
+.method-patch { background: var(--warning-bg); color: var(--warning); }
+.method-delete { background: var(--critical-bg); color: var(--critical); }
+
+.endpoint-path {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+

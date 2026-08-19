@@ -1,0 +1,116 @@
+/* ==========================================================================
+   OPEN VISUAL SECTIONS & CHARTS (NO GENERIC CARD-STACKING)
+   ========================================================================== */
+
+.dash-section {
+    margin-bottom: 2.25rem;
+}
+
+.dash-section-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 0.65rem;
+}
+
+.dash-section-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+}
+
+.dash-section-meta {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+
+/* Trailing 24h Error Chart */
+.chart-surface {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 1rem 1.25rem 0.85rem 1.25rem;
+    box-shadow: var(--shadow-sm);
+}
+
+.trend-chart-container {
+    width: 100%;
+}
+
+.trend-chart-svg {
+    width: 100%;
+    height: auto;
+    display: block;
+    overflow: visible;
+}
+
+.trend-chart-axis-label {
+    font-size: 10px;
+    font-family: var(--font-sans);
+    fill: var(--text-muted);
+}
+
+/* Compact Empty States (Restrained & Deliberate) */
+.empty-state-compact {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    background-color: var(--bg-surface);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-md);
+    font-size: 0.8rem;
+}
+
+.empty-state-compact-title {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.empty-state-compact-desc {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+}
+
+/* Full Empty State (Deliberate Product Moment) */
+.empty-state-card {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 3rem 2rem;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--shadow-sm);
+}
+
+.empty-state-icon-wrap {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+}
+
+.empty-state-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.35rem;
+}
+
+.empty-state-desc {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    max-width: 360px;
+    margin-bottom: 1.25rem;
+}
+
