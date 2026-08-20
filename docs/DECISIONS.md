@@ -2057,7 +2057,7 @@ above. Migrated from `CHANGELOG.md`.
 > corrected. Flagging this here as the kind of drift this
 > documentation restructuring exists to prevent going forward.
 
-## Task 38/39: Incident dedup window — fixed 30 min, not configurable
+## Task 40/41: Incident dedup window — fixed 30 min, not configurable
 
 **Decision:** Incident auto-creation (Task 39.2) checks for an
 already-open `Incident` on the same project within the last 30
@@ -2080,7 +2080,7 @@ schema field, validation, and a settings UI entry for a value no demo
 scenario needs tuned. Revisit only if false-merges or false-splits
 show up in real usage.
 
-## Task 38: Webhook secret — one global env var, not per-project
+## Task 40: Webhook secret — one global env var, not per-project
 
 **Decision:** GitHub deployment webhook signature verification
 (`middleware`, Task 38.2) checks the payload signature against a
@@ -2099,3 +2099,10 @@ in kind, only in scope.
 **Rejected:** Per-project `webhookSecret` field on `Project` — correct
 for production multi-tenancy, deferred until there's an actual need
 to demo multiple real orgs against this feature simultaneously.
+
+**Follow-up on the above:** because the secret is shared across
+projects, it authenticates "this request came from GitHub" but not
+"this `:projectId` is correct." `40.2`'s handler therefore still does
+an existence check (`Project.findById`, 404 on miss) before writing a
+`Deployment` — cheap, and closes the gap without requiring per-project
+secrets.
