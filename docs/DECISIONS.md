@@ -2056,3 +2056,46 @@ above. Migrated from `CHANGELOG.md`.
 > the code was actually committed — an incorrect status line, since
 > corrected. Flagging this here as the kind of drift this
 > documentation restructuring exists to prevent going forward.
+
+## Task 38/39: Incident dedup window — fixed 30 min, not configurable
+
+**Decision:** Incident auto-creation (Task 39.2) checks for an
+already-open `Incident` on the same project within the last 30
+minutes before creating a new one. If found, the new trigger
+(deployment regression or spike) appends to that incident's timeline
+instead of opening a fresh one. 30 minutes is a hardcoded constant,
+not a per-project setting, not read from env.
+
+**Reasoning:** This is an internal tuning knob, not a product feature
+— same category as Task 29's spike multiplier (3x) and floor (5),
+which were also kept as code constants rather than exposed settings.
+30 minutes approximates one deploy-and-monitor cycle: long enough that
+a deployment's regression flag (Task 38.4) and a spike-detection hit
+(Task 29) on the same underlying cause land in one incident instead of
+two, short enough that two unrelated bad deploys within the same hour
+don't incorrectly merge.
+
+**Rejected:** Per-project configurable window — would require a new
+schema field, validation, and a settings UI entry for a value no demo
+scenario needs tuned. Revisit only if false-merges or false-splits
+show up in real usage.
+
+## Task 38: Webhook secret — one global env var, not per-project
+
+**Decision:** GitHub deployment webhook signature verification
+(`middleware`, Task 38.2) checks the payload signature against a
+single `GITHUB_WEBHOOK_SECRET` env var, shared across all projects.
+No per-project secret field on the `Project` model.
+
+**Reasoning:** Per-project secrets are the correct answer for a real
+multi-tenant product, but would add a schema field, a UI to set/view/
+rotate it, per-project webhook URL generation, and an extra setup step
+per demoed project — cost with no payoff for a judged demo. The
+verification itself still follows `apiKeyMiddleware`'s existing
+hash-and-compare rigor (Task 6), just against the one env value
+instead of a DB lookup, so security posture per-request is unchanged
+in kind, only in scope.
+
+**Rejected:** Per-project `webhookSecret` field on `Project` — correct
+for production multi-tenancy, deferred until there's an actual need
+to demo multiple real orgs against this feature simultaneously.

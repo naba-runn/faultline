@@ -135,3 +135,82 @@ to task order. Remove an item only when it's actually resolved.
   error names fall into a generic `"Error"` bucket. Documented
   limitation, not a bug. See DECISIONS.md's fingerprint-composition
   entry.
+
+  ## Milestone 10: Deployment Intelligence & Incidents
+
+Builds on Milestone 6's async infra and Milestone 7's alerting. Both
+tasks below are additive — no changes to existing dedup/fingerprint
+logic (see Task 32's precedent for keeping additive work isolated
+from grouping internals).
+
+- [ ] **Task 38** — Deployment correlation
+  - [ ] 38.1 — `Deployment` model (project ref, sha, ref/branch, deployedAt,
+    source: "github-webhook" | "manual"). Index on `(projectId, deployedAt)`.
+  - [ ] 38.2 — GitHub deployment webhook receiver
+    (`POST /api/webhooks/github/:projectId`, signature-verified via
+    `GITHUB_WEBHOOK_SECRET`, listens for `deployment_status: success`)
+    that writes a `Deployment` row. Reuse `githubService`'s existing
+    auth pattern — do not add a second GitHub credential path.
+  - [ ] 38.3 — `services/deploymentCorrelationService.js`: for a given
+    `Deployment`, compute error-rate before (prior N minutes, default
+    15) vs after (following N minutes), per project, using existing
+    `ErrorEvent` timestamps — same trailing-window approach as Task
+    29's `trendService`, do not reinvent the windowing math.
+  - [ ] 38.4 — Threshold + flag: mark deployment `regressionSuspected`
+    when after-rate exceeds before-rate by a configurable multiplier
+    (default 3x, mirrors Task 29's spike multiplier for consistency).
+    Store the computed before/after numbers on the `Deployment` doc,
+    not recomputed on every read.
+  - [ ] 38.5 — `GET /api/projects/:id/deployments` (ownership-scoped,
+    paginated same cursor style as Task 22) + a deployment timeline
+    strip on the dashboard overview page (Task 36's widgets), each
+    entry showing sha, time, before/after rate, regression flag.
+  - [ ] 38.6 — Manual test: fire a webhook payload manually (curl or
+    a small fixture script), confirm `Deployment` row created; fire
+    a burst of `Simulate Error` calls immediately after to manufacture
+    a real rate increase, confirm `regressionSuspected` flips true.
+    Docs + commit.
+
+- [ ] **Task 39** — Incident model
+  - [ ] 39.1 — `Incident` model: project ref, title, status
+    (open/investigating/resolved), severity, triggeredBy (deployment
+    ref | spike ref | manual), affectedGroups (ErrorGroup refs),
+    timeline (array of {type, message, timestamp} — deployment,
+    error-rate-rise, ai-diagnosis, status-change, resolution),
+    aiSummary.
+  - [ ] 39.2 — Auto-creation trigger: when Task 38's regression flag
+    fires, or Task 29's spike detection fires on multiple groups
+    within a short window, create (or append to an already-open)
+    `Incident` rather than always creating a new one — dedup incidents
+    the same way Task 9 dedups errors, keyed on project + open status
+    within a time window. Do not double-fire on every event.
+  - [ ] 39.3 — AI diagnosis step: on incident creation/update, call
+    `aiService` with the affected groups' summaries + the triggering
+    deployment's commit metadata (if any) to produce a one-paragraph
+    hypothesis. Enqueue via existing `enrichmentQueue`-style job, do
+    not call Gemini synchronously in the request path (same rule as
+    Task 13/25).
+  - [ ] 39.4 — `GET /api/projects/:id/incidents`,
+    `GET /api/incidents/:id`, `PATCH /api/incidents/:id/status`
+    (ownership-scoped, same pattern as Task 18's group status PATCH).
+  - [ ] 39.5 — `IncidentDetailPage` (or a panel on `ProjectDetailPage`):
+    timeline view, affected groups list, AI hypothesis, status control.
+    Push incident-created/updated events over existing SSE channel
+    (Task 26) — do not build a second real-time mechanism.
+  - [ ] 39.6 — Manual test: trigger a deployment regression (Task 38's
+    test) and confirm an `Incident` auto-creates with a populated
+    timeline and AI hypothesis; manually resolve it via the status
+    endpoint; confirm SSE push updates a second open tab live (same
+    two-tab test pattern as Task 26.5). Docs + commit.
+
+## Notes for Milestone 10
+
+- Both tasks are read-heavy on existing services (`trendService`,
+  `enrichmentQueue`, `sseHub`, `githubService`) — resist the urge to
+  fork or duplicate their logic; extend or call into them.
+- Incident auto-creation dedup logic (39.2) is the one genuinely
+  tricky part — spec it out in `DECISIONS.md` before writing code,
+  same as Task 29's addendum did for the spike-detection algorithm.
+- Webhook signature verification (38.2) is a real security boundary —
+  treat it with the same rigor as `apiKeyMiddleware`, not as an
+  afterthought.
