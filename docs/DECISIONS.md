@@ -2106,3 +2106,87 @@ projects, it authenticates "this request came from GitHub" but not
 an existence check (`Project.findById`, 404 on miss) before writing a
 `Deployment` — cheap, and closes the gap without requiring per-project
 secrets.
+
+## Task 38: multi-project load test design
+
+**Decision:** `server/loadtest/seedTestProjects.js` provisions N
+(default 25) separate projects/API keys, and `ingest.js` round-robins
+VUs across them, instead of running k6 against a single project.
+
+**Reasoning:** `ingestLimiter` (Task 27) caps ingestion at 100
+requests/min **per project**, by design — that's the correct
+production behavior, protecting Faultline from one noisy client
+starving others. But it means a k6 run against a single project would
+mostly measure the rate limiter rejecting requests once past ~1.7
+req/s, not the real ingestion → dedup → enqueue pipeline. Spreading
+load across many projects mirrors how load would actually arrive in
+production (many customers, each within their own quota) and is a more
+honest test than the alternative.
+
+**Rejected:** Raising or disabling `ingestLimiter` for the test run —
+would test a codepath that doesn't reflect the deployed limiter, and
+any resulting numbers wouldn't be defensible ("what were your
+thresholds tested against?" — a modified limiter is a bad answer).
+Per-project count (25) chosen so aggregate capacity (2500/min ≈ 41.6
+req/s) comfortably exceeds the throughput target this test is
+benchmarked against, without needing an implausibly large number of
+seeded projects.
+
+## Task 39: client served by Nginx, not its own container
+
+**Decision:** The client has no dedicated running container. Its Vite
+build (`vite build` -> `dist/`) is produced in `nginx/Dockerfile`'s
+first build stage and copied into the final Nginx image, which serves
+it as static files and also reverse-proxies `/api/*` to the `api`
+service.
+
+**Reasoning:** Once built, the client is static files with no
+server-side process — running a second container just to serve those
+files (e.g. `node serve` or another Nginx instance) would be a second
+static file server sitting behind the actual reverse proxy for no
+functional reason, just to inflate the service count. Folding the
+build into the same image Nginx already needs keeps the topology
+honest: five real services (mongo, redis, api, worker, nginx), not six
+where one is doing nothing distinct.
+
+**Rejected:** Separate client container — would need its own
+Dockerfile, its own port, and a proxy_pass entry pointing at it from
+Nginx anyway, all to serve files Nginx could serve directly.
+
+## Task 39: two deployment topologies (Render vs. Docker Compose)
+
+**Decision:** `docker compose up`'s multi-service topology
+(mongo/redis/api/worker/nginx) is additive, local/demo tooling — it
+does not replace the existing Render deployment, which uses `app.js`'s
+built-in `client/dist` static-serving fallback (single API process
+serves both the API and the built client, no Nginx in front).
+
+**Reasoning:** That fallback already existed before Task 39 and is
+what's actually deployed; changing it to require Nginx would be a
+production deployment change disguised as a packaging task. The two
+topologies serve different purposes — Render's is the actual live
+deployment on a free tier where running 5 separate services isn't
+practical, Compose's is what `docker compose up` demonstrates locally
+(and is the more "production-shaped" story for a resume bullet /
+demo). Both read the same codebase; nothing in `app.js` or the
+Dockerfiles is Compose-specific in a way that would break the Render
+path.
+
+**Rejected:** Making Render deployment go through Nginx too — real
+infra work with no product benefit, and not what this task was scoped
+to do.
+
+## Task 39: CLIENT_ORIGIN set explicitly for the Compose topology
+
+**Decision:** The `api` service's `CLIENT_ORIGIN` env var is set to
+`http://localhost` explicitly in `docker-compose.yml`, not left to
+`app.js`'s existing "allow any localhost:PORT" CORS regex fallback.
+
+**Reasoning:** That regex requires an explicit port in the browser's
+`Origin` header (`localhost:PORT`) — a browser hitting Nginx on the
+default port 80 sends `Origin: http://localhost` with no port number,
+which the regex does not match. Without this explicit env var, CORS
+would silently reject the client's requests only in the Compose
+topology (dev mode on port 5173 would keep working, masking the
+issue) — caught by tracing the regex before it caused a confusing
+"works in dev, fails in Docker" bug report to chase later.

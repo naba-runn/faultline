@@ -1,0 +1,9 @@
+node_modules
+npm-debug.log
+.env
+.env.*
+!.env.example
+loadtest/keys.json
+loadtest/last-run-summary.json
+tests
+*.md

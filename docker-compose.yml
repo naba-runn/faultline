@@ -1,0 +1,113 @@
+# docker-compose.yml
+#
+# Task 39.4. `docker compose up` brings up the full stack: mongo,
+# redis, api, worker, nginx (which serves the built client AND
+# reverse-proxies /api -> api). See nginx/nginx.conf and
+# server/Dockerfile's headers for why client isn't its own container
+# and why api/worker share one image.
+#
+# NOTE: this is a separate topology from production (Render). app.js
+# already has a "serve client/dist directly from the API process if it
+# exists" fallback (see app.js, just above the 404 handler) — that's
+# the single-service Render deployment path, and it still works
+# unchanged. This compose file adds a second, local/demo topology
+# (multi-service, behind Nginx) — it doesn't replace or modify the
+# Render one. See DECISIONS.md, "Task 39: two deployment topologies."
+#
+# Requires a `.env` file in this directory (repo root) — see
+# .env.example alongside this file for the required keys.
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      MONGODB_URI: mongodb://mongo:27017/faultline
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-alerts@faultline.dev}
+      # Matches Nginx's exposed origin below — app.js's CORS check
+      # requires an explicit port in the Origin header
+      # (localhost:PORT), which a browser hitting plain :80 won't
+      # send, so this has to be listed explicitly rather than relying
+      # on that regex fallback. See DECISIONS.md.
+      CLIENT_ORIGIN: http://localhost
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:5000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["node", "worker.js"]
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      MONGODB_URI: mongodb://mongo:27017/faultline
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-alerts@faultline.dev}
+
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+      args:
+        VITE_API_BASE_URL: http://localhost/api
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "80:80"
+
+volumes:
+  mongo-data:
+  redis-data:
