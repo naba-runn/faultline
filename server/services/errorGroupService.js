@@ -13,6 +13,7 @@ const sourceMapService = require('./sourceMapService');
 const githubService = require('./githubService');
 const aiService = require('./aiService');
 const trendService = require('./trendService');
+const overviewService = require('./overviewService');
 
 /**
  * Performs the atomic ErrorGroup upsert. Split out from recordEvent()
@@ -147,17 +148,63 @@ const UNGROUNDED_CONFIDENCE = 0.4;
  * server-side from data this function already has, never asked of
  * the LLM (AI_CONTEXT.md's "Fields Derived Server-Side, Not From the
  * LLM"). See DECISIONS.md for the exact confidence values chosen.
+ *
+ * Source-map resolution: topFrame.file/line come from the raw stack,
+ * which for a bundled/minified frontend error is a built asset path
+ * (e.g. dist/bundle.min.js:1:48213) — not a path that exists in the
+ * GitHub repo, so grounding against it would 404 and silently fall
+ * back to ungrounded confidence every time, with no visible signal
+ * that anything went wrong. If a source map was uploaded for this
+ * project/release (Task 32), resolve topFrame through it FIRST and
+ * ground/report against the resolved original file+line instead;
+ * unresolved (no map uploaded, or this frame has no mapping) falls
+ * straight back to the raw frame, identical to pre-Task-32 behavior.
+ * Fingerprinting/dedup are untouched — they hash the raw stack via
+ * generateFingerprint, called from recordEvent, never through here.
  */
 async function enrichErrorGroup({ errorGroup, project, message, stack }) {
   const { frames } = normalizeStack(stack);
   const topFrame = frames[0] || null;
 
+  let groundingFile = topFrame ? topFrame.file : null;
+  let groundingLine = topFrame ? topFrame.line : null;
+  // Falls back to the raw (possibly minified, e.g. "a" or "t") name
+  // when unresolved — same fallback shape as groundingFile/groundingLine.
+  let groundingFunctionName = topFrame ? topFrame.functionName : null;
+
+  if (topFrame) {
+    const resolvedFrames = await sourceMapService.resolveStack({
+      projectId: errorGroup.projectId,
+      stack,
+      release: errorGroup.firstSeenRelease,
+    });
+    // Matched by raw frame text, not array index — resolveStack parses
+    // the FULL stack (no node_modules/internal filtering), while
+    // normalizeStack's frames are the filtered/capped app-frame subset,
+    // so the two arrays don't line up positionally. Each frame's `raw`
+    // line text is unique within one stack trace and identical across
+    // both parses (both go through stackNormalizer.parseStackFrames),
+    // so it's a safe join key.
+    const resolvedMatch = resolvedFrames.find((f) => f.raw === topFrame.raw);
+    if (resolvedMatch && resolvedMatch.resolved) {
+      groundingFile = resolvedMatch.originalFile;
+      groundingLine = resolvedMatch.originalLine;
+      // originalFunctionName is itself optional -- source-map-js can
+      // resolve a position without recovering a name for it (not every
+      // mapping segment carries one). Keep the raw/minified name in
+      // that case rather than dropping to null: a wrong-looking
+      // minified name ("a", "t") is still more useful to a reader than
+      // no name at all.
+      groundingFunctionName = resolvedMatch.originalFunctionName || groundingFunctionName;
+    }
+  }
+
   let codeSnippet = null;
-  if (project && project.githubRepo && topFrame) {
+  if (project && project.githubRepo && groundingFile) {
     codeSnippet = await githubService.fetchCodeSnippet({
       githubRepo: project.githubRepo,
-      filePath: topFrame.file,
-      line: topFrame.line,
+      filePath: groundingFile,
+      line: groundingLine,
     });
   }
 
@@ -181,8 +228,12 @@ async function enrichErrorGroup({ errorGroup, project, message, stack }) {
     // AI_CONTEXT.md and DECISIONS.md's "Task 14: confidence values
     // and affectedFile/affectedFunction source" entry.
     confidence: codeSnippet ? GROUNDED_CONFIDENCE : UNGROUNDED_CONFIDENCE,
-    affectedFile: topFrame ? topFrame.file : null,
-    affectedFunction: topFrame ? topFrame.functionName : null,
+    // Resolved (source-mapped) path/line when available, so this
+    // matches whatever file codeSnippet was actually grounded
+    // against — falls back to the raw frame otherwise, same as before
+    // Task 32 wiring.
+    affectedFile: groundingFile,
+    affectedFunction: groundingFunctionName,
   };
 
   // Errors thrown here (e.g. a transient Mongo write failure) are
@@ -601,8 +652,6 @@ async function getGroupDetail({ ownerId, groupId }) {
     },
   };
 }
-
-const overviewService = require('./overviewService');
 
 module.exports = {
   recordEvent,

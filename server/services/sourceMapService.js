@@ -193,7 +193,14 @@ async function resolveStack({ projectId, stack, release = null }) {
         };
       }
     } catch (err) {
-      // Source map lookup error for this frame — return fallback
+      // Source map lookup error for this frame — this is display-only
+      // enrichment, so a single bad/corrupt map must not fail the whole
+      // stack resolution; fall back to the unresolved frame below. Still
+      // logged (with the doc it came from) so a bad upload is visible
+      // instead of silently degrading every stack view for that release.
+      console.error(
+        `[sourceMapService] Failed to resolve frame against source map ${matchedDoc._id}: ${err.message}`
+      );
     }
 
     return {

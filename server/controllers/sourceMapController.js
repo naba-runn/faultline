@@ -2,24 +2,41 @@ const catchAsync = require('../utils/catchAsync');
 const { sendSuccess, sendError } = require('../utils/httpResponse');
 const projectService = require('../services/projectService');
 const sourceMapService = require('../services/sourceMapService');
+const AppError = require('../utils/AppError');
 
 /**
  * Uploads (or overwrites) a source map for a project.
  * Supports both JWT user auth (via :id in URL) and API key auth (via req.project).
+ *
+ * Same CastError->AppError translation as every other project-scoped
+ * controller (see projectController.js) -- a malformed :id must still
+ * surface as this resource's own "Project not found" 404, not the
+ * generic "Resource not found" errorMiddleware falls back to for
+ * anything a controller doesn't translate itself.
  */
 const uploadSourceMap = catchAsync(async (req, res) => {
   let projectId;
 
   if (req.project) {
-    // Authenticated via API key (apiKeyMiddleware)
+    // Authenticated via API key (apiKeyMiddleware) -- req.project was
+    // already resolved from a hashed key lookup, so there's no :id to
+    // cast and nothing to translate here.
     projectId = req.project._id;
   } else if (req.user) {
     // Authenticated via JWT (authMiddleware)
     projectId = req.params.id;
-    const project = await projectService.getProject({
-      ownerId: req.user.id,
-      projectId,
-    });
+    let project;
+    try {
+      project = await projectService.getProject({
+        ownerId: req.user.id,
+        projectId,
+      });
+    } catch (err) {
+      if (err.name === 'CastError') {
+        throw new AppError('Project not found', 404);
+      }
+      throw err;
+    }
     if (!project) {
       return sendError(res, 404, 'Project not found');
     }
@@ -52,10 +69,18 @@ const uploadSourceMap = catchAsync(async (req, res) => {
  */
 const listSourceMaps = catchAsync(async (req, res) => {
   const projectId = req.params.id;
-  const project = await projectService.getProject({
-    ownerId: req.user.id,
-    projectId,
-  });
+  let project;
+  try {
+    project = await projectService.getProject({
+      ownerId: req.user.id,
+      projectId,
+    });
+  } catch (err) {
+    if (err.name === 'CastError') {
+      throw new AppError('Project not found', 404);
+    }
+    throw err;
+  }
 
   if (!project) {
     return sendError(res, 404, 'Project not found');
@@ -72,10 +97,18 @@ const deleteSourceMap = catchAsync(async (req, res) => {
   const projectId = req.params.id;
   const { mapId } = req.params;
 
-  const project = await projectService.getProject({
-    ownerId: req.user.id,
-    projectId,
-  });
+  let project;
+  try {
+    project = await projectService.getProject({
+      ownerId: req.user.id,
+      projectId,
+    });
+  } catch (err) {
+    if (err.name === 'CastError') {
+      throw new AppError('Project not found', 404);
+    }
+    throw err;
+  }
 
   if (!project) {
     return sendError(res, 404, 'Project not found');

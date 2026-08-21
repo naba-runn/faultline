@@ -6,7 +6,14 @@ const apiKeyMiddleware = require('../middleware/apiKeyMiddleware');
 
 const router = express.Router();
 
-// Flexible auth for sourcemap upload: accepts API key (flt_...) or JWT token
+// Task 32: deliberate, narrow exception to the "API-key auth is for the
+// ingestion endpoint only" rule stated below (Task 6) -- build tools
+// (webpack/vite plugins, CI steps) upload source maps right after a
+// build, in an environment that already holds the project's flt_
+// key for event ingestion but has no JWT and no human present to log
+// in. Restricted to this one route: list/delete stay JWT-only via
+// authMiddleware directly, so a leaked API key still can't enumerate
+// or delete a project's uploaded maps, only add new ones.
 async function sourcemapUploadAuth(req, res, next) {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -31,6 +38,9 @@ router.delete('/:id/sourcemaps/:mapId', authMiddleware, sourceMapController.dele
 // Every project route below requires a logged-in dashboard user (JWT),
 // not an API key — API-key auth is for the ingestion endpoint only
 // (Task 6), a deliberately separate middleware. See DECISIONS.md.
+// (The one exception is POST /:id/sourcemaps above, handled by
+// sourcemapUploadAuth before this line applies — see that function's
+// comment for why.)
 router.use(authMiddleware);
 
 router.post('/', projectController.createProject);

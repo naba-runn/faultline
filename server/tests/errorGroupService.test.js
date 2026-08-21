@@ -33,6 +33,11 @@ const Project = require('../models/Project');
 const SourceMap = require('../models/SourceMap');
 const githubService = require('../services/githubService');
 const aiService = require('../services/aiService');
+// Namespace object, not destructured — same reasoning as
+// githubService/aiService above (errorGroupService.js calls through
+// sourceMapService.resolveStack(...), so reassigning the method on the
+// object is what a mock here needs to intercept).
+const sourceMapService = require('../services/sourceMapService');
 const {
   recordEvent,
   enrichErrorGroup,
@@ -204,12 +209,19 @@ function withMockedEnrichmentDeps(mocks, fn) {
   const originalCallGemini = aiService.callGemini;
   const originalParseAndValidate = aiService.parseAndValidate;
   const originalFindByIdAndUpdate = ErrorGroup.findByIdAndUpdate;
+  // Task 32 wiring: enrichErrorGroup now resolves topFrame through any
+  // uploaded source map before grounding — same SourceMap.find fake
+  // pattern as withMockedDetailDeps below (default: no maps uploaded,
+  // so resolution is a no-op and existing raw-frame assertions in the
+  // tests below still hold).
+  const originalSourceMapFind = SourceMap.find;
 
   githubService.fetchCodeSnippet = mocks.fetchCodeSnippet || originalFetchCodeSnippet;
   aiService.buildPrompt = mocks.buildPrompt || originalBuildPrompt;
   aiService.callGemini = mocks.callGemini || originalCallGemini;
   aiService.parseAndValidate = mocks.parseAndValidate || originalParseAndValidate;
   ErrorGroup.findByIdAndUpdate = mocks.findByIdAndUpdate || originalFindByIdAndUpdate;
+  SourceMap.find = mocks.sourceMapFind || (async () => []);
 
   return fn().finally(() => {
     githubService.fetchCodeSnippet = originalFetchCodeSnippet;
@@ -217,6 +229,7 @@ function withMockedEnrichmentDeps(mocks, fn) {
     aiService.callGemini = originalCallGemini;
     aiService.parseAndValidate = originalParseAndValidate;
     ErrorGroup.findByIdAndUpdate = originalFindByIdAndUpdate;
+    SourceMap.find = originalSourceMapFind;
   });
 }
 
@@ -297,6 +310,133 @@ test('enrichErrorGroup: githubRepo configured — fetches snippet for the top ap
       assert.equal(savedUpdate.$set.aiSummary.confidence, 0.8);
       assert.equal(savedUpdate.$set.aiSummary.affectedFile, '/app/server/routes/foo.js');
       assert.equal(savedUpdate.$set.aiSummary.affectedFunction, 'foo');
+    }
+  );
+});
+
+test('enrichErrorGroup: source map resolves top frame — grounds and reports the resolved file/line, not the raw bundle path', async () => {
+  let fetchArgs = null;
+  let savedUpdate = null;
+  let resolveStackArgs = null;
+  const originalResolveStack = sourceMapService.resolveStack;
+
+  sourceMapService.resolveStack = async (args) => {
+    resolveStackArgs = args;
+    return [
+      {
+        raw: 'at t (dist/bundle.min.js:1:48213)',
+        functionName: 't',
+        file: 'dist/bundle.min.js',
+        line: 1,
+        column: 48213,
+        resolved: true,
+        originalFile: 'src/routes/foo.js',
+        originalLine: 42,
+        originalColumn: 3,
+        originalFunctionName: 'handleCheckout',
+      },
+    ];
+  };
+
+  await withMockedEnrichmentDeps(
+    {
+      fetchCodeSnippet: async (args) => {
+        fetchArgs = args;
+        return '42: throw new Error("boom");';
+      },
+      buildPrompt: ({ codeSnippet }) => {
+        assert.equal(codeSnippet, '42: throw new Error("boom");');
+        return 'prompt';
+      },
+      callGemini: async () => '{"rootCause":"w","severity":"high","suggestedFix":["do w"]}',
+      parseAndValidate: (raw) => JSON.parse(raw),
+      findByIdAndUpdate: async (id, update) => {
+        savedUpdate = update;
+        return {};
+      },
+    },
+    async () => {
+      try {
+        await enrichErrorGroup({
+          errorGroup: {
+            _id: fakeObjectId('group-source-mapped'),
+            projectId: fakeObjectId('project-source-mapped'),
+            firstSeenRelease: 'v1.2.3',
+          },
+          project: { githubRepo: 'owner/repo' },
+          message: 'Error: boom',
+          stack: 'at t (dist/bundle.min.js:1:48213)',
+        });
+      } finally {
+        sourceMapService.resolveStack = originalResolveStack;
+      }
+
+      assert.equal(resolveStackArgs.projectId, fakeObjectId('project-source-mapped'));
+      assert.equal(resolveStackArgs.release, 'v1.2.3');
+      // Grounding used the RESOLVED file/line, not the raw bundle path.
+      assert.equal(fetchArgs.githubRepo, 'owner/repo');
+      assert.equal(fetchArgs.filePath, 'src/routes/foo.js');
+      assert.equal(fetchArgs.line, 42);
+      assert.equal(savedUpdate.$set.aiSummary.confidence, 0.8);
+      assert.equal(savedUpdate.$set.aiSummary.affectedFile, 'src/routes/foo.js');
+      // Resolved (real) function name, not the minified raw one ("t").
+      assert.equal(savedUpdate.$set.aiSummary.affectedFunction, 'handleCheckout');
+    }
+  );
+});
+
+test('enrichErrorGroup: source map resolves position but has no name for it — falls back to the raw (possibly minified) function name', async () => {
+  let savedUpdate = null;
+  const originalResolveStack = sourceMapService.resolveStack;
+
+  sourceMapService.resolveStack = async () => [
+    {
+      raw: 'at t (dist/bundle.min.js:1:48213)',
+      functionName: 't',
+      file: 'dist/bundle.min.js',
+      line: 1,
+      column: 48213,
+      resolved: true,
+      originalFile: 'src/routes/foo.js',
+      originalLine: 42,
+      originalColumn: 3,
+      // No name recovered for this mapping segment — a real
+      // source-map-js possibility, not every position has one.
+      originalFunctionName: null,
+    },
+  ];
+
+  await withMockedEnrichmentDeps(
+    {
+      fetchCodeSnippet: async () => '42: throw new Error("boom");',
+      buildPrompt: () => 'prompt',
+      callGemini: async () => '{"rootCause":"w","severity":"high","suggestedFix":["do w"]}',
+      parseAndValidate: (raw) => JSON.parse(raw),
+      findByIdAndUpdate: async (id, update) => {
+        savedUpdate = update;
+        return {};
+      },
+    },
+    async () => {
+      try {
+        await enrichErrorGroup({
+          errorGroup: {
+            _id: fakeObjectId('group-source-mapped-noname'),
+            projectId: fakeObjectId('project-source-mapped-noname'),
+            firstSeenRelease: 'v1.2.3',
+          },
+          project: { githubRepo: 'owner/repo' },
+          message: 'Error: boom',
+          stack: 'at t (dist/bundle.min.js:1:48213)',
+        });
+      } finally {
+        sourceMapService.resolveStack = originalResolveStack;
+      }
+
+      // File/line still resolved, but the name falls back to the raw
+      // minified one rather than being dropped to null.
+      assert.equal(savedUpdate.$set.aiSummary.affectedFile, 'src/routes/foo.js');
+      assert.equal(savedUpdate.$set.aiSummary.affectedFunction, 't');
     }
   );
 });
