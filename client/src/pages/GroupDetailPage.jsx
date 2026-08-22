@@ -81,7 +81,15 @@ export default function GroupDetailPage() {
     };
 
     const handleCopyStack = () => {
-        const raw = group?.rawStackTrace || (group?.resolvedStack || []).map((f) => `    at ${f.functionName || 'unknown'} (${f.file || 'unknown'}:${f.lineNumber || '?'}:${f.columnNumber || '?'})`).join('\n');
+        const raw = group?.rawStackTrace || group?.stackSample || (group?.resolvedStack || [])
+            .map((f) => {
+                const fn = (f.resolved ? f.originalFunctionName : f.functionName) || 'unknown';
+                const file = (f.resolved ? f.originalFile : f.file) || 'unknown';
+                const line = (f.resolved ? f.originalLine : f.line) ?? '?';
+                const col = (f.resolved ? f.originalColumn : f.column) ?? '?';
+                return `    at ${fn} (${file}:${line}:${col})`;
+            })
+            .join('\n');
         if (!raw) return;
         navigator.clipboard.writeText(raw);
         setCopied(true);
@@ -121,8 +129,20 @@ export default function GroupDetailPage() {
 
     const sev = group.severity || group.aiSummary?.severity || 'medium';
     
-    // Support resolved source-mapped stack, fallback to parsing raw stackSample for older errors
-    let parsedStack = Array.isArray(group.resolvedStack) && group.resolvedStack.length > 0 ? group.resolvedStack : [];
+    // Support resolved source-mapped stack, fallback to parsing raw stackSample for older errors.
+    // sourceMapService.resolveStack returns { file, line, column, functionName, resolved,
+    // originalFile, originalLine, originalColumn, originalFunctionName } — normalize to the
+    // { functionName, file, lineNumber, columnNumber, resolved } shape this view renders,
+    // preferring the source-mapped original location when a frame was actually resolved.
+    let parsedStack = Array.isArray(group.resolvedStack) && group.resolvedStack.length > 0
+        ? group.resolvedStack.map((f) => ({
+            functionName: f.resolved ? (f.originalFunctionName || f.functionName) : f.functionName,
+            file: f.resolved ? f.originalFile : f.file,
+            lineNumber: f.resolved ? f.originalLine : f.line,
+            columnNumber: f.resolved ? f.originalColumn : f.column,
+            resolved: Boolean(f.resolved),
+        }))
+        : [];
     if (parsedStack.length === 0 && (group.stackSample || group.rawStackTrace)) {
         const raw = group.stackSample || group.rawStackTrace || '';
         const lines = raw.split('\n');
@@ -191,9 +211,9 @@ export default function GroupDetailPage() {
                         {SEVERITY_LABEL[sev] || sev}
                     </span>
 
-                    {events[0]?.environment && (
+                    {events[0]?.env && (
                         <span style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
-                            {events[0].environment}
+                            {events[0].env}
                         </span>
                     )}
 
@@ -325,8 +345,16 @@ export default function GroupDetailPage() {
                                         <span style={{ color: '#5C6370', fontSize: '0.72rem', minWidth: '20px' }}>{i + 1}</span>
                                         <span className="stack-frame-fn">at {frame.functionName || '<anonymous>'}</span>
                                         <span className="stack-frame-file">
-                                            ({frame.file || 'unknown'}:{frame.lineNumber || '?'}:{frame.columnNumber || '?'})
+                                            ({frame.file || 'unknown'}:{frame.lineNumber ?? '?'}:{frame.columnNumber ?? '?'})
                                         </span>
+                                        {frame.resolved && (
+                                            <span
+                                                title="Resolved via uploaded source map"
+                                                style={{ fontSize: '0.65rem', color: 'var(--accent, #61AFEF)', marginLeft: '0.35rem' }}
+                                            >
+                                                source-mapped
+                                            </span>
+                                        )}
                                     </div>
                                 ))}
                             </div>
