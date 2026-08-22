@@ -19,9 +19,11 @@ const OVERVIEW_SPIKING_GROUPS_LIMIT = 5;
  * scoped to a single project like the rest of this file:
  *
  *  - trend: hourly ErrorEvent counts for the trailing 24h, for a
- *    small chart. Bucketed in JS with trendService.startOfHour, the
- *    same UTC-safe truncation per-group spike detection already uses
- *    — not a second, parallel implementation of "start of hour".
+ *    small chart. Bucketed server-side via a $dateTrunc aggregation
+ *    (timezone: 'UTC'), matching trendService.startOfHour's same
+ *    UTC-safe truncation per-group spike detection uses — not a
+ *    second, parallel implementation of "start of hour", just done
+ *    in the DB instead of by pulling every matching event into Node.
  *  - alerts: how many owned projects have any alert trigger enabled,
  *    plus the groups currently flagged isSpiking (Task 30's
  *    persisted state — this reads it, doesn't recompute a trend for
@@ -58,11 +60,37 @@ async function getDashboardOverview(ownerId) {
   const userGroupDocs = await ErrorGroup.find({ projectId: { $in: projectIds } }).select('_id').lean();
   const groupIds = userGroupDocs.map((g) => g._id);
 
-  const [recentEvents, spikingCount, spikingGroups, recentReleaseGroups, unresolvedCount] = await Promise.all([
-    ErrorEvent.find(
-      { errorGroupId: { $in: groupIds }, receivedAt: { $gte: baselineWindowStart } },
-      { receivedAt: 1 }
-    ).lean(),
+  // Hourly bucketing done in the aggregation pipeline, not by pulling
+  // every matching ErrorEvent doc into Node and looping over it. The
+  // old approach (ErrorEvent.find(...).lean() over the full 25h
+  // window, no limit) returned a result set that scaled with total
+  // event *volume* across every owned project — for a busy account
+  // that's tens or hundreds of thousands of docs deserialized into
+  // memory on every dashboard load, just to produce 25 hourly counts.
+  // $group/$dateTrunc does the counting server-side and returns at
+  // most 25 rows regardless of volume. $dateTrunc with timezone:
+  // 'UTC' matches trendService.startOfHour's setUTCMinutes(0,0,0)
+  // truncation exactly — same hour-boundary semantics, not a second,
+  // subtly different implementation of "start of hour". Requires
+  // MongoDB 5.0+ ($dateTrunc); this app already targets Mongo 7 (see
+  // docker-compose.yml).
+  const [eventAgg, spikingCount, spikingGroups, recentReleaseGroups, unresolvedCount] = await Promise.all([
+    ErrorEvent.aggregate([
+      { $match: { errorGroupId: { $in: groupIds }, receivedAt: { $gte: baselineWindowStart } } },
+      {
+        $facet: {
+          hourly: [
+            {
+              $group: {
+                _id: { $dateTrunc: { date: '$receivedAt', unit: 'hour', timezone: 'UTC' } },
+                count: { $sum: 1 },
+              },
+            },
+          ],
+          lastEvent: [{ $group: { _id: null, lastEventAt: { $max: '$receivedAt' } } }],
+        },
+      },
+    ]),
     ErrorGroup.countDocuments({ projectId: { $in: projectIds }, isSpiking: true, status: 'open' }),
     ErrorGroup.find({ projectId: { $in: projectIds }, isSpiking: true, status: 'open' })
       .sort({ lastSeen: -1 })
@@ -77,17 +105,18 @@ async function getDashboardOverview(ownerId) {
     ErrorGroup.countDocuments({ projectId: { $in: projectIds }, status: 'open' }),
   ]);
 
-  let lastEventAt = null;
   const series = buildEmptySeries(baselineWindowStart, currentHourStart);
   const bucketIndexByHour = new Map(series.map((bucket, i) => [bucket.hour.getTime(), i]));
-  for (const event of recentEvents) {
-    const hourStart = trendService.startOfHour(event.receivedAt).getTime();
-    const index = bucketIndexByHour.get(hourStart);
-    if (index !== undefined) series[index].count += 1;
-    if (!lastEventAt || event.receivedAt > lastEventAt) {
-      lastEventAt = event.receivedAt;
-    }
+
+  const hourlyBuckets = eventAgg[0]?.hourly || [];
+  for (const bucket of hourlyBuckets) {
+    // bucket._id comes back as a real Date from $dateTrunc — same
+    // hour-boundary Date the JS-side series was built from, so no
+    // re-truncation needed here, just a lookup.
+    const index = bucketIndexByHour.get(new Date(bucket._id).getTime());
+    if (index !== undefined) series[index].count += bucket.count;
   }
+  const lastEventAt = eventAgg[0]?.lastEvent?.[0]?.lastEventAt || null;
 
   const projectsConfigured = projects.filter((p) => alertingEnabled(p.alertConfig)).length;
 

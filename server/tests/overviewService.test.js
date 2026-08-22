@@ -38,16 +38,47 @@ function chainable(result) {
   return chain;
 }
 
+// getDashboardOverview now buckets/aggregates event counts server-side
+// via ErrorEvent.aggregate([...]) (a $match + $facet with $dateTrunc),
+// not by pulling every matching event doc into Node and looping —
+// see overviewService.js's comment on why. This fake replicates that
+// pipeline's actual semantics (the receivedAt >= $gte filter from the
+// $match stage, then grouping by UTC hour and finding the max
+// receivedAt) against the plain `events` fixture array, so these
+// tests still exercise real filtering/bucketing behavior rather than
+// just trusting whatever the mock is told to return.
+function fakeEventAggregate(events, pipeline) {
+  const match = pipeline[0].$match;
+  const gte = match.receivedAt.$gte;
+  const filtered = events.filter((e) => new Date(e.receivedAt) >= new Date(gte));
+
+  const hourlyMap = new Map();
+  let lastEventAt = null;
+  for (const e of filtered) {
+    const hour = trendService.startOfHour(e.receivedAt);
+    const key = hour.getTime();
+    hourlyMap.set(key, (hourlyMap.get(key) || 0) + 1);
+    if (!lastEventAt || new Date(e.receivedAt) > lastEventAt) {
+      lastEventAt = new Date(e.receivedAt);
+    }
+  }
+
+  const hourly = [...hourlyMap.entries()].map(([time, count]) => ({ _id: new Date(time), count }));
+  const lastEvent = lastEventAt ? [{ _id: null, lastEventAt }] : [];
+
+  return Promise.resolve([{ hourly, lastEvent }]);
+}
+
 function withMocks({ projects, events, spikingCount, spikingGroups, recentReleaseGroups, unresolvedCount }, fn) {
   const originals = {
     projectFind: Project.find,
-    eventFind: ErrorEvent.find,
+    eventAggregate: ErrorEvent.aggregate,
     groupFind: ErrorGroup.find,
     groupCount: ErrorGroup.countDocuments,
   };
 
   Project.find = () => chainable(projects);
-  ErrorEvent.find = () => chainable(events);
+  ErrorEvent.aggregate = (pipeline) => fakeEventAggregate(events, pipeline);
 
   // countDocuments is now called twice: once for spikingCount
   // (filter has isSpiking), once for unresolvedCount (filter has
@@ -71,7 +102,7 @@ function withMocks({ projects, events, spikingCount, spikingGroups, recentReleas
 
   return fn().finally(() => {
     Project.find = originals.projectFind;
-    ErrorEvent.find = originals.eventFind;
+    ErrorEvent.aggregate = originals.eventAggregate;
     ErrorGroup.find = originals.groupFind;
     ErrorGroup.countDocuments = originals.groupCount;
   });

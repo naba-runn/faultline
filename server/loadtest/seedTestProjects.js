@@ -36,6 +36,7 @@ const { generateApiKey, hashApiKey } = require('../utils/apiKey');
 const PROJECT_COUNT = parseInt(process.argv[2], 10) || 25;
 const TEST_USER_EMAIL = 'loadtest@faultline.local';
 const OUTPUT_PATH = path.join(__dirname, 'keys.json');
+const LOADTEST_NAME_PREFIX_RE = /^loadtest-/;
 
 async function getOrCreateTestUser() {
     let user = await User.findOne({ email: TEST_USER_EMAIL });
@@ -65,7 +66,17 @@ async function seed() {
 
     // Wipe any previous loadtest projects for this user so re-running
     // this script doesn't accumulate stale projects across sessions.
-    await Project.deleteMany({ ownerId: user._id, loadtest: true });
+    //
+    // Filtered by name prefix, not a `loadtest: true` field — Project's
+    // schema is strict (the Mongoose default) and has no `loadtest`
+    // field, so an earlier version of this script that set `loadtest:
+    // true` on create() had it silently stripped on write, making this
+    // deleteMany a permanent no-op: every run left the previous run's
+    // projects in place, and their keys.json entries became orphaned
+    // once overwritten below. The name prefix this script itself
+    // assigns (`loadtest-${i}`) is unique to test projects and always
+    // persisted, so it's what cleanup actually filters on.
+    await Project.deleteMany({ ownerId: user._id, name: LOADTEST_NAME_PREFIX_RE });
 
     const keys = [];
 
@@ -75,11 +86,6 @@ async function seed() {
             ownerId: user._id,
             name: `loadtest-${i}`,
             apiKeyHash: hashApiKey(rawKey),
-            loadtest: true, // ad-hoc flag — see note below if your Project
-            // schema is `strict` and rejects unknown fields; either add
-            // `loadtest: { type: Boolean, default: false }` to Project.js
-            // permanently (harmless, useful for cleanup), or drop this line
-            // and filter by name prefix ("loadtest-") instead when cleaning up.
         });
         keys.push({ projectId: String(project._id), apiKey: rawKey });
     }
