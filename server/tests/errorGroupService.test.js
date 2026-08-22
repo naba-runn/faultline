@@ -221,7 +221,11 @@ function withMockedEnrichmentDeps(mocks, fn) {
   aiService.callGemini = mocks.callGemini || originalCallGemini;
   aiService.parseAndValidate = mocks.parseAndValidate || originalParseAndValidate;
   ErrorGroup.findByIdAndUpdate = mocks.findByIdAndUpdate || originalFindByIdAndUpdate;
-  SourceMap.find = mocks.sourceMapFind || (async () => []);
+  // sourceMapService.resolveStack now calls SourceMap.find(...).lean()
+  // (bounded by the stack's own filenames) — the fake must offer that
+  // same .lean() chain terminator, not resolve directly, to match the
+  // real Mongoose query shape it's standing in for.
+  SourceMap.find = mocks.sourceMapFind || (() => ({ lean: () => Promise.resolve([]) }));
 
   return fn().finally(() => {
     githubService.fetchCodeSnippet = originalFetchCodeSnippet;
@@ -952,7 +956,11 @@ function withMockedDetailDeps(mocks, fn) {
   ErrorGroup.findById = mocks.findById;
   Project.findOne = mocks.findOne;
   ErrorEvent.find = mocks.find;
-  SourceMap.find = mocks.sourceMapFind || (async () => []);
+  // sourceMapService.resolveStack now calls SourceMap.find(...).lean()
+  // (bounded by the stack's own filenames) — the fake must offer that
+  // same .lean() chain terminator, not resolve directly, to match the
+  // real Mongoose query shape it's standing in for.
+  SourceMap.find = mocks.sourceMapFind || (() => ({ lean: () => Promise.resolve([]) }));
 
   return fn().finally(() => {
     ErrorGroup.findById = originalFindById;

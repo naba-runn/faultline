@@ -51,7 +51,16 @@ async function uploadSourceMap({ projectId, filename, release = null, map }) {
   }
 
   const validMap = validateSourceMap(map);
-  const cleanRelease = release ? String(release).trim() : null;
+  // Trim first, then check for emptiness — `release` is truthy for any
+  // non-empty string including "   ", so checking truthiness before
+  // trimming let a whitespace-only release survive as "" instead of
+  // collapsing to null like an actually-omitted release does. "" and
+  // null would then be two different, silently-diverging "no release"
+  // values in the same unique index ({ projectId, release, filename }),
+  // which resolveStack's release-aware lookup (release === null) would
+  // never match against.
+  const trimmedRelease = release != null ? String(release).trim() : '';
+  const cleanRelease = trimmedRelease || null;
   const cleanFilename = String(filename).trim();
   const normalizedProjectId = normalizeProjectId(projectId);
 
@@ -79,7 +88,17 @@ async function uploadSourceMap({ projectId, filename, release = null, map }) {
  */
 async function listSourceMaps(projectId) {
   const normalizedProjectId = normalizeProjectId(projectId);
-  const maps = await SourceMap.find({ projectId: normalizedProjectId }).sort({ uploadedAt: -1 });
+  // Projected to metadata only + .lean() — this is a metadata listing
+  // (id/filename/release/uploadedAt), it never needs the `map` field
+  // itself, which can be up to the 5mb upload cap per doc. Pulling
+  // every full map blob into Mongoose documents just to read four
+  // small fields off each was needless — a project with a healthy
+  // number of uploaded maps could mean tens of MB deserialized for a
+  // response that's a few hundred bytes.
+  const maps = await SourceMap.find({ projectId: normalizedProjectId })
+    .select('filename release uploadedAt')
+    .sort({ uploadedAt: -1 })
+    .lean();
 
   return maps.map((m) => ({
     id: m._id,
@@ -128,13 +147,25 @@ async function resolveStack({ projectId, stack, release = null }) {
     return [];
   }
 
-  // Fetch all source maps for this project
+  // Fetch only the source maps whose filename could actually match a
+  // frame in this stack, not every map ever uploaded for the project.
+  // A stack trace typically references a small, fixed set of bundle
+  // filenames (often just one), so this bounds the query by stack
+  // size rather than by how many maps/releases a project has
+  // accumulated over time — the old unfiltered SourceMap.find(...)
+  // pulled every doc's full `map` blob (up to 5mb each) into memory
+  // on every group-detail view and every enrichment job, regardless
+  // of whether that map was even relevant to this stack.
   const normalizedProjectId = normalizeProjectId(projectId);
-  const sourceMapDocs = await SourceMap.find({ projectId: normalizedProjectId });
+  const candidateFilenames = [...new Set(frames.map((f) => extractFilename(f.file)).filter(Boolean))];
+  const sourceMapDocs = candidateFilenames.length > 0
+    ? await SourceMap.find({ projectId: normalizedProjectId, filename: { $in: candidateFilenames } }).lean()
+    : [];
   if (!sourceMapDocs || sourceMapDocs.length === 0) {
     return frames.map((f) => ({
       ...f,
       resolved: false,
+      releaseMismatch: false,
       originalFile: null,
       originalLine: null,
       originalColumn: null,
@@ -156,18 +187,30 @@ async function resolveStack({ projectId, stack, release = null }) {
 
     // Look for matching source map doc:
     // 1. Match both release and filename
-    // 2. Fall back to matching filename only
+    // 2. Fall back to matching filename only, across ANY release —
+    //    useful when a project uploads one map with no release tag,
+    //    or the requested release has no map of its own yet. Flagged
+    //    via `releaseMismatch` below rather than silently treated the
+    //    same as an exact match: two different releases of the same
+    //    filename can have completely different mappings (a rebuild
+    //    changes line/column offsets even for unrelated code), so a
+    //    fallback match can resolve to a plausible-looking but wrong
+    //    original file/line. Callers/UI can choose to hide, gray out,
+    //    or caveat a releaseMismatch:true result instead of presenting
+    //    it with the same confidence as an exact-release match.
     let matchedDoc = sourceMapDocs.find(
       (d) => d.filename === frameFile && d.release === release
     );
     if (!matchedDoc) {
       matchedDoc = sourceMapDocs.find((d) => d.filename === frameFile);
     }
+    const releaseMismatch = Boolean(matchedDoc && matchedDoc.release !== release);
 
     if (!matchedDoc) {
       return {
         ...frame,
         resolved: false,
+        releaseMismatch: false,
         originalFile: null,
         originalLine: null,
         originalColumn: null,
@@ -186,6 +229,7 @@ async function resolveStack({ projectId, stack, release = null }) {
         return {
           ...frame,
           resolved: true,
+          releaseMismatch,
           originalFile: pos.source,
           originalLine: pos.line,
           originalColumn: pos.column,
@@ -206,6 +250,7 @@ async function resolveStack({ projectId, stack, release = null }) {
     return {
       ...frame,
       resolved: false,
+      releaseMismatch: false,
       originalFile: null,
       originalLine: null,
       originalColumn: null,

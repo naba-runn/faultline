@@ -74,9 +74,47 @@ test('uploadSourceMap: requires filename and valid map, upserts document', async
   }
 });
 
+// resolveStack now calls SourceMap.find(...).lean() (bounded to the
+// stack's own filenames, not every map in the project — see
+// sourceMapService.js's comment on why) — this fake mimics the real
+// Mongoose query's .lean() chain terminator so the service code under
+// test can run unmodified.
+function findReturning(docs) {
+  return (filter) => ({
+    lean: () => Promise.resolve(typeof docs === 'function' ? docs(filter) : docs),
+  });
+}
+
+test('uploadSourceMap: whitespace-only release collapses to null, same as an omitted release', async () => {
+  const originalFindOneAndUpdate = SourceMap.findOneAndUpdate;
+  let capturedFilter = null;
+
+  SourceMap.findOneAndUpdate = async (filter) => {
+    capturedFilter = filter;
+    return { _id: 'map-id-456', filename: filter.filename, release: filter.release, uploadedAt: new Date() };
+  };
+
+  try {
+    await uploadSourceMap({
+      projectId: 'proj-1',
+      filename: 'app.min.js',
+      release: '   ',
+      map: sampleSourceMap,
+    });
+
+    // Not "" — an empty-string release would never match resolveStack's
+    // release-aware lookup (which compares against `null` for "no
+    // release"), silently orphaning the upload. See sourceMapService.js's
+    // comment on this fix.
+    assert.equal(capturedFilter.release, null);
+  } finally {
+    SourceMap.findOneAndUpdate = originalFindOneAndUpdate;
+  }
+});
+
 test('resolveStack: returns unresolved frames when no source maps exist', async () => {
   const originalFind = SourceMap.find;
-  SourceMap.find = async () => [];
+  SourceMap.find = findReturning([]);
 
   try {
     const stack = 'at a (app.min.js:1:25)';
@@ -85,7 +123,27 @@ test('resolveStack: returns unresolved frames when no source maps exist', async 
     assert.equal(resolved.length, 1);
     assert.equal(resolved[0].file, 'app.min.js');
     assert.equal(resolved[0].resolved, false);
+    assert.equal(resolved[0].releaseMismatch, false);
     assert.equal(resolved[0].originalFile, null);
+  } finally {
+    SourceMap.find = originalFind;
+  }
+});
+
+test('resolveStack: queries only the filenames referenced by the stack, not every map in the project', async () => {
+  const originalFind = SourceMap.find;
+  let capturedFilter = null;
+  SourceMap.find = (filter) => {
+    capturedFilter = filter;
+    return { lean: () => Promise.resolve([]) };
+  };
+
+  try {
+    const stack = 'at a (app.min.js:1:25)\n    at b (vendor.min.js:2:10)';
+    await resolveStack({ projectId: 'proj-1', stack });
+
+    assert.equal(capturedFilter.projectId, 'proj-1');
+    assert.deepEqual([...capturedFilter.filename.$in].sort(), ['app.min.js', 'vendor.min.js']);
   } finally {
     SourceMap.find = originalFind;
   }
@@ -93,7 +151,7 @@ test('resolveStack: returns unresolved frames when no source maps exist', async 
 
 test('resolveStack: resolves minified frames to original source positions when map exists', async () => {
   const originalFind = SourceMap.find;
-  SourceMap.find = async (filter) => [
+  SourceMap.find = findReturning((filter) => [
     {
       _id: 'doc-1',
       projectId: filter.projectId,
@@ -101,7 +159,7 @@ test('resolveStack: resolves minified frames to original source positions when m
       release: 'v1.4.2',
       map: sampleSourceMap,
     },
-  ];
+  ]);
 
   try {
     const stack = 'at a (app.min.js:1:25)';
@@ -113,10 +171,42 @@ test('resolveStack: resolves minified frames to original source positions when m
 
     assert.equal(resolved.length, 1);
     assert.equal(resolved[0].resolved, true);
+    assert.equal(resolved[0].releaseMismatch, false);
     assert.equal(resolved[0].originalFile, 'src/utils/calculator.js');
     assert.equal(resolved[0].originalLine, 14);
     assert.equal(resolved[0].originalColumn, 8);
     assert.equal(resolved[0].originalFunctionName, 'addNumbers');
+  } finally {
+    SourceMap.find = originalFind;
+  }
+});
+
+test('resolveStack: falls back to a different release\'s map but flags releaseMismatch:true', async () => {
+  const originalFind = SourceMap.find;
+  SourceMap.find = findReturning([
+    {
+      _id: 'doc-1',
+      filename: 'app.min.js',
+      release: 'v1.0.0', // requested release below is v2.0.0 — no exact match
+      map: sampleSourceMap,
+    },
+  ]);
+
+  try {
+    const stack = 'at a (app.min.js:1:25)';
+    const resolved = await resolveStack({
+      projectId: 'proj-1',
+      stack,
+      release: 'v2.0.0',
+    });
+
+    assert.equal(resolved.length, 1);
+    // Still resolved (a mapping was found and used) but explicitly
+    // flagged as a cross-release fallback, not silently indistinguishable
+    // from an exact-release match — see sourceMapService.js's comment.
+    assert.equal(resolved[0].resolved, true);
+    assert.equal(resolved[0].releaseMismatch, true);
+    assert.equal(resolved[0].originalFile, 'src/utils/calculator.js');
   } finally {
     SourceMap.find = originalFind;
   }

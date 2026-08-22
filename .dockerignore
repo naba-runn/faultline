@@ -1,0 +1,42 @@
+# Repo-root .dockerignore — governs the build context for
+# nginx/Dockerfile (docker-compose.yml's `nginx` service uses
+# `context: .`, the only image built from the repo root rather than
+# server/, which has its own scoped .dockerignore).
+#
+# Without this file, the entire repo tree — every node_modules,
+# .git history, any local .env files — was sent to the Docker daemon
+# and available inside the build stage. Concretely dangerous here:
+# nginx/Dockerfile's client build stage runs `npm ci` (installing a
+# clean, Linux-correct node_modules) and then `COPY client/ .` — with
+# no dockerignore, a host-machine client/node_modules (built for
+# macOS/Windows, with platform-specific optional deps like Rollup's
+# native binaries) would land in that COPY and silently overwrite the
+# just-installed one, and a host client/.env (if one exists locally)
+# would be copied in and baked into the built JS bundle right
+# alongside it. See DECISIONS.md, "Task 39: two deployment topologies"
+# for the broader Docker context this file supports.
+
+**/node_modules
+**/dist
+**/.vite
+
+.git
+.gitignore
+.dockerignore
+
+.env
+.env.*
+!.env.example
+
+*.log
+npm-debug.log*
+
+.DS_Store
+.vscode
+.idea
+
+coverage
+*.rdb
+dump.rdb
+
+.claude

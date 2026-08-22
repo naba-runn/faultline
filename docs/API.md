@@ -329,6 +329,11 @@ Requires auth: `Authorization: Bearer <token>` (JWT dashboard user) OR `Authoriz
 }
 ```
 
+**Errors:**
+| Status | Cause | Body |
+|---|---|---|
+| 403 | API-key auth, but `:id` in the URL doesn't match the key's own project | `{ "success": false, "error": "API key does not match the project in the URL" }` |
+
 ### `GET /api/projects/:id/sourcemaps`
 
 Task 32: Lists metadata of all uploaded source maps for a project.

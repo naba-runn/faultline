@@ -21,6 +21,20 @@ const uploadSourceMap = catchAsync(async (req, res) => {
     // Authenticated via API key (apiKeyMiddleware) -- req.project was
     // already resolved from a hashed key lookup, so there's no :id to
     // cast and nothing to translate here.
+    //
+    // The URL still carries its own :id (this route is
+    // POST /:id/sourcemaps regardless of auth method) -- if it
+    // doesn't match the key's own project, reject rather than
+    // silently uploading to whichever project the key belongs to. The
+    // key can never write outside its own project either way (that
+    // part was already safe), but silently substituting a different
+    // project than the URL named would return 201 for a request that,
+    // from the caller's point of view, targeted the wrong resource --
+    // easy to mask a misconfigured build step (wrong key checked into
+    // a different project's CI) as a false "success."
+    if (req.params.id && String(req.project._id) !== String(req.params.id)) {
+      return sendError(res, 403, 'API key does not match the project in the URL');
+    }
     projectId = req.project._id;
   } else if (req.user) {
     // Authenticated via JWT (authMiddleware)
