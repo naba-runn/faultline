@@ -47,7 +47,22 @@ const keys = new SharedArray('project keys', function () {
 // Custom metrics — these plus the four built-in ones below give six
 // total thresholds, matching the "six custom performance thresholds"
 // framing this test is benchmarked against.
-const queueWaitMs = new Trend('queue_wait_ms', true);
+//
+// Named enrichment_latency_ms, not queue_wait_ms: what pollForEnrichment
+// actually times is the full span from the ingestion response to
+// aiSummary becoming visible via HTTP polling — enqueue-to-job-start
+// queue wait, the Gemini API round trip, the DB write, AND up to
+// pollIntervalMs of polling-granularity slop, all bundled together.
+// True queue-wait-time (Task 38.3's original spec: enqueue timestamp
+// vs job-start in worker.js) isn't observable from here at all — k6
+// only ever sees this process from the outside over HTTP, and
+// worker.js has no endpoint exposing its internal per-job timestamps.
+// Getting that split metric would mean adding new instrumentation
+// (e.g. worker.js writing enqueue/start deltas somewhere k6 can read
+// them) — out of scope for this fix; this rename just makes the
+// metric's name match what it actually measures instead of claiming
+// a narrower, more precise thing than it delivers.
+const enrichmentLatencyMs = new Trend('enrichment_latency_ms', true);
 const enrichmentSuccessRate = new Rate('enrichment_success_rate');
 
 export const options = {
@@ -78,7 +93,7 @@ export const options = {
         //    round trip). Generous — this is bounded by Gemini API latency
         //    and BullMQ's queue, not by your code, so don't chase a tight
         //    number here the way you would for #1/#2.
-        queue_wait_ms: ['p(95)<20000'],
+        enrichment_latency_ms: ['p(95)<20000'],
         // 6. Of the new-group events actually polled, what fraction
         //    reached aiSummary within the poll window at all (vs timing
         //    out) — a completeness metric, distinct from #5's speed metric.
@@ -167,9 +182,17 @@ function pollForEnrichment(errorGroupId, token) {
             tags: { endpoint: 'group-detail-poll' },
         });
         try {
-            const group = JSON.parse(res.body).data;
-            if (group?.aiSummary) {
-                queueWaitMs.add(Date.now() - start);
+            // GET /api/groups/:id responds with { data: { group, events,
+            // environments, trend } } (groupController.getGroupDetail) —
+            // aiSummary lives on `.group`, not on `.data` directly. An
+            // earlier version of this poll read `.data.aiSummary`, which
+            // is always undefined regardless of whether enrichment
+            // actually completed, so this metric would report 0%
+            // success against a perfectly healthy pipeline every time
+            // MEASURE_ENRICHMENT was turned on.
+            const body = JSON.parse(res.body).data;
+            if (body?.group?.aiSummary) {
+                enrichmentLatencyMs.add(Date.now() - start);
                 enrichmentSuccessRate.add(true);
                 return;
             }
