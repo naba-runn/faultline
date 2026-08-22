@@ -143,6 +143,39 @@
 
 ## Quickstart Guide
 
+### Fast path: Docker Compose
+
+The whole stack — Mongo, Redis, API, worker, and the client behind
+Nginx — in one command. No local Node/Mongo/Redis install required,
+just Docker.
+
+```bash
+git clone https://github.com/naba-runn/faultline.git
+cd faultline
+
+cp .env.example .env
+# edit .env: set JWT_SECRET at minimum; GEMINI_API_KEY/RESEND_API_KEY
+# enable AI enrichment / email alerts if provided, the app runs fine
+# without them (those features just no-op)
+
+docker compose up --build
+```
+
+Open **`http://localhost`** — register, create a project, and either
+use the in-app "Simulate Error" button or point `demo-app/` at the
+project's API key to send a real ingested error.
+
+This is a separate, local/demo topology from the manual multi-process
+setup below and from the Render/Vercel production deploy further down
+— see `DECISIONS.md`, "Task 39: two deployment topologies." Prefer
+this path for trying the project locally; use the manual steps below
+if you want each process running directly under Node (e.g. for
+debugging with a local debugger attached).
+
+---
+
+### Manual setup (no Docker)
+
 ### Prerequisites
 - **Node.js** `>= 20.0.0`
 - **npm** `>= 10.0.0`
@@ -206,7 +239,7 @@ Open **`http://localhost:5173`** in your browser to access the dashboard.
 
 ## Verification & Test Suite
 
-The backend contains 54 automated unit and integration tests covering deduplication algorithms, spike anomaly detection, source map resolution, and REST contracts:
+The backend contains 59 automated unit and integration tests covering deduplication algorithms, spike anomaly detection, source map resolution, and REST contracts:
 
 ```bash
 cd server

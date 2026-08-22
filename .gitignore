@@ -28,3 +28,10 @@ dump.rdb
 
 # Vite
 .vite/
+
+# Load test artifacts (Task 38) — keys.json holds raw API keys for
+# throwaway seeded projects, regenerated on every seedTestProjects.js
+# run; never meant to be committed. last-run-summary.json is kept
+# deliberately (referenced from docs/PERFORMANCE.md), so it's NOT
+# listed here — only ignore the keys.
+server/loadtest/keys.json

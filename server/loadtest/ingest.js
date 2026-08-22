@@ -80,8 +80,31 @@ export const options = {
     thresholds: {
         // 1 & 2. Ingestion latency — p95 is the headline number for the
         //    resume bullet, p99 is a stricter, separate tail-latency claim.
-        //    Both starting guesses; revise after the first real run per
-        //    Task 38.4 (tune or lower honestly, don't inflate).
+        //    Full history per Task 38.4 (see DECISIONS.md, "Task 38:
+        //    ingestion latency thresholds" for the complete investigation):
+        //      run 1 (default pool): p95 875ms, p99 1.12s — both original
+        //        150ms/300ms guesses failed.
+        //      run 2 (maxPoolSize: 150): p95 896ms, p99 1.36s — no
+        //        improvement, ruling out client-side pool contention.
+        //      Diagnosis: an isolated unloaded request cost ~110ms —
+        //        three sequential DB round trips per ingest
+        //        (apiKeyMiddleware's Project lookup, the ErrorGroup
+        //        upsert, the ErrorEvent create). Thresholds were
+        //        temporarily lowered to 1000ms/1600ms at this point as an
+        //        honest reflection of the real ceiling.
+        //      Fix: cached the Project lookup (utils/projectApiKeyCache.js,
+        //        30s TTL, evicted immediately on project delete — removes
+        //        one of the three round trips for the ~100% of requests
+        //        that reuse a key repeatedly, which every real caller
+        //        does).
+        //      Run 3 (cached): p95 96.5ms, p99 175ms, 0% errors — beats
+        //        the ORIGINAL guesses. Thresholds restored to reflect
+        //        this, not left at the temporarily-lowered numbers.
+        //    (One side effect surfaced along the way: faster requests
+        //    meant more throughput fit in the same test window, which
+        //    briefly exceeded ingestLimiter's 100/min/project cap at 25
+        //    seeded projects — see seedTestProjects.js's updated project
+        //    count.)
         'http_req_duration{endpoint:ingest}': ['p(95)<150', 'p(99)<300'],
         // 3. Error rate.
         http_req_failed: ['rate<0.01'],

@@ -1,5 +1,6 @@
 const Project = require('../models/Project');
 const { hashApiKey } = require('../utils/apiKey');
+const projectApiKeyCache = require('../utils/projectApiKeyCache');
 
 /**
  * Verifies an API key (Authorization: Bearer flt_...) sent by client
@@ -8,7 +9,11 @@ const { hashApiKey } = require('../utils/apiKey');
  * user. See DECISIONS.md's "API key hashing" entry for the separate-
  * middleware rationale.
  *
- * On success, attaches req.project (the matched Project doc).
+ * On success, attaches req.project (the matched Project doc — served
+ * from utils/projectApiKeyCache.js on a hit, so its alertConfig/other
+ * fields can be up to projectApiKeyCache.TTL_MS stale; see that
+ * module's header comment for the full reasoning and tradeoff, not
+ * re-litigated here).
  * Rejects with 401 for any failure mode — missing header, malformed
  * key, or no matching hash — without distinguishing which, same
  * enumeration-avoidance reasoning used throughout auth/projects.
@@ -35,18 +40,26 @@ async function apiKeyMiddleware(req, res, next) {
   try {
     const incomingHash = hashApiKey(rawKey);
 
-    // Look up by hash directly rather than fetching all projects and
-    // comparing in a loop — this is the hot path (every ingestion
-    // request), so it needs to be a single indexed query, not O(n).
-    // This lookup IS the security boundary: Mongo's equality match on
-    // the indexed apiKeyHash is what actually determines whether the
-    // incoming key is valid. (An earlier version of this file also
-    // ran crypto.timingSafeEqual against the just-matched document's
-    // own apiKeyHash after this query succeeded — that comparison
-    // could never be false, since it compared a value against itself,
-    // and was removed as dead code. See DECISIONS.md, "apiKeyMiddleware:
-    // removal of inert timingSafeEqual check.")
-    const project = await Project.findOne({ apiKeyHash: incomingHash });
+    // Cache hit skips the DB round trip entirely — see
+    // utils/projectApiKeyCache.js for why this specific lookup is
+    // safe to serve slightly stale.
+    let project = projectApiKeyCache.get(incomingHash);
+
+    if (!project) {
+      // Look up by hash directly rather than fetching all projects and
+      // comparing in a loop — this is the hot path (every ingestion
+      // request), so it needs to be a single indexed query, not O(n).
+      // This lookup IS the security boundary: Mongo's equality match on
+      // the indexed apiKeyHash is what actually determines whether the
+      // incoming key is valid. (An earlier version of this file also
+      // ran crypto.timingSafeEqual against the just-matched document's
+      // own apiKeyHash after this query succeeded — that comparison
+      // could never be false, since it compared a value against itself,
+      // and was removed as dead code. See DECISIONS.md, "apiKeyMiddleware:
+      // removal of inert timingSafeEqual check.")
+      project = await Project.findOne({ apiKeyHash: incomingHash });
+      if (project) projectApiKeyCache.set(incomingHash, project);
+    }
 
     if (!project) {
       return res.status(401).json({

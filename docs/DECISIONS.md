@@ -17,6 +17,151 @@ instead — that section is what `CHANGELOG.md` used to be.
 
 ---
 
+## Task 38: ingestion latency thresholds
+
+**Context:** Task 38's k6 script (`server/loadtest/ingest.js`)
+shipped with two guessed thresholds — `http_req_duration{endpoint:
+ingest}` p95 < 150ms, p99 < 300ms — explicitly flagged in the script's
+own comment as starting points to revise "after the first real run,"
+per Task 38.4. The first real run against this project's actual
+MongoDB Atlas cluster failed both: p95 875ms, p99 1.12s, with 0%
+errors and 100% checks passing (a latency problem, not a correctness
+one).
+
+**Investigation, in order:**
+1. Suspected client-side connection-pool contention (the docs'
+   own first guess for this exact symptom). `config/db.js` had no
+   explicit `maxPoolSize` (Mongoose default: 100). Set explicitly to
+   `{ maxPoolSize: 150, minPoolSize: 20 }`, re-ran: p95 896ms, p99
+   1.36s — statistically unchanged, ruling this out.
+2. Isolated a single, unloaded request via plain `curl` (no k6, no
+   concurrency): consistently ~110ms. That number lines up almost
+   exactly with the *median* of both k6 runs, not their tail — meaning
+   most requests complete near this floor, and a growing fraction
+   queue behind others as concurrency rises toward 50 VUs.
+3. Traced the ~110ms floor to three sequential DB round trips per
+   ingest request against the remote Atlas cluster:
+   `apiKeyMiddleware`'s `Project.findOne`, then `recordEvent`'s
+   `ErrorGroup` upsert, then its `ErrorEvent.create`. Each depends on
+   the previous call's result (the event write needs the upserted
+   group's `_id`), so they're inherently sequential — no
+   `Promise.all` opportunity exists here, and wrapping them in a
+   multi-document transaction would add a round trip for the
+   transaction itself, not remove one.
+
+**Decision (superseded — see Update below):** Lower the thresholds to
+p95 < 1000ms, p99 < 1600ms — ~15% headroom above the second
+(pool-tuned) run's actual p95/p99 — rather than continuing to chase
+the original guesses. Manufacturing a pass by loosening `ingestLimiter`
+or reducing test concurrency would hide the real number rather than
+reporting it; this project's own stated policy (see `PERFORMANCE.md`'s
+header and `server/loadtest/README.md`) is to tune what's tunable,
+then lower honestly and say so — not to inflate.
+
+**Alternatives considered at the time (one later reversed — see
+Update):**
+- *Reduce round trips by combining the upsert + event write into one
+  operation.* Not possible across two separate collections without a
+  transaction, which costs a round trip rather than saving one. Still
+  correct — not revisited.
+- *Cache `Project` lookups in `apiKeyMiddleware` to cut one round
+  trip.* Originally rejected here on the reasoning that "the tail
+  growth under concurrency is Atlas throughput, not this specific
+  query's cost" — **this turned out to be wrong.** See "Update" below:
+  removing this one round trip fixed the actual problem. The security
+  tradeoff concern (a revoked/rotated key working until the cache
+  entry expires) was real and is addressed, not dismissed, in the
+  follow-up entry.
+- *Raise `ingestLimiter`'s per-project cap or reduce k6's VU count so
+  the original 150ms/300ms thresholds pass.* Rejected outright, still
+  correct — this is exactly the "artificially generous limiter
+  setting" Task 38.4's own text warns against.
+
+**Update — thresholds restored, not left lowered:** The "cache
+`Project` lookups" alternative above was revisited after the user
+asked to look for a fix that didn't require an Atlas tier upgrade (off
+the table). Implementing it — see "apiKeyMiddleware: short-TTL project
+cache" below for the full design and the security tradeoff it actually
+accepts, which is narrower than first assumed — dropped p95 from 875ms
+to 96.5ms and p99 from 1.12s to 175ms, both now *under* the original
+150ms/300ms guesses. Thresholds in `ingest.js` were restored to
+150ms/300ms accordingly; the 1000ms/1600ms numbers above were never
+correct as a permanent target, only as an honest interim one while the
+real fix was still unknown. Full run-by-run numbers: `PERFORMANCE.md`.
+
+---
+
+## apiKeyMiddleware: short-TTL project cache
+
+**Context:** Follow-up to "Task 38: ingestion latency thresholds"
+above. That investigation identified `apiKeyMiddleware`'s
+`Project.findOne({ apiKeyHash })` as one of three sequential DB round
+trips on the ingestion hot path, and initially rejected caching it —
+the concern being that a revoked/rotated API key should stop working
+immediately, and a cache would delay that.
+
+**Re-examination:** This app has **no key-rotation or revocation
+endpoint** — `projectService.js` never touches `apiKeyHash` after
+creation (see that file's own comment on `updateProject`). The only
+way an API key stops being valid is its entire `Project` being
+deleted. So the original security concern doesn't actually apply to a
+capability this app has; the real, narrower exposure is: for up to the
+cache's TTL after a project is deleted, an in-flight request using its
+old key could still succeed and write an orphaned `ErrorGroup`/
+`ErrorEvent` — a data-hygiene edge case, not an access-control bypass
+(nobody gains access to anything they weren't already validly
+authorized for at request time).
+
+**Decision:** Added `utils/projectApiKeyCache.js` — a small,
+process-local (`Map`-based, not Redis) cache keyed by `apiKeyHash`
+(the same value already stored on `Project`, so no extra computation
+needed to evict), 30s TTL. `apiKeyMiddleware.js` checks it before
+falling back to `Project.findOne`, populating it on a miss.
+`projectService.deleteProject` was changed from `Project.deleteOne` to
+`Project.findOneAndDelete` specifically so it has the deleted
+document's `apiKeyHash` in hand to evict the cache entry immediately —
+closing the one real exposure window down to essentially zero instead
+of relying on the 30s TTL to expire it.
+
+Kept as its own module (`utils/`, not folded into
+`middleware/apiKeyMiddleware.js`) so `projectService.js` (a service)
+can call `evict()` without importing a middleware file — the
+`services never touch req/res` / `controllers never touch Mongoose
+directly` layering `PROJECT_RULES.md` §5 locks in has an implicit
+third rule this follows: services shouldn't reach into middleware/
+either.
+
+**Result:** Isolated `curl` baseline dropped from ~110ms to ~75ms
+warm; full k6 run at 50 VUs: p95 96.5ms, p99 175ms (down from 875ms/
+1.12s), 0% errors. See `PERFORMANCE.md` for the complete run history,
+including a false-alarm 4.6% error rate on the first cached run that
+turned out to be `ingestLimiter` rejecting traffic once real
+throughput got fast enough to exceed the load test's own 25-project
+seed count — not an app regression.
+
+**Alternatives considered and rejected:**
+- *Cache in Redis instead of process-local.* Rejected — this lookup
+  is cheap enough to recompute on a miss that a shared/distributed
+  cache would be infrastructure for no real benefit (same restraint
+  PROJECT_RULES.md's premature-infrastructure guidance argues against
+  elsewhere in this codebase, e.g. Task 25's queue choice).
+- *No TTL, cache forever, only ever invalidate on delete.* Rejected —
+  would make `Project` document updates (e.g. `alertConfig` changes
+  via `PATCH /:id/alerts`) invisible to ingestion indefinitely, not
+  just for a bounded 30s window. The explicit delete-time eviction
+  handles the one case that actually matters (a key that should stop
+  working entirely); a TTL bounds staleness for every other kind of
+  update without needing a cache-invalidation hook on every possible
+  `Project` field change.
+- *Make the ErrorEvent write fire-and-forget after the 202 response*
+  (a different round-trip-cutting idea from the same investigation).
+  Rejected — would mean a server crash between responding 202 and the
+  write completing silently drops that occurrence, undermining the
+  one guarantee this endpoint's whole job is built around. Not
+  implemented.
+
+---
+
 ## Task 36 (follow-up pass): dashboard overview widgets — trend chart, alert status, release timeline
 
 **Context:** `TASKS.md`'s Task 36 line was checked off after commit

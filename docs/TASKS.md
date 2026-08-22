@@ -138,12 +138,17 @@ to task order. Remove an item only when it's actually resolved.
 
 ## Milestone 10: Performance & Packaging
 
-- [ ] **Task 38** — k6 load test on ingestion path
-  - [ ] 38.1 — Install k6, write baseline script hitting
+- [ ] **Task 38** — k6 load test on ingestion path. Phase 1
+  (ingestion-only, thresholds 1-4) run for real and passing — see
+  `PERFORMANCE.md` and `DECISIONS.md`'s "Task 38: ingestion latency
+  thresholds." Parent left unchecked: 38.3 (real queue-wait
+  instrumentation) was never actually built, and 38.6's commit is
+  outstanding.
+  - [x] 38.1 — Install k6, write baseline script hitting
     `POST /api/events` with a realistic payload (real API key, varied
     `message`/`stack` to avoid all-hits-one-fingerprint skew — see
     Task 28's fingerprint-collision lesson, don't repeat it here).
-  - [ ] 38.2 — Define six thresholds up front, before tuning anything:
+  - [x] 38.2 — Define six thresholds up front, before tuning anything:
     e.g. `http_req_duration{p95}<Xms`, `http_req_failed<1%`,
     `iteration_duration{p95}<Yms`, a custom queue-wait-time metric,
     a custom worker-throughput metric, `checks{rate}>99%`. Pick
@@ -151,25 +156,45 @@ to task order. Remove an item only when it's actually resolved.
     after the first real run.
   - [ ] 38.3 — Instrument queue wait time: timestamp on enqueue
     (`enrichmentQueue.js`) vs job-start in `worker.js`, exposed via a
-    custom k6 metric.
-  - [ ] 38.4 — Run at 50 VUs, capture actual numbers, iterate: tune
+    custom k6 metric. **Not built.** The `enrichment_latency_ms`
+    metric that exists instead times the full ingestion-response-to-
+    aiSummary-visible span (queue wait + Gemini call + DB write + k6
+    poll granularity, measured over HTTP by polling
+    `GET /api/groups/:id`) — a reasonable, honestly-labeled proxy (see
+    the rename in `ingest.js`'s comments), but not what this sub-task
+    actually specifies: a true enqueue-vs-job-start delta requires
+    `worker.js` to record and expose its own internal timestamps,
+    which k6 can't observe over HTTP without new instrumentation. Left
+    unchecked rather than counted as done under a different metric.
+  - [x] 38.4 — Run at 50 VUs, capture actual numbers, iterate: tune
     (connection pool, worker concurrency, `ingestLimiter` ceiling) or
     lower the threshold to an honest number — never manufacture a
-    number against an artificially generous limiter setting.
-  - [ ] 38.5 — Save the passing run's summary JSON + writeup in
+    number against an artificially generous limiter setting. Ran
+    three times against the real Atlas-backed dev environment: default
+    pool (failed), tuned pool (`maxPoolSize: 150` — no improvement,
+    ruling out client-side contention), then thresholds lowered to the
+    tuned run's real p95/p99 + ~15% headroom. See `DECISIONS.md`.
+  - [x] 38.5 — Save the passing run's summary JSON + writeup in
     `docs/PERFORMANCE.md` (new file) — this is where the resume
     bullet's numbers come from, keep raw output for defensibility.
+    Summary at `server/loadtest/last-run-summary.json`.
   - [ ] 38.6 — Commit script under `server/loadtest/`, docs + commit.
+    Script/docs are on disk and finalized; the actual commit is
+    outstanding (Git operations are being done by the project owner
+    directly, not automated in this pass).
 
-- [ ] **Task 39** — Docker Compose, full stack
-  - [ ] 39.1 — `Dockerfile` for API (`server/`), multi-stage build,
+- [ ] **Task 39** — Docker Compose, full stack. Written but not yet
+  verified end-to-end — see 39.5/39.6 below; this environment has no
+  Docker daemon available to run that verification, so it needs to
+  happen on a real machine before this checkbox can move.
+  - [x] 39.1 — `Dockerfile` for API (`server/`), multi-stage build,
     non-root user.
-  - [ ] 39.2 — `Dockerfile` for worker (`server/worker.js` entrypoint,
+  - [x] 39.2 — `Dockerfile` for worker (`server/worker.js` entrypoint,
     shares base image/layer with API, different `CMD`).
-  - [ ] 39.3 — `Dockerfile` for client (`client/`) — decide separate
+  - [x] 39.3 — `Dockerfile` for client (`client/`) — decide separate
     container vs folding into Nginx directly, record the decision in
     `DECISIONS.md`.
-  - [ ] 39.4 — `docker-compose.yml`: api, worker, client, redis, mongo,
+  - [x] 39.4 — `docker-compose.yml`: api, worker, client, redis, mongo,
     networked, env vars from `.env` (not committed), healthchecks on
     api/redis/mongo so `worker` doesn't start against a not-yet-ready
     Redis.
@@ -181,7 +206,7 @@ to task order. Remove an item only when it's actually resolved.
   - [ ] 39.6 — Re-run Task 38's k6 script once against the
     containerized stack, note any delta vs the dev-environment
     baseline in `PERFORMANCE.md` (one paragraph, not a new task).
-  - [ ] 39.7 — Update `README.md` to lead with `docker compose up` as
+  - [x] 39.7 — Update `README.md` to lead with `docker compose up` as
     the fast path, keep manual multi-process instructions as
     alternate. Docs + commit.
 

@@ -3,6 +3,7 @@ const ErrorGroup = require('../models/ErrorGroup');
 const ErrorEvent = require('../models/ErrorEvent');
 const SourceMap = require('../models/SourceMap');
 const { generateApiKey, hashApiKey } = require('../utils/apiKey');
+const projectApiKeyCache = require('../utils/projectApiKeyCache');
 
 /**
  * Creates a new project owned by the given user. Returns the raw API
@@ -135,12 +136,20 @@ async function updateProject({ ownerId, projectId, name, githubRepo }) {
  * Deletes a project, scoped to its owner, along with all associated
  * error groups, error events, and source maps. Returns true if a document
  * was deleted, false under the same not-found-or-not-yours ambiguity.
+ *
+ * findOneAndDelete, not deleteOne — deleteOne only reports a count, and
+ * this needs the deleted document's own apiKeyHash to evict it from
+ * utils/projectApiKeyCache.js immediately (see that module's header
+ * comment): without this, a just-deleted project's API key would keep
+ * authenticating ingestion requests for up to the cache's TTL instead
+ * of failing right away.
  */
 async function deleteProject({ ownerId, projectId }) {
-  const result = await Project.deleteOne({ _id: projectId, ownerId });
-  if (result.deletedCount === 0) {
+  const project = await Project.findOneAndDelete({ _id: projectId, ownerId }).select('apiKeyHash');
+  if (!project) {
     return false;
   }
+  projectApiKeyCache.evict(project.apiKeyHash);
 
   const groupIds = await ErrorGroup.find({ projectId }).distinct('_id');
   if (groupIds.length > 0) {

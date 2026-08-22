@@ -18,15 +18,16 @@ the first run.
 
 ```bash
 # 1. Seed test projects + API keys (run once, or re-run to reset)
-node server/loadtest/seedTestProjects.js 25
+node server/loadtest/seedTestProjects.js 50
 
 # 2. Run k6 against ingestion only
 BASE_URL=http://localhost:5000 k6 run server/loadtest/ingest.js
 ```
 
 This exercises thresholds 1–4 (p95/p99 latency, error rate, checks).
-Thresholds 5–6 (queue_wait_ms, enrichment_success_rate) will show as
-`0 samples` and won't fail the run — they're simply not measured yet.
+Thresholds 5–6 (enrichment_latency_ms, enrichment_success_rate) will
+show as `0 samples` and won't fail the run — they're simply not
+measured yet.
 
 If threshold 1/2 fail: check whether you're actually hitting
 `ingestLimiter`'s 429s (would also fail #3) — if so, increase the
@@ -54,11 +55,15 @@ DASHBOARD_PASSWORD=<your test user's real password> \
 k6 run server/loadtest/ingest.js
 ```
 
-Threshold 5 (`queue_wait_ms`) is bounded by Gemini API latency and
-BullMQ's queue — not really "your" number the way ingestion latency
-is. Don't chase a tight threshold here; a generous, honest number
-(e.g. p95 < 20s) that reflects the actual worker+Gemini round trip is
-more defensible than an artificially tight one.
+Threshold 5 (`enrichment_latency_ms`) is bounded by Gemini API latency
+and BullMQ's queue — not really "your" number the way ingestion
+latency is. Don't chase a tight threshold here; a generous, honest
+number (e.g. p95 < 20s) that reflects the actual worker+Gemini round
+trip is more defensible than an artificially tight one. Note this
+metric times the full ingestion-response-to-aiSummary-visible span
+(queue wait + Gemini call + DB write + polling granularity) — not
+isolated queue-wait time; see `ingest.js`'s comment on the metric for
+why it's named that way.
 
 If threshold 5/6 are failing because jobs pile up: `worker.js`
 constructs its BullMQ `Worker` with no `concurrency` option, which
@@ -80,10 +85,14 @@ k6 run --summary-export=server/loadtest/last-run-summary.json server/loadtest/in
 
 ## Cleanup
 
-Test projects are tagged `loadtest: true` (see `seedTestProjects.js`).
-To remove them:
+`seedTestProjects.js` itself deletes and re-seeds on every run, so
+re-running step 1 is normally all the cleanup you need. Test projects
+are identified by the `loadtest-` name prefix the script assigns (not
+a `loadtest: true` field — Project's schema is strict and has no such
+field, so an earlier version of this doc/script that relied on one was
+a no-op; see the script's own comment). To remove them manually:
 
 ```js
 // in a mongo shell or a throwaway script
-db.projects.deleteMany({ loadtest: true })
+db.projects.deleteMany({ name: /^loadtest-/ })
 ```

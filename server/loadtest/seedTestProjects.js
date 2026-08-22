@@ -16,14 +16,21 @@
 //
 // Usage:
 //   node server/loadtest/seedTestProjects.js [count]
-//   (defaults to 25 projects — 25 * 100/min = 2500/min ≈ 41.6 req/s
-//   aggregate ceiling, comfortably above the 26.5 req/s target this
-//   test is benchmarked against.)
+//   (defaults to 50 projects — 50 * 100/min = 5000/min ≈ 83.3 req/s
+//   aggregate ceiling. Raised from an original default of 25 after
+//   Task 38's apiKeyMiddleware caching fix (see
+//   utils/projectApiKeyCache.js) made real ingestion throughput fast
+//   enough — ~77 req/s observed at 50 VUs — that 25 projects' ~41.6
+//   req/s ceiling started rejecting legitimate load-test traffic with
+//   429s, which briefly showed up as a false "error rate" regression
+//   that was actually the test's own seed count, not the app. See
+//   DECISIONS.md, "Task 38: ingestion latency thresholds.")
 //
 // Requires the same .env / MongoDB connection as the API itself. Safe
 // to run against a local/dev database only — NOT production. Projects
-// are tagged with a `loadtest: true` flag (see below) so they're easy
-// to find and delete afterward.
+// are identified by the `loadtest-` name prefix this script assigns
+// (see LOADTEST_NAME_PREFIX_RE below) so they're easy to find and
+// delete afterward.
 
 const mongoose = require('mongoose');
 const fs = require('fs');
@@ -33,7 +40,7 @@ const Project = require('../models/Project');
 const User = require('../models/User');
 const { generateApiKey, hashApiKey } = require('../utils/apiKey');
 
-const PROJECT_COUNT = parseInt(process.argv[2], 10) || 25;
+const PROJECT_COUNT = parseInt(process.argv[2], 10) || 50;
 const TEST_USER_EMAIL = 'loadtest@faultline.local';
 const OUTPUT_PATH = path.join(__dirname, 'keys.json');
 const LOADTEST_NAME_PREFIX_RE = /^loadtest-/;
@@ -43,7 +50,13 @@ async function getOrCreateTestUser() {
     if (!user) {
         user = await User.create({
             email: TEST_USER_EMAIL,
-            password: crypto_randomPassword(),
+            // User's schema field is `passwordHash` (see models/User.js),
+            // not `password` — the pre-save hook hashes whatever's set on
+            // that field, it doesn't accept a separate plaintext-named
+            // input. `password: ...` here was silently dropped by
+            // Mongoose's strict schema, leaving passwordHash unset and
+            // failing its own `required` validator on every seed run.
+            passwordHash: crypto_randomPassword(),
             name: 'Load Test User',
         });
         console.log(`[seed] created test user ${TEST_USER_EMAIL}`);
