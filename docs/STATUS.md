@@ -16,16 +16,27 @@
 - **Milestone 6 — Reliability & Real-Time Infrastructure:** COMPLETE (3/3 tasks — Tasks 25, 26, 27 all done)
 - **Milestone 7 — Alerting & Insights:** COMPLETE (5/5 tasks — Tasks 28, 29, 30, 31, 32 all done)
 - **Milestone 8 — Product Polish & Growth:** COMPLETE (4/4 tasks — Tasks 33, 34, 35, 36 all done). **Task 36 note:** the original pass under this checkbox (commit `bbbcdca`) shipped a metrics/stat-card grid but not the trend chart/alert status/release timeline the task actually specifies — a follow-up pass has since built that missing scope for real (`GET /api/projects/overview` + three dashboard widgets). See `DECISIONS.md`'s "Task 36 (follow-up pass)" entry.
-- **Milestone 9 — Ship:** COMPLETE (1/1 task — Task 37 done)
+- **Milestone 9 — Ship:** COMPLETE (1/1 task — Task 37 done, though see
+  its note below: docs/config only, no live deployed instance exists)
+- **Milestone 10 — Performance & Packaging:** IN PROGRESS. Task 38 (k6
+  load test) done and live-verified, real numbers in `PERFORMANCE.md`
+  — see below. Task 39 (Docker Compose) has all code written and
+  reviewed but 39.5/39.6 (running `docker compose up` for real,
+  re-running k6 against the containerized stack) are **not done** —
+  this working environment has no Docker daemon available, so that
+  verification needs to happen on a machine that has one.
+- **Milestone 11 — Deployment Intelligence & Incidents:** COMPLETE
+  (2/2 tasks). Task 40 (deployment correlation) and Task 41 (Incident
+  model) both done and live-verified against real webhook POSTs, real
+  Atlas data, and (Task 41) two real browser tabs confirming SSE
+  push — see below.
 
-**ALL 9 MILESTONES (37/37 TASKS) ARE COMPLETE.** One caveat: Task 36's
-follow-up pass (dashboard overview widgets, below) has not yet had a
-live manual test against a running instance — this environment has no
-network route to the project's MongoDB Atlas/Redis, so it's verified
-by unit tests and a clean production build only. Do that manual pass
-— add a project, simulate a spike, watch the widgets populate — before
-calling Milestone 8 fully shipped, same bar every other task in this
-file was held to.
+Earlier milestones (1-9) were previously reported as "ALL COMPLETE" in
+this file, current as of Task 37. Milestones 10-11 are a later,
+deliberate scope expansion (see `TASKS.md`'s Notes section and
+`DECISIONS.md`'s "Scope expansion: Milestones 6-9" entry for the
+precedent) — not a contradiction of the earlier "complete" claim, just
+more scope added after it was true.
 
 Task numbering and full checklist: `TASKS.md`. This section only
 states current position, not a restated description of every task —
@@ -33,12 +44,41 @@ that would duplicate `TASKS.md`.
 
 ## What's Actively In Progress
 
+**Task 41 — Incident model — complete and live-verified. Milestone 11 is now fully complete.**
+- **Backend.** New `Incident` model (`server/models/Incident.js`), `services/incidentService.js` (the shared `recordTrigger` dedup/append logic — one function, called from both the spike trigger in `ingestController.js` and the deployment-regression trigger in `deploymentService.js`, 10 unit tests), a second AI prompt/call/validate trio in `aiService.js` specifically for free-form incident diagnosis (distinct from the structured ErrorGroup-enrichment one, 4 unit tests), and a fourth BullMQ queue/worker pair (`services/incidentDiagnosisQueue.js`) that generates the AI hypothesis as a background job. `GET /api/projects/:id/incidents`, `GET /api/incidents/:id`, `PATCH /api/incidents/:id/status` — all ownership-scoped.
+- **Frontend.** New `IncidentDetailPage.jsx` (`/incidents/:id`) — timeline, affected groups, AI hypothesis, status control, live-updating via the existing SSE channel. Linked from a new "Incidents" section on `ProjectDetailPage`.
+- **Two real bugs found and fixed along the way, both outside Task 41's own new code:**
+  1. `GroupDetailPage.jsx`/`ProjectDetailPage.jsx`'s SSE handlers had silently regressed during an unrelated UI redesign commit (`264e166`) — wrong argument count, event names the server never publishes, wrong return-value destructuring — making live-refetch dead code on both pages since that commit, despite Task 26.5's "confirmed clean" test having been real *at the time*. Fixed to match the original, correct design. See `DECISIONS.md`'s dedicated entry.
+  2. `seedTestProjects.js`'s re-seed cleanup never cascaded to `ErrorGroup`/`ErrorEvent` when deleting stale projects, orphaning ~6,560 groups/6,568 events across Task 38's load-testing sessions and leaving a multi-thousand-job stale Redis queue backlog that was still burning real Gemini API quota when this task's manual test started — which is *why* Task 41.3's AI diagnosis couldn't be verified succeeding live (see the gap noted below). Fixed at the source; existing mess cleaned up.
+- **Live-verified, real infrastructure, no mocks:** a real webhook-triggered deployment regression auto-created a real `Incident` with correct title/trigger/timeline/affected-groups; the status endpoint was exercised through all three states with correct append-only timeline behavior; the dedup rule was observed live in both directions; and SSE push was confirmed across two real, independently-opened browser tabs with no manual refresh. **One disclosed gap:** the real Gemini API's free-tier daily quota was already exhausted (see bug #2 above), so the AI-diagnosis job's live network call could only be verified failing correctly (real request, real 429, real retry/backoff, real terminal failure) — not succeeding. Full trace: `TASKS.md`'s Task 41.6 entry.
+- **Tests.** 10 new `incidentService.test.js` cases, 4 new `aiService.test.js` cases. Full server suite: 82/82 passing. Client production build clean.
+
+Before this, most recently completed:
+
+**Task 40 — Deployment correlation — complete and live-verified.**
+- **Backend.** New `Deployment` model (`server/models/Deployment.js`), a public HMAC-SHA256-signature-verified webhook receiver (`POST /api/webhooks/github/:projectId`, `controllers/webhookController.js`), a pure before/after regression calculator (`services/deploymentCorrelationService.js`, 8 unit tests) plus the DB-touching orchestration around it (`services/deploymentService.js`), and a third BullMQ queue/worker pair (`services/deploymentCorrelationQueue.js` + `worker.js`) that runs correlation on a **delayed** job — the after-window genuinely can't be measured before it elapses, so this couldn't be inline or synchronous. `GET /api/projects/:id/deployments` (cursor-paginated, same style as Task 22) and a new `deployments.recent` section on the dashboard overview endpoint.
+- **Frontend.** `DashboardPage.jsx` gained a "Deployment Timeline" strip (reuses the existing spikes-list styling), showing branch/sha, relative time, a "correlating…" indicator while a job is still pending, and a red "Regression suspected" badge when `correlationSuspected` is true.
+- **A real, non-default design addition:** a `minCountFloor` (same value as Task 29's spike floor, 5) was added to the regression check beyond what Task 40.4's literal text specifies — without it, a project with 0 before-events and 1 after-event registers as an "infinite regression" on noise. See `DECISIONS.md`, "Task 40: regression floor."
+- **Live-verified, real infrastructure, no mocks:** registered a real user, created a real project, ingested real before/after events via the real ingestion path, sent a real HMAC-signed webhook (plus verified the 401/404/200-ignored negative paths live), confirmed a real `Deployment` document was created in MongoDB Atlas, and confirmed `regressionSuspected: true` computed and persisted correctly, then read back through both the detail endpoint and the dashboard overview. All test data cleaned up afterward. **One disclosed shortcut:** the correlation job's real ~15-minute BullMQ delay was not waited out live — `deploymentService.correlateDeployment` was invoked directly against the same real data instead. Full trace: `TASKS.md`'s Task 40.6 entry.
+- **Tests.** 8 new unit tests (`deploymentCorrelationService.test.js`), 2 new/updated `overviewService.test.js` cases. Full server suite: 68/68 passing. Client production build clean.
+- **Not yet done:** the full real-time delayed-job flow at its natural ~15-minute pace, end-to-end (see the disclosed shortcut above) — the logic itself was exercised against real data either way. Task 41 (Incident model) has not been started.
+
+Before this, most recently completed:
+
+**Task 38/39 follow-up — ingestion latency fix + Docker Compose doc gap.**
+- **Real load test run** (not simulated): installed k6, seeded real Atlas-backed test projects, ran the actual 50-VU k6 scenario against a locally running API. First run: p95 875ms/p99 1.12s against the original 150ms/300ms thresholds — both failed, 0% errors. Diagnosed via connection-pool tuning (no effect — ruled out client-side contention) and an isolated single-request baseline (~110ms, pinning the cause to 3 sequential DB round trips per ingest against the remote Atlas cluster).
+- **Real fix, not a lowered threshold:** added `utils/projectApiKeyCache.js`, a 30s-TTL in-memory cache for `apiKeyMiddleware`'s `Project.findOne` lookup, with immediate eviction wired into `projectService.deleteProject` (verified live: deleted a project, confirmed its key stopped working on the very next request, not after the TTL). Re-ran: p95 96.5ms, p99 175ms, 0% errors — beating the *original* thresholds, which were restored (not left at the temporarily-lowered numbers). Full run-by-run trail: `DECISIONS.md`'s "apiKeyMiddleware: short-TTL project cache" entry and `PERFORMANCE.md`.
+- **Also fixed:** `seedTestProjects.js` was passing `password:` to `User.create()` when the schema field is `passwordHash` — silently dropped by Mongoose's strict schema, failing every seed attempt. Real bug, caught by actually running the script.
+- **Docs.** `TASKS.md` 39.1-39.4/39.7 checked off (Dockerfiles/compose file were already written; README now leads with `docker compose up`). 39.5/39.6 remain undone — no Docker daemon available in this environment.
+
+Before that, most recently completed:
+
 **Task 36 (follow-up pass) — dashboard overview widgets — built, unit-tested, not yet manually verified live.**
 - **Backend.** New `GET /api/projects/overview` (`errorGroupService.getDashboardOverview`), scoped to the logged-in user's own projects: a 25-point hourly error-volume series for the trailing 24h (reuses `trendService.startOfHour`, now exported, for the same UTC-safe hour bucketing Task 29's spike detection uses), an alert-status summary (how many owned projects have any trigger enabled, plus currently-`isSpiking` groups read directly rather than recomputed), and the most recent release-tagged error groups. Route registered above `GET /:id` so the literal path isn't swallowed as a project id — verified by inspecting Express's actual route stack, not just the source order.
 - **Frontend.** `DashboardPage.jsx` gained a `TrendChart` (hand-rolled inline SVG bar chart — no new charting dependency), an `AlertStatusCard`, and a `ReleaseTimeline`, fetched from the new endpoint alongside the existing project list. New CSS in `index.css` reuses existing badge/card tokens.
 - **Tests.** 4 new unit tests in `server/tests/overviewService.test.js`, same mocked-Mongoose-chain convention as the rest of this suite (no real Mongo available here). Full server suite: 54/54 passing. Client production build verified clean.
 - **Docs.** `docs/API.md` gained the new endpoint's full documentation. `docs/TASKS.md`'s Task 36 line corrected in place — see `DECISIONS.md` for the full decision record, including what was deliberately left out (no new "alert firing history" collection — that's a real schema change, named as a future step, not silently implied to already exist).
-- **Not yet done:** live manual test against a running instance (blocked on this environment's lack of network access to Atlas/Redis — see caveat above). Do this before treating Milestone 8 as fully closed.
+- **Update:** the "no network access to Atlas/Redis" caveat below no longer applies — later sessions gained a working environment with real Atlas/Redis access (see the Task 38/39 and Task 40 entries above, both of which exercised `GET /api/projects/overview` live for real). Treat this entry's own "not yet manually verified" line as historical, not current.
 
 Before this, most recently completed:
 

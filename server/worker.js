@@ -28,11 +28,17 @@ const connectDB = require('./config/db');
 const { getBullConnection } = require('./config/redis');
 const { QUEUE_NAME } = require('./services/enrichmentQueue');
 const { QUEUE_NAME: ALERT_QUEUE_NAME } = require('./services/alertQueue');
+const { QUEUE_NAME: DEPLOYMENT_CORRELATION_QUEUE_NAME } = require('./services/deploymentCorrelationQueue');
+const { QUEUE_NAME: INCIDENT_DIAGNOSIS_QUEUE_NAME } = require('./services/incidentDiagnosisQueue');
 const { enrichErrorGroup, computeGroupTrend } = require('./services/errorGroupService');
+const deploymentService = require('./services/deploymentService');
 const alertService = require('./services/alertService');
+const aiService = require('./services/aiService');
 const sseHub = require('./services/sseHub');
 const ErrorGroup = require('./models/ErrorGroup');
 const Project = require('./models/Project');
+const Deployment = require('./models/Deployment');
+const Incident = require('./models/Incident');
 const { enqueueSeverityThresholdAlert } = require('./services/alertQueue');
 
 // Task 28.3: severity ordering for the >= comparison below. Not the
@@ -173,6 +179,87 @@ async function processAlertJob(job) {
   await alertService.sendAlertEmail({ to: recipient, subject, html });
 }
 
+// Task 40.3/40.4: consumer side of the deployment-correlation queue
+// (see deploymentCorrelationQueue.js's producer side and
+// deploymentService.correlateDeployment for the actual before/after
+// query + persistence). Deliberately thin — all the real logic lives
+// in deploymentService.js, same "controller/processor stays thin,
+// service does the work" convention as processEnrichmentJob/
+// processAlertJob above.
+async function processDeploymentCorrelationJob(job) {
+  const { deploymentId } = job.data;
+  await deploymentService.correlateDeployment(deploymentId);
+}
+
+// Task 41.3: consumer side of the incident-diagnosis queue (producer:
+// incidentDiagnosisQueue.js). Re-fetches the Incident fresh by ID —
+// same re-fetch-don't-trust-the-payload principle as every other
+// processor in this file — then gathers its currently-affected
+// groups' own (already-derived) summaries and, if this incident was
+// deployment-triggered, that Deployment's commit metadata, and calls
+// aiService's incident-specific prompt/call/validate trio (distinct
+// from the ErrorGroup-enrichment one processEnrichmentJob uses above
+// — see aiService.js's header comment).
+async function processIncidentDiagnosisJob(job) {
+  const { incidentId } = job.data;
+
+  const incident = await Incident.findById(incidentId);
+  if (!incident) {
+    console.warn(`[worker] Incident ${incidentId} no longer exists — skipping job ${job.id}`);
+    return;
+  }
+
+  const affectedGroups = await ErrorGroup.find({ _id: { $in: incident.affectedGroups } })
+    .select('message aiSummary.rootCause aiSummary.severity');
+
+  if (affectedGroups.length === 0) {
+    // Nothing to diagnose against yet — not a failure, just nothing
+    // useful to say. Can happen if all affected groups were deleted
+    // between trigger and job processing.
+    console.warn(`[worker] Incident ${incidentId} has no affected groups — skipping diagnosis`);
+    return;
+  }
+
+  let deployment = null;
+  if (incident.triggeredBy?.type === 'deployment' && incident.triggeredBy.refId) {
+    deployment = await Deployment.findById(incident.triggeredBy.refId).select('sha ref deployedAt');
+  }
+
+  const prompt = aiService.buildIncidentDiagnosisPrompt({
+    affectedGroups: affectedGroups.map((g) => ({
+      message: g.message,
+      severity: g.aiSummary?.severity || null,
+      rootCause: g.aiSummary?.rootCause || null,
+    })),
+    deployment,
+  });
+
+  // Not caught here — a thrown error (Gemini API failure, a transient
+  // Mongo hiccup) propagates to the worker, triggering BullMQ's
+  // retry/backoff (incidentDiagnosisQueue.js's JOB_OPTIONS). Same
+  // contract as enrichErrorGroup's own doc comment explains in full.
+  const rawResponse = await aiService.callGeminiText(prompt);
+  const hypothesis = aiService.validateIncidentHypothesis(rawResponse);
+
+  if (!hypothesis) {
+    // Terminal, not retryable — same reasoning as
+    // errorGroupService.enrichErrorGroup's own invalid-response case:
+    // retrying the identical prompt against the identical input won't
+    // produce a different, valid result.
+    console.warn(`[worker] Incident ${incidentId}: AI diagnosis returned no usable hypothesis — leaving aiSummary null`);
+    return;
+  }
+
+  await Incident.findByIdAndUpdate(incidentId, {
+    $set: { aiSummary: hypothesis },
+    $push: { timeline: { type: 'ai_diagnosis', message: 'AI diagnosis generated.', timestamp: new Date() } },
+  });
+
+  // Task 41.5: push over the existing SSE channel.
+  await sseHub.publish(incident.projectId, 'incident_updated', { incidentId: incident._id }).catch((err) => {
+    console.error(`[worker] failed to publish SSE event for incident ${incidentId}:`, err.message);
+  });
+}
 
 async function start() {
   await connectDB();
@@ -190,6 +277,23 @@ async function start() {
   const alertWorker = new Worker(ALERT_QUEUE_NAME, processAlertJob, {
     connection: getBullConnection(),
   });
+
+  // Task 40.3/40.4: a third, independent Worker instance for the
+  // deployment-correlation queue — same "BullMQ's Worker is inherently
+  // single-queue" reasoning as alertWorker above.
+  const deploymentCorrelationWorker = new Worker(
+    DEPLOYMENT_CORRELATION_QUEUE_NAME,
+    processDeploymentCorrelationJob,
+    { connection: getBullConnection() }
+  );
+
+  // Task 41.3: a fourth, independent Worker instance for the
+  // incident-diagnosis queue — same single-queue-per-Worker reasoning.
+  const incidentDiagnosisWorker = new Worker(
+    INCIDENT_DIAGNOSIS_QUEUE_NAME,
+    processIncidentDiagnosisJob,
+    { connection: getBullConnection() }
+  );
 
   // Failed-job visibility (Task 25.4) — logged, not silently dropped.
   // After JOB_OPTIONS.attempts (3) are exhausted, BullMQ stops
@@ -221,17 +325,51 @@ async function start() {
     console.log(`[worker] alert job ${job.id} (${job.data.kind}, group ${job.data.errorGroupId}) completed`);
   });
 
+  deploymentCorrelationWorker.on('failed', (job, err) => {
+    console.error(
+      `[worker] deployment-correlation job ${job.id} (deployment ${job.data.deploymentId}) failed (attempt ${job.attemptsMade}/${job.opts.attempts}):`,
+      err.message
+    );
+  });
+
+  deploymentCorrelationWorker.on('completed', (job) => {
+    console.log(`[worker] deployment-correlation job ${job.id} (deployment ${job.data.deploymentId}) completed`);
+  });
+
+  incidentDiagnosisWorker.on('failed', (job, err) => {
+    console.error(
+      `[worker] incident-diagnosis job ${job.id} (incident ${job.data.incidentId}) failed (attempt ${job.attemptsMade}/${job.opts.attempts}):`,
+      err.message
+    );
+  });
+
+  incidentDiagnosisWorker.on('completed', (job) => {
+    console.log(`[worker] incident-diagnosis job ${job.id} (incident ${job.data.incidentId}) completed`);
+  });
+
   console.log(`[worker] Faultline enrichment worker listening on queue "${QUEUE_NAME}" (${config.nodeEnv})`);
   console.log(`[worker] Faultline alert worker listening on queue "${ALERT_QUEUE_NAME}" (${config.nodeEnv})`);
+  console.log(`[worker] Faultline deployment-correlation worker listening on queue "${DEPLOYMENT_CORRELATION_QUEUE_NAME}" (${config.nodeEnv})`);
+  console.log(`[worker] Faultline incident-diagnosis worker listening on queue "${INCIDENT_DIAGNOSIS_QUEUE_NAME}" (${config.nodeEnv})`);
 
   process.on('unhandledRejection', (err) => {
     console.error('[worker] Unhandled Rejection:', err);
-    Promise.all([worker.close(), alertWorker.close()]).finally(() => process.exit(1));
+    Promise.all([
+      worker.close(),
+      alertWorker.close(),
+      deploymentCorrelationWorker.close(),
+      incidentDiagnosisWorker.close(),
+    ]).finally(() => process.exit(1));
   });
 
   process.on('uncaughtException', (err) => {
     console.error('[worker] Uncaught Exception:', err);
-    Promise.all([worker.close(), alertWorker.close()]).finally(() => process.exit(1));
+    Promise.all([
+      worker.close(),
+      alertWorker.close(),
+      deploymentCorrelationWorker.close(),
+      incidentDiagnosisWorker.close(),
+    ]).finally(() => process.exit(1));
   });
 }
 

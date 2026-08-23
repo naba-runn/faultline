@@ -2,6 +2,8 @@ const crypto = require('crypto');
 const projectService = require('../services/projectService');
 const errorGroupService = require('../services/errorGroupService');
 const overviewService = require('../services/overviewService');
+const deploymentService = require('../services/deploymentService');
+const incidentService = require('../services/incidentService');
 const { enqueueEnrichment } = require('../services/enrichmentQueue');
 const { enqueueNewGroupAlert, enqueueSpikeAlert } = require('../services/alertQueue');
 const sseHub = require('../services/sseHub');
@@ -224,6 +226,74 @@ const listProjectGroups = catchAsync(async (req, res) => {
   }
 
   return sendSuccess(res, 200, result);
+});
+
+// Task 40.5: ownership-scoped, cursor-paginated Deployment listing —
+// same ownership-check + cursor-error-translation shape as
+// listProjectGroups above, deliberately not deduplicated into a
+// shared helper for two call sites (see deploymentService.js's own
+// comment on the same restraint for encodeCursor/decodeCursor).
+const listDeployments = catchAsync(async (req, res) => {
+  let project;
+  try {
+    project = await projectService.getProject({
+      ownerId: req.user._id,
+      projectId: req.params.id,
+    });
+  } catch (err) {
+    if (err.name === 'CastError') {
+      throw new AppError('Project not found', 404);
+    }
+    throw err;
+  }
+
+  if (!project) {
+    return sendError(res, 404, 'Project not found');
+  }
+
+  let result;
+  try {
+    result = await deploymentService.listDeployments(req.params.id, {
+      limit: req.query.limit,
+      cursor: req.query.cursor,
+    });
+  } catch (err) {
+    if (err.message === 'INVALID_CURSOR') {
+      return sendError(res, 400, 'cursor is invalid or malformed');
+    }
+    if (err.message === 'INVALID_LIMIT') {
+      return sendError(res, 400, 'limit must be a positive integer');
+    }
+    throw err;
+  }
+
+  return sendSuccess(res, 200, result);
+});
+
+// Task 41.4: ownership-scoped Incident listing for a project. Not
+// cursor-paginated — see incidentService.listIncidents' own comment
+// for why (a bounded recent-N list is enough for this resource's
+// expected volume, unlike Task 40.5's deployments listing).
+const listIncidents = catchAsync(async (req, res) => {
+  let project;
+  try {
+    project = await projectService.getProject({
+      ownerId: req.user._id,
+      projectId: req.params.id,
+    });
+  } catch (err) {
+    if (err.name === 'CastError') {
+      throw new AppError('Project not found', 404);
+    }
+    throw err;
+  }
+
+  if (!project) {
+    return sendError(res, 404, 'Project not found');
+  }
+
+  const incidents = await incidentService.listIncidents(req.params.id);
+  return sendSuccess(res, 200, { incidents });
 });
 
 // Task 23: lets a logged-in dashboard user (JWT) trigger a synthetic
@@ -498,6 +568,8 @@ module.exports = {
   updateProject,
   deleteProject,
   listProjectGroups,
+  listDeployments,
+  listIncidents,
   simulateError,
   mintSseTicket,
   getAlertConfig,

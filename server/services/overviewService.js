@@ -1,6 +1,7 @@
 const ErrorGroup = require('../models/ErrorGroup');
 const ErrorEvent = require('../models/ErrorEvent');
 const Project = require('../models/Project');
+const Deployment = require('../models/Deployment');
 const trendService = require('./trendService');
 
 // Task 36: how many hourly buckets the dashboard trend chart shows.
@@ -12,6 +13,12 @@ const trendService = require('./trendService');
 const OVERVIEW_TREND_HOURS = 24;
 const OVERVIEW_RECENT_RELEASES_LIMIT = 8;
 const OVERVIEW_SPIKING_GROUPS_LIMIT = 5;
+// Task 40.5: dashboard deployment timeline strip — a fixed recent-N
+// cap, not real pagination (GET /:id/deployments' cursor pagination
+// covers full history; this is just the summary strip), same
+// "trimmed shape for a widget, full detail lives behind its own
+// endpoint" split as releases.recent above.
+const OVERVIEW_RECENT_DEPLOYMENTS_LIMIT = 8;
 
 /**
  * Cross-project dashboard overview for the logged-in user — Task 36.
@@ -48,6 +55,7 @@ async function getDashboardOverview(ownerId) {
       trend: { windowHours: OVERVIEW_TREND_HOURS, series: buildEmptySeries(baselineWindowStart, currentHourStart) },
       alerts: { totalProjects: 0, projectsConfigured: 0, spikingCount: 0, spikingGroups: [] },
       releases: { recent: [] },
+      deployments: { recent: [] },
     };
   }
 
@@ -74,7 +82,7 @@ async function getDashboardOverview(ownerId) {
   // subtly different implementation of "start of hour". Requires
   // MongoDB 5.0+ ($dateTrunc); this app already targets Mongo 7 (see
   // docker-compose.yml).
-  const [eventAgg, spikingCount, spikingGroups, recentReleaseGroups, unresolvedCount] = await Promise.all([
+  const [eventAgg, spikingCount, spikingGroups, recentReleaseGroups, unresolvedCount, recentDeployments] = await Promise.all([
     ErrorEvent.aggregate([
       { $match: { errorGroupId: { $in: groupIds }, receivedAt: { $gte: baselineWindowStart } } },
       {
@@ -103,6 +111,16 @@ async function getDashboardOverview(ownerId) {
       .select('projectId message firstSeen lastSeen firstSeenRelease status count aiSummary.severity')
       .lean(),
     ErrorGroup.countDocuments({ projectId: { $in: projectIds }, status: 'open' }),
+    // Task 40.5: most recent deployments across all owned projects,
+    // for the dashboard's timeline strip. correlation.status may
+    // still be 'pending' for a deployment whose after-window hasn't
+    // elapsed yet — the client shows that as-is rather than the
+    // overview waiting on it.
+    Deployment.find({ projectId: { $in: projectIds } })
+      .sort({ deployedAt: -1 })
+      .limit(OVERVIEW_RECENT_DEPLOYMENTS_LIMIT)
+      .select('projectId sha ref deployedAt source correlation')
+      .lean(),
   ]);
 
   const series = buildEmptySeries(baselineWindowStart, currentHourStart);
@@ -149,6 +167,18 @@ async function getDashboardOverview(ownerId) {
         status: g.status || 'open',
         count: g.count || 0,
         severity: g.aiSummary?.severity || null,
+      })),
+    },
+    deployments: {
+      recent: recentDeployments.map((d) => ({
+        deploymentId: d._id,
+        projectId: d.projectId,
+        projectName: projectNameById.get(String(d.projectId)) || 'Unknown project',
+        sha: d.sha,
+        ref: d.ref,
+        deployedAt: d.deployedAt,
+        source: d.source,
+        correlation: d.correlation,
       })),
     },
   };

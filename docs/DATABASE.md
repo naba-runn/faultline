@@ -294,6 +294,135 @@ sourceMapSchema.index({ projectId: 1, release: 1, filename: 1 }, { unique: true 
 ```
 Verified via unit tests (`server/tests/sourceMapService.test.js`).
 
+### Deployment (`server/models/Deployment.js`) — Task 40
+
+```javascript
+const deploymentSchema = new mongoose.Schema({
+  projectId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Project',
+    required: [true, 'projectId is required'],
+    index: true,
+  },
+  sha: {
+    type: String,
+    required: [true, 'sha is required'],
+    trim: true,
+  },
+  ref: {
+    type: String,
+    trim: true,
+    default: null,
+  },
+  deployedAt: {
+    type: Date,
+    required: true,
+    default: Date.now,
+  },
+  source: {
+    type: String,
+    enum: ['github-webhook', 'manual'],
+    required: true,
+  },
+  // Populated once by the delayed deployment-correlation job (Task
+  // 40.3/40.4) — never recomputed on read. status stays 'pending'
+  // (all other fields null) until the after-window has elapsed.
+  correlation: {
+    status: { type: String, enum: ['pending', 'computed'], default: 'pending' },
+    windowMinutes: { type: Number, default: null },
+    beforeCount: { type: Number, default: null },
+    afterCount: { type: Number, default: null },
+    beforeRate: { type: Number, default: null },   // events/minute
+    afterRate: { type: Number, default: null },    // events/minute
+    regressionSuspected: { type: Boolean, default: false },
+    computedAt: { type: Date, default: null },
+  },
+}, { timestamps: { createdAt: true, updatedAt: false } });
+
+deploymentSchema.index({ projectId: 1, deployedAt: -1 });
+```
+Verified via unit tests (`server/tests/deploymentCorrelationService.test.js`,
+the pure before/after math) and a live manual test against a real
+webhook POST + real ingested events + a real MongoDB Atlas connection
+(see `TASKS.md`'s Task 40.6 entry for the full trace, including the
+one deliberate shortcut taken: the correlation job's real ~15-minute
+BullMQ delay was not waited out live — `deploymentService.correlateDeployment`
+was invoked directly against the same real data instead, to verify
+the query/math/persistence without spending 15 minutes of session
+time on a delay mechanism BullMQ itself already guarantees).
+
+### Incident (`server/models/Incident.js`) — Task 41
+
+```javascript
+const incidentSchema = new mongoose.Schema({
+  projectId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Project',
+    required: [true, 'projectId is required'],
+    index: true,
+  },
+  title: { type: String, required: [true, 'title is required'], trim: true },
+  status: {
+    type: String,
+    enum: ['open', 'investigating', 'resolved'],
+    default: 'open',
+  },
+  // Derived from affectedGroups' aiSummary.severity (the highest
+  // among them) whenever a group is added — not asked of the LLM.
+  // Null until at least one affected group has a severity to derive
+  // from.
+  severity: {
+    type: String,
+    enum: ['low', 'medium', 'high', 'critical'],
+    default: null,
+  },
+  // The ORIGINATING trigger only — later dedup-appended triggers are
+  // recorded in `timeline`, not here.
+  triggeredBy: {
+    type: { type: String, enum: ['deployment', 'spike', 'manual'], required: true },
+    refId: { type: mongoose.Schema.Types.ObjectId, default: null },
+  },
+  affectedGroups: {
+    type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'ErrorGroup' }],
+    default: [],
+  },
+  timeline: {
+    type: [{
+      type: {
+        type: String,
+        enum: ['created', 'deployment_regression', 'spike_detected', 'status_changed', 'ai_diagnosis', 'note'],
+        required: true,
+      },
+      message: { type: String, required: true },
+      timestamp: { type: Date, required: true, default: Date.now },
+    }],
+    default: [],
+  },
+  // One-paragraph hypothesis text — a plain string, not ErrorGroup.
+  // aiSummary's structured { rootCause, severity, suggestedFix }
+  // shape, since an incident's diagnosis answers a different question
+  // ("what connects these events") than a single group's enrichment
+  // does. Null until the delayed diagnosis job completes.
+  aiSummary: { type: String, default: null },
+}, { timestamps: { createdAt: true, updatedAt: true } });
+
+incidentSchema.index({ projectId: 1, status: 1, createdAt: -1 });
+```
+Verified via unit tests (`server/tests/incidentService.test.js`, 10
+cases covering dedup-create-vs-append, the open-status-only dedup
+filter, severity derivation, and both ownership-check paths) and a
+live manual test against a real webhook-triggered deployment
+regression, real ingested events, a real MongoDB Atlas connection, and
+two real browser tabs confirming SSE push (see `TASKS.md`'s Task 41.6
+entry for the full trace, including the one disclosed gap: the real
+Gemini API's free-tier daily quota was already exhausted from earlier
+load-testing sessions, so the AI-diagnosis job's actual network call
+could only be verified as failing correctly — real 429, real
+retry/backoff, real terminal failure leaving `aiSummary` null — not as
+succeeding; the prompt-building and validation logic around that call
+are covered separately by `server/tests/aiService.test.js`'s unit
+tests, which need no network access).
+
 ## Key Design Decisions (locked in, implement as-is)
 
 - **Compound index on `{ projectId, fingerprint }`**, unique. This is

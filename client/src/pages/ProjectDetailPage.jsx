@@ -34,6 +34,7 @@ export default function ProjectDetailPage() {
 
     const [project, setProject] = useState(null);
     const [groups, setGroups] = useState([]);
+    const [incidents, setIncidents] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [statusError, setStatusError] = useState('');
@@ -119,7 +120,7 @@ export default function ProjectDetailPage() {
         }
         setError('');
         try {
-            const [projectRes, groupsRes] = await Promise.all([
+            const [projectRes, groupsRes, incidentsRes] = await Promise.all([
                 api.get(`/projects/${id}`),
                 api.get(`/projects/${id}/groups`, {
                     params: {
@@ -129,11 +130,18 @@ export default function ProjectDetailPage() {
                         limit: 100,
                     },
                 }),
+                // Task 41.5: fetched alongside project/groups so the
+                // same SSE-triggered silent refetch (below) that keeps
+                // the group table live also keeps this list live —
+                // one refetch path, not a second parallel one.
+                api.get(`/projects/${id}/incidents`),
             ]);
             const fetchedProject = projectRes.data?.data?.project || projectRes.data?.project || projectRes.data?.data;
             const fetchedGroups = groupsRes.data?.data?.groups || groupsRes.data?.groups || (Array.isArray(groupsRes.data?.data) ? groupsRes.data.data : []);
+            const fetchedIncidents = incidentsRes.data?.data?.incidents || [];
             setProject(fetchedProject || null);
             setGroups(Array.isArray(fetchedGroups) ? fetchedGroups : []);
+            setIncidents(Array.isArray(fetchedIncidents) ? fetchedIncidents : []);
             setNextCursor(groupsRes.data?.data?.nextCursor || null);
             projectLoadedRef.current = true;
         } catch (err) {
@@ -170,17 +178,23 @@ export default function ProjectDetailPage() {
         fetchData();
     }, [fetchData]);
 
-    // Live real-time SSE updates
-    const handleSSEMessage = useCallback(
-        (data) => {
-            if (data.type === 'new_event' || data.type === 'group_updated' || data.type === 'heartbeat') {
-                fetchData(true);
-            }
-        },
-        [fetchData]
-    );
+    // Live real-time SSE updates. useProjectSSE invokes the handler as
+    // (type, payload) — see hooks/useProjectSSE.js — and every message
+    // this subscriber receives is already scoped server-side to this
+    // one project's channel (sseHub.subscribe(projectId, ...) in
+    // sseController.js), so no further type/id filtering is needed
+    // here: any message means something in this project changed.
+    // (Bug fix: this previously checked `data.type` against event
+    // names — 'new_event'/'group_updated'/'heartbeat' — the server
+    // never actually publishes; combined with the handler only
+    // declaring one parameter while the hook passes two positionally,
+    // the condition could never match, so this refetch has been dead
+    // code since a since-regressed redesign pass. See DECISIONS.md.)
+    const handleSSEMessage = useCallback(() => {
+        fetchData(true);
+    }, [fetchData]);
 
-    const { status: sseStatus } = useProjectSSE(id, handleSSEMessage);
+    const { connected: sseConnected } = useProjectSSE(id, handleSSEMessage);
 
     const handleStatusChange = async (groupId, newStatus) => {
         setStatusError('');
@@ -254,7 +268,7 @@ export default function ProjectDetailPage() {
                         )}
                         <span className="system-status-badge">
                             <span className="system-status-dot" />
-                            <span>{sseStatus === 'connected' ? 'Live' : 'Connecting'}</span>
+                            <span>{sseConnected ? 'Live' : 'Connecting…'}</span>
                         </span>
                         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                             {groups.length} error groups · {openCount} open · {highSevCount} high severity
@@ -401,6 +415,49 @@ export default function ProjectDetailPage() {
                     <option value="low">Low</option>
                 </select>
             </div>
+
+            {/* Task 41.5: Incidents section */}
+            {incidents.length > 0 && (
+                <section className="dash-section">
+                    <div className="dash-section-header">
+                        <h2 className="dash-section-title">
+                            Incidents <span className="dash-section-meta">{incidents.length}</span>
+                        </h2>
+                    </div>
+                    <div className="spikes-list">
+                        {incidents.map((incident) => (
+                            <Link
+                                key={incident.id}
+                                to={`/incidents/${incident.id}`}
+                                className="spike-row spike-row--wrap"
+                                style={incident.status !== 'resolved' ? { borderLeftColor: 'var(--critical)' } : undefined}
+                            >
+                                <div className="spike-left">
+                                    <span
+                                        className="spike-tag"
+                                        style={
+                                            incident.status !== 'resolved'
+                                                ? { color: 'var(--critical)', background: 'var(--critical-bg)', borderColor: 'var(--critical-border)' }
+                                                : undefined
+                                        }
+                                    >
+                                        {incident.status}
+                                    </span>
+                                    <span className="spike-title">{incident.title}</span>
+                                    {incident.severity && (
+                                        <span className={`badge badge-severity-${incident.severity}`}>
+                                            {SEVERITY_LABEL[incident.severity] || incident.severity}
+                                        </span>
+                                    )}
+                                </div>
+                                <span className="spike-meta">
+                                    {incident.affectedGroupsCount} group{incident.affectedGroupsCount === 1 ? '' : 's'} · {formatRelativeTime(incident.createdAt)}
+                                </span>
+                            </Link>
+                        ))}
+                    </div>
+                </section>
+            )}
 
             {/* Error Groups Section */}
             <section className="dash-section">

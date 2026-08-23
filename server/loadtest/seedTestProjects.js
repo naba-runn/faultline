@@ -37,6 +37,8 @@ const fs = require('fs');
 const path = require('path');
 const connectDB = require('../config/db');
 const Project = require('../models/Project');
+const ErrorGroup = require('../models/ErrorGroup');
+const ErrorEvent = require('../models/ErrorEvent');
 const User = require('../models/User');
 const { generateApiKey, hashApiKey } = require('../utils/apiKey');
 
@@ -89,6 +91,27 @@ async function seed() {
     // once overwritten below. The name prefix this script itself
     // assigns (`loadtest-${i}`) is unique to test projects and always
     // persisted, so it's what cleanup actually filters on.
+    //
+    // Cascades to ErrorGroup/ErrorEvent before deleting the projects —
+    // a bare `Project.deleteMany(...)` (the original version of this
+    // cleanup) does NOT cascade the way `projectService.deleteProject`
+    // does, so it left every prior run's ErrorGroups/ErrorEvents
+    // orphaned (referencing a projectId that no longer existed) on
+    // every re-seed. Concretely, this caused real damage in practice:
+    // a k6 run's enrichment jobs stay queued in Redis independently of
+    // Mongo, so thousands of orphaned groups' enrichment jobs sat in
+    // the queue for hours after their "owning" project was long gone,
+    // slowly burning through the real Gemini API's daily quota against
+    // data that no longer existed anywhere reachable. Found and fixed
+    // after discovering ~6,560 orphaned groups / 6,568 orphaned events
+    // and a multi-thousand-job stale queue backlog. See DECISIONS.md.
+    const staleProjects = await Project.find({ ownerId: user._id, name: LOADTEST_NAME_PREFIX_RE }).select('_id');
+    if (staleProjects.length > 0) {
+        const staleProjectIds = staleProjects.map((p) => p._id);
+        const staleGroupIds = await ErrorGroup.find({ projectId: { $in: staleProjectIds } }).distinct('_id');
+        await ErrorEvent.deleteMany({ errorGroupId: { $in: staleGroupIds } });
+        await ErrorGroup.deleteMany({ projectId: { $in: staleProjectIds } });
+    }
     await Project.deleteMany({ ownerId: user._id, name: LOADTEST_NAME_PREFIX_RE });
 
     const keys = [];

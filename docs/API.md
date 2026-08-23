@@ -221,6 +221,10 @@ or Express would match `overview` as an `:id`. Three parts:
 - `releases` — the most recent error groups that carry a
   `firstSeenRelease` tag (Task 31), across all owned projects, newest
   first.
+- `deployments` — the most recent `Deployment` rows (Task 40) across
+  all owned projects, newest first. `correlation.status` is
+  `"pending"` until the delayed correlation job has run (see
+  `GET /api/projects/:id/deployments` below), not recomputed on read.
 
 **Success (200):**
 ```json
@@ -242,6 +246,21 @@ or Express would match `overview` as an `:id`. Three parts:
     "releases": {
       "recent": [
         { "groupId": "...", "projectId": "...", "projectName": "...", "release": "v1.4.2", "message": "...", "firstSeen": "..." }
+      ]
+    },
+    "deployments": {
+      "recent": [
+        {
+          "deploymentId": "...", "projectId": "...", "projectName": "...",
+          "sha": "abc123def456", "ref": "refs/heads/main",
+          "deployedAt": "...", "source": "github-webhook",
+          "correlation": {
+            "status": "computed", "windowMinutes": 15,
+            "beforeCount": 2, "afterCount": 8,
+            "beforeRate": 0.133, "afterRate": 0.533,
+            "regressionSuspected": true, "computedAt": "..."
+          }
+        }
       ]
     }
   }
@@ -405,6 +424,86 @@ and `aiSummary` — when present — includes only `severity` and
 `affectedFunction`. The full `ErrorGroup` document (via the still-not-
 yet-built `GET /api/groups/:id`) is what Task 19's ErrorGroupDetail
 page will fetch.
+
+**Errors:**
+| Status | Cause | Body |
+|---|---|---|
+| 404 | Same three cases as `GET /api/projects/:id` | `{ "success": false, "error": "Project not found" }` |
+
+### `GET /api/projects/:id/deployments` (Task 40)
+
+Requires auth: `Authorization: Bearer <token>`. Ownership checked the
+same way as `GET /api/projects/:id/groups`.
+
+**Query Parameters (optional):**
+- `limit` (number): max number of deployments to return (default 20, max 100).
+- `cursor` (string): pagination cursor (same opaque-token shape as
+  `GET /api/projects/:id/groups`'s cursor — not interchangeable
+  between the two endpoints, just the same encoding scheme).
+
+**Success (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "deployments": [
+      {
+        "id": "...", "projectId": "...",
+        "sha": "abc123def456", "ref": "refs/heads/main",
+        "deployedAt": "...", "source": "github-webhook",
+        "correlation": {
+          "status": "pending", "windowMinutes": null,
+          "beforeCount": null, "afterCount": null,
+          "beforeRate": null, "afterRate": null,
+          "regressionSuspected": false, "computedAt": null
+        }
+      }
+    ],
+    "nextCursor": null
+  }
+}
+```
+Sorted by `deployedAt` descending (most recent first). `correlation`
+stays at `status: "pending"` (all other correlation fields `null`)
+until the delayed correlation job (Task 40.3/40.4) has run — roughly
+`windowMinutes` (15, not currently configurable) after `deployedAt`.
+Never recomputed on read; poll this endpoint or wait for the value to
+settle.
+
+**Errors:**
+| Status | Cause | Body |
+|---|---|---|
+| 400 | Malformed `cursor` | `{ "success": false, "error": "cursor is invalid or malformed" }` |
+| 400 | Non-positive-integer `limit` | `{ "success": false, "error": "limit must be a positive integer" }` |
+| 404 | Same three cases as `GET /api/projects/:id` | `{ "success": false, "error": "Project not found" }` |
+
+### `GET /api/projects/:id/incidents` (Task 41)
+
+Requires auth: `Authorization: Bearer <token>`. Ownership checked the
+same way as `GET /api/projects/:id/groups`. Not cursor-paginated
+(unlike `GET /api/projects/:id/deployments`) — a bounded recent-50
+list, sorted `createdAt` descending. See `services/incidentService.js`'s
+own comment for why: incidents are expected to be rare relative to
+raw events, so a fixed cap is enough until real usage says otherwise.
+
+**Success (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "incidents": [
+      {
+        "id": "...", "projectId": "...",
+        "title": "Regression suspected after deployment abc1234",
+        "status": "open", "severity": "high",
+        "triggeredBy": { "type": "deployment", "refId": "..." },
+        "affectedGroupsCount": 3,
+        "createdAt": "...", "updatedAt": "..."
+      }
+    ]
+  }
+}
+```
 
 **Errors:**
 | Status | Cause | Body |
@@ -744,6 +843,88 @@ Mongoose timestamps").
 | 400 | Missing/invalid `status` | `{ "success": false, "error": "status must be one of: open, resolved, ignored" }` |
 | 404 | Group doesn't exist, its project belongs to another user, or `:id` isn't a valid ObjectId | `{ "success": false, "error": "Error group not found" }` (all three cases deliberately identical, same philosophy as the project 404s) |
 
+## Incidents (Task 41)
+
+Auto-created (or, for `GET .../:id`/`PATCH .../:id/status`, viewed/
+managed) when a deployment regression (Task 40) or an error spike
+(Task 29) is detected — see `services/incidentService.js`'s
+`recordTrigger` for the full dedup/append logic and
+`DECISIONS.md`'s "Task 40/41: Incident dedup window" entry. Listing
+for a project is `GET /api/projects/:id/incidents`, documented under
+Projects above (same file-per-route-prefix split as Error Groups'
+`GET /api/groups/:id` vs `GET /api/projects/:id/groups`).
+
+### `GET /api/incidents/:id`
+
+Requires auth: `Authorization: Bearer <token>`. Ownership enforced
+with the identical two-step pattern as `GET /api/groups/:id` — fetch
+the incident to learn its `projectId`, then a scoped
+`Project.findOne({ _id, ownerId })`.
+
+**Success (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "...", "projectId": "...",
+    "title": "Regression suspected after deployment abc1234",
+    "status": "open", "severity": "high",
+    "triggeredBy": { "type": "deployment", "refId": "..." },
+    "timeline": [
+      { "type": "deployment_regression", "message": "Deployment abc1234 (refs/heads/main) correlated with a 8-event spike (baseline 2) in the 15 minutes after deploy.", "timestamp": "..." },
+      { "type": "status_changed", "message": "Status changed to investigating", "timestamp": "..." }
+    ],
+    "aiSummary": "A one-paragraph hypothesis, or null while the diagnosis job is still queued/failed.",
+    "createdAt": "...", "updatedAt": "...",
+    "affectedGroups": [
+      { "id": "...", "message": "Checkout gateway crash 1", "status": "open", "severity": "high", "lastSeen": "...", "count": 4 }
+    ]
+  }
+}
+```
+
+**Errors:**
+| Status | Cause | Body |
+|---|---|---|
+| 404 | Incident doesn't exist, its project belongs to another user, or `:id` isn't a valid ObjectId | `{ "success": false, "error": "Incident not found" }` |
+
+### `PATCH /api/incidents/:id/status`
+
+Requires auth: `Authorization: Bearer <token>`. Same ownership check
+as `GET /api/incidents/:id`. Appends a `status_changed` timeline
+entry — never overwrites `timeline` (same append-only convention as
+`ErrorGroup.statusHistory`, Task 18) — and publishes an
+`incident_updated` event over the existing SSE channel (Task 26; see
+"Real-Time Events" below).
+
+**Request body:**
+```json
+{ "status": "investigating" }
+```
+`status` must be one of `open`, `investigating`, `resolved` — a
+distinct enum from `ErrorGroup`'s own `status` (an incident can be
+"investigating", a group cannot; a group can be "ignored", an
+incident cannot).
+
+**Success (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "incident": {
+      "id": "...", "projectId": "...", "status": "investigating",
+      "timeline": [ "... full timeline array, including the new entry ..." ]
+    }
+  }
+}
+```
+
+**Errors:**
+| Status | Cause | Body |
+|---|---|---|
+| 400 | Missing/invalid `status` | `{ "success": false, "error": "status must be one of: open, investigating, resolved" }` |
+| 404 | Incident doesn't exist, its project belongs to another user, or `:id` isn't a valid ObjectId | `{ "success": false, "error": "Incident not found" }` |
+
 ## Ingestion
 
 ### `POST /api/events`
@@ -816,6 +997,60 @@ waits on it.
 | 429 | Rate limit exceeded — 100 requests/minute, keyed per-project (Task 27; previously per-IP) | `{ "success": false, "error": "Too many requests, please slow down" }` |
 | 500 | Unexpected persistence failure (DB unreachable, etc.) | `{ "success": false, "error": "Failed to process event" }` | or `"Not authorized, invalid API key"` — see `apiKeyMiddleware` in DECISIONS.md for why these aren't distinguished further |
 
+## Webhooks (Task 40)
+
+### `POST /api/webhooks/github/:projectId`
+
+Public route — no JWT, no API key. Authenticated instead by verifying
+GitHub's `X-Hub-Signature-256` header (HMAC-SHA256 over the raw
+request body, using the shared `GITHUB_WEBHOOK_SECRET` env var — see
+`DECISIONS.md`, "Task 40: Webhook secret — one global env var, not
+per-project"). Configure this URL as a GitHub repo's deployment
+webhook, with the same secret set on both sides.
+
+Listens for the `deployment_status` GitHub event. Order of checks:
+signature verified first (rejects forged payloads before any DB
+work), then `Project.findById(:projectId)` — 404 if missing. A valid
+signature proves "this came from GitHub," not "this `:projectId` is
+real," so both checks matter, in that order.
+
+Only `deployment_status.state === "success"` creates a `Deployment`
+row and enqueues its (delayed) correlation job — every other state
+(`pending`, `failure`, `error`, `inactive`, `queued`, `in_progress`)
+is acknowledged with `200` and ignored, not rejected (GitHub retries
+non-2xx webhook deliveries, and a non-success status update isn't an
+error, just not one this feature tracks).
+
+**Request body:** GitHub's own `deployment_status` webhook payload
+shape. Fields actually read: `deployment_status.state`,
+`deployment_status.updated_at` (used as `deployedAt`, falls back to
+server time if absent), `deployment.sha` (required when state is
+`"success"`), `deployment.ref`.
+
+**Success (201, state === "success"):**
+```json
+{
+  "success": true,
+  "data": {
+    "recorded": true,
+    "deployment": { "id": "...", "sha": "abc123def456", "ref": "refs/heads/main", "deployedAt": "..." }
+  }
+}
+```
+
+**Success (200, any other state — acknowledged, not recorded):**
+```json
+{ "success": true, "data": { "recorded": false, "reason": "ignored deployment_status.state=\"pending\"" } }
+```
+
+**Errors:**
+| Status | Cause | Body |
+|---|---|---|
+| 400 | `state === "success"` but `deployment.sha` missing | `{ "success": false, "error": "deployment.sha is required in a deployment_status success payload" }` |
+| 401 | Missing/invalid `X-Hub-Signature-256` | `{ "success": false, "error": "Invalid webhook signature" }` |
+| 404 | `:projectId` doesn't match any project | `{ "success": false, "error": "Project not found" }` |
+| 503 | `GITHUB_WEBHOOK_SECRET` not configured on this server | `{ "success": false, "error": "GitHub deployment webhook is not configured on this server" }` |
+
 ## Real-Time Events (Task 26)
 
 Server-Sent Events push live updates to the dashboard — new error
@@ -857,12 +1092,30 @@ data: {"type":"new_group","payload":{"errorGroupId":"..."}}
 event matched an *existing* group — payload includes the updated
 `count`; added after initial Task 26 shipped, once manual testing
 surfaced that a count-bump was otherwise invisible to live viewers),
-`status_changed` (from `PATCH /api/groups/:id/status`), or
+`status_changed` (from `PATCH /api/groups/:id/status`),
 `enrichment_completed` (from `worker.js`, published only on a
 successful enrichment — a failed job, even after all retries, has
 nothing new to announce; `aiSummary` stays null exactly as before Task
-25). The connection stays open until the client closes it or the
+25), or (Task 41) `incident_created`/`incident_updated` — payload
+`{ incidentId }` — published from `incidentService.recordTrigger`
+(creation or dedup-append), `PATCH /api/incidents/:id/status`, and
+`worker.js`'s incident-diagnosis job (once the AI hypothesis is
+written). The connection stays open until the client closes it or the
 ticket's originating project stops being relevant to that page.
+
+**Client-side note (bug found and fixed while building Task 41):**
+`GroupDetailPage.jsx`/`ProjectDetailPage.jsx`'s SSE handlers had
+silently regressed during an unrelated UI redesign pass — they checked
+`data.type` against event names (`'new_event'`, `'group_updated'`,
+`'heartbeat'`) the server has never actually published, and declared
+only one function parameter while `useProjectSSE` invokes the handler
+as `(type, payload)` (two positional arguments) — so the condition
+could never match and these pages' live-refetch had been dead code
+since that regression. Fixed to match the original, correct design:
+`GroupDetailPage` filters by `payload.errorGroupId`, `ProjectDetailPage`
+refetches on any message (the subscription is already scoped
+server-side to one project). See `DECISIONS.md` for the full
+before/after and how it was found.
 
 **Errors:**
 | Status | Cause | Body |

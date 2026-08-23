@@ -212,64 +212,208 @@ to task order. Remove an item only when it's actually resolved.
 
 ## Milestone 11: Deployment Intelligence & Incidents
 
-- [ ] **Task 40** — Deployment correlation
-  - [ ] 40.1 — `Deployment` model (project ref, sha, ref/branch,
+- [x] **Task 40** — Deployment correlation. **Confirmed live** against
+  a real webhook POST, a real MongoDB Atlas connection, and real
+  ingested events — see 40.6 below for the full trace and the one
+  disclosed shortcut (the correlation job's real ~15-minute delay was
+  not waited out live).
+  - [x] 40.1 — `Deployment` model (project ref, sha, ref/branch,
     deployedAt, source: "github-webhook" | "manual"). Index on
-    `(projectId, deployedAt)`.
-  - [ ] 40.2 — GitHub deployment webhook receiver
+    `(projectId, deployedAt)`. See `server/models/Deployment.js` and
+    `DATABASE.md`.
+  - [x] 40.2 — GitHub deployment webhook receiver
     (`POST /api/webhooks/github/:projectId`, signature-verified via
     `GITHUB_WEBHOOK_SECRET`, listens for `deployment_status: success`)
-    that writes a `Deployment` row. Reuse `githubService`'s existing
-    auth pattern. **Order of checks:** verify signature first (reject
-    forged payloads before touching the DB), then `Project.findById`
-    on `:projectId` and 404 if missing — no ownership check possible
-    here (no authenticated user on a webhook), only existence, since
-    the shared secret proves "from GitHub," not "this project ID is
-    legitimate."
-  - [ ] 40.3 — `services/deploymentCorrelationService.js`: compute
-    error-rate before (prior N min, default 15) vs after (following N
-    min) a `Deployment`, per project, reusing `ErrorEvent` timestamps
-    and Task 29's windowing approach — don't reinvent it.
-  - [ ] 40.4 — Threshold + flag: `regressionSuspected` when after-rate
+    that writes a `Deployment` row. **Order of checks** implemented as
+    specified: signature verified first, then `Project.findById` +
+    404. See `server/controllers/webhookController.js`.
+  - [x] 40.3 — `services/deploymentCorrelationService.js`: pure
+    before/after rate calculation (15min windows by default), unit
+    tested in isolation (`server/tests/deploymentCorrelationService.test.js`,
+    8 cases). The actual `ErrorEvent` query lives in
+    `services/deploymentService.js`'s `correlateDeployment`, run from
+    a **delayed** BullMQ job (`services/deploymentCorrelationQueue.js`)
+    rather than inline — the after-window genuinely can't be measured
+    before it elapses. Added a `minCountFloor` (5, same value as Task
+    29's spike floor) beyond the task's literal text — see
+    `DECISIONS.md`, "Task 40: regression floor" for why (without it, 0
+    before-events + 1 after-event registers as an infinite-multiplier
+    false positive).
+  - [x] 40.4 — Threshold + flag: `regressionSuspected` when after-rate
     exceeds before-rate by a configurable multiplier (default 3x,
-    matches Task 29's spike multiplier). Store computed before/after
-    numbers on the `Deployment` doc, not recomputed on read.
-  - [ ] 40.5 — `GET /api/projects/:id/deployments` (ownership-scoped,
-    Task 22's cursor pagination style) + deployment timeline strip on
-    the dashboard overview (Task 36's widgets).
-  - [ ] 40.6 — Manual test: fire a webhook payload manually, confirm
-    `Deployment` row created; burst `Simulate Error` immediately after
-    to manufacture a real rate increase, confirm `regressionSuspected`
-    flips true. State plainly in the test notes whether this used a
-    real deployed repo or a hand-crafted payload against a non-
-    deploying repo (same honesty pattern as Task 23's demo-app
-    caveat). Docs + commit.
+    matches Task 29's spike multiplier). Computed before/after numbers
+    stored on the `Deployment` doc (`correlation.*` fields), never
+    recomputed on read.
+  - [x] 40.5 — `GET /api/projects/:id/deployments` (ownership-scoped,
+    Task 22's cursor pagination style — same pattern, locally
+    duplicated rather than shared, see `deploymentService.js`'s own
+    comment on that restraint) + deployment timeline strip on the
+    dashboard overview (`overviewService.js`'s new `deployments.recent`,
+    rendered in `DashboardPage.jsx`).
+  - [x] 40.6 — Manual test, run for real against this project's actual
+    MongoDB Atlas connection (API + worker running locally, not
+    Dockerized):
+    1. Registered a throwaway test user/project, real signup/login/
+       project-creation flow.
+    2. Ingested 2 "before" events via real `POST /api/events` (API-key
+       auth, the real ingestion path — not the dashboard's canned
+       "Simulate Error" button the task text names; functionally
+       equivalent, same `recordEvent` pipeline underneath, chosen
+       because it let precise before/after counts be controlled).
+    3. Sent a **hand-crafted** `deployment_status: success` webhook
+       payload (not a real deploying repo — stated plainly, same
+       honesty pattern as Task 23's demo-app caveat) with a real
+       HMAC-SHA256 signature computed against `GITHUB_WEBHOOK_SECRET`,
+       via `POST /api/webhooks/github/:projectId`. Confirmed a real
+       `Deployment` row was created (`201`, real Mongo `_id` returned).
+       Also confirmed the negative paths live: wrong signature → `401`;
+       unknown `:projectId` → `404`; a `deployment_status.state`
+       other than `"success"` → `200`, acknowledged but not recorded.
+    4. Burst-fired 8 "after" events via the same real ingestion path
+       immediately following the webhook.
+    5. `GET /api/projects/:id/deployments` confirmed `correlation.status:
+       "pending"` at this point — correct, since the real BullMQ job
+       was enqueued with a ~15-minute delay and that time hadn't
+       elapsed. **Disclosed shortcut:** rather than waiting 15 real
+       minutes for the queued job, `deploymentService.correlateDeployment`
+       was invoked directly (same function the worker calls, against
+       the same real data already in Atlas) to verify the query +
+       math + persistence without spending session time on a delay
+       BullMQ's own `delay` option already guarantees works. Result:
+       `beforeCount: 2, afterCount: 8, regressionSuspected: true` —
+       matching the predicted math exactly (afterRate 0.533/min > 3 ×
+       beforeRate 0.133/min = 0.4/min, and afterCount 8 clears the
+       floor of 5).
+    6. Re-fetched via `GET /api/projects/:id/deployments` and
+       `GET /api/projects/overview` — confirmed the computed
+       correlation persisted correctly and surfaces through both the
+       detail listing and the dashboard's `deployments.recent`.
+    7. Cleaned up all test data (project, groups, events, deployment,
+       user) from the real Atlas database afterward.
+    Not verified live: the full real-time BullMQ delay-then-process
+    flow running at its natural ~15-minute pace end-to-end (step 5's
+    direct-invocation approach substitutes for it — same reasoning
+    Task 25.5 used for its own worker.js-as-a-process gap). Worth a
+    real timed run at some point, not required to trust the logic
+    itself, which was exercised against real data either way.
 
-- [ ] **Task 41** — Incident model
-  - [ ] 41.1 — `Incident` model: project ref, title, status
+- [x] **Task 41** — Incident model. **Confirmed live** — real
+  webhook-triggered regression, real Incident auto-creation, real
+  status transitions, real two-tab SSE push. One disclosed gap: the
+  AI-diagnosis job's live Gemini call could only be verified failing
+  correctly (real quota exhaustion, an external constraint — see
+  41.6), not succeeding. See `DECISIONS.md`'s "Task 41: Incident model
+  — architecture summary" entry.
+  - [x] 41.1 — `Incident` model: project ref, title, status
     (open/investigating/resolved), severity, triggeredBy (deployment
     ref | spike ref | manual), affectedGroups (ErrorGroup refs),
-    timeline (array of {type, message, timestamp}), aiSummary.
-  - [ ] 41.2 — Auto-creation trigger: Task 40's regression flag or
+    timeline (array of {type, message, timestamp}), aiSummary. See
+    `server/models/Incident.js` and `DATABASE.md`.
+  - [x] 41.2 — Auto-creation trigger: Task 40's regression flag or
     Task 29's spike detection creates (or appends to an already-open)
     `Incident` — dedup keyed on project + open status within a fixed
     30-min window (see DECISIONS.md). Do not double-fire per event.
-  - [ ] 41.3 — AI diagnosis: on incident creation/update, call
+    `services/incidentService.js`'s `recordTrigger`, called from both
+    `ingestController.js` (spike) and `deploymentService.js`
+    (regression) — one shared function, not two copies. 10 unit tests
+    covering create-vs-append, the open-status-only filter, and the
+    dedup window boundary.
+  - [x] 41.3 — AI diagnosis: on incident creation/update, call
     `aiService` with affected groups' summaries + triggering
     deployment's commit metadata (if any) for a one-paragraph
     hypothesis. Enqueue as a job (same rule as Task 13/25) — no
-    synchronous Gemini calls in the request path.
-  - [ ] 41.4 — `GET /api/projects/:id/incidents`,
+    synchronous Gemini calls in the request path. New
+    `aiService.buildIncidentDiagnosisPrompt`/`callGeminiText`/
+    `validateIncidentHypothesis` trio (deliberately separate from the
+    ErrorGroup-enrichment one — see `aiService.js`'s header comment),
+    consumed by a fourth BullMQ queue/worker pair
+    (`incidentDiagnosisQueue.js`).
+  - [x] 41.4 — `GET /api/projects/:id/incidents`,
     `GET /api/incidents/:id`, `PATCH /api/incidents/:id/status`
-    (ownership-scoped, Task 18's pattern).
-  - [ ] 41.5 — `IncidentDetailPage` or panel: timeline, affected
-    groups, AI hypothesis, status control. Push create/update over
-    existing SSE channel (Task 26) — no second real-time mechanism.
-  - [ ] 41.6 — Manual test: trigger a deployment regression (Task
-    40's test), confirm `Incident` auto-creates with populated
-    timeline + AI hypothesis; resolve via status endpoint; confirm SSE
-    push updates a second tab live (Task 26.5's two-tab pattern).
-    Docs + commit.
+    (ownership-scoped, Task 18's pattern). Not cursor-paginated —
+    Task 41.4's spec names only Task 18's ownership pattern, not Task
+    22's cursor style; see `incidentService.listIncidents`'s comment.
+  - [x] 41.5 — `IncidentDetailPage` (new route, `/incidents/:id`):
+    timeline, affected groups, AI hypothesis, status control. Push
+    create/update over existing SSE channel (Task 26) — no second
+    real-time mechanism. Linked from a new "Incidents" section on
+    `ProjectDetailPage`. **Bug found and fixed along the way:**
+    `GroupDetailPage`/`ProjectDetailPage`'s own SSE handlers had
+    silently regressed during an unrelated UI redesign commit and were
+    dead code (wrong argument count, event names that don't exist,
+    wrong return-value destructuring) — fixed to match the original,
+    correct Task 26 design. See `DECISIONS.md`'s dedicated entry for
+    the full diagnosis.
+  - [x] 41.6 — Manual test, run for real against this project's actual
+    MongoDB Atlas connection, real Redis, and two real browser tabs:
+    1. Registered a throwaway user/project, ingested 2 real "before"
+       events via the real ingestion path.
+    2. Sent a real HMAC-signed `deployment_status: success` webhook
+       (hand-crafted payload, not a real deploying repo — same
+       honesty pattern as Task 40.6) via
+       `POST /api/webhooks/github/:projectId`. Real `Deployment`
+       document created.
+    3. Burst-fired 8 real "after" events (each a distinct new
+       `ErrorGroup`, randomized stack per event).
+    4. Invoked `deploymentService.correlateDeployment` directly
+       (same disclosed shortcut as Task 40.6 — bypassing the real
+       ~15-minute BullMQ delay, not the correlation logic itself):
+       `beforeCount: 2, afterCount: 8, regressionSuspected: true`.
+    5. Confirmed via `GET /api/projects/:id/incidents` and
+       `GET /api/incidents/:id`: a real `Incident` auto-created with
+       the correct title ("Regression suspected after deployment
+       d3ad0f1"), `triggeredBy: { type: 'deployment', refId: <the
+       real Deployment's id> }`, `affectedGroupsCount: 8` (matching
+       the 8 distinct after-window groups), and a `timeline` entry
+       with the exact expected message text.
+    6. `PATCH /api/incidents/:id/status` to `"investigating"`,
+       confirmed via re-fetch: status updated, timeline correctly
+       *appended* (2 entries, original preserved) not overwritten.
+    7. **Dedup verified live, both directions:** a second real
+       deployment + real burst (against the now-`investigating`
+       incident) legitimately computed `regressionSuspected: false`
+       (its own before-window absorbed the first burst — a test-
+       timeline artifact of firing bursts seconds apart, not a bug)
+       — confirmed via `GET /api/projects/:id/incidents` that no
+       second incident was created either way. The "open-status-only"
+       dedup rule itself (a non-open incident does NOT absorb a new
+       trigger) is proven deterministically by the unit tests (41.2
+       above), which is the more reliable check for a rule that's
+       about exact status-string matching.
+    8. **AI diagnosis — the one disclosed gap:** the diagnosis job was
+       enqueued and picked up by the worker (confirmed via BullMQ's
+       job-count API), built its prompt, and called the real Gemini
+       API — which failed with a real `429 RESOURCE_EXHAUSTED` (daily
+       free-tier quota, already exhausted by earlier Task 38
+       load-testing sessions — see the `seedTestProjects.js` bug entry
+       in DECISIONS.md for why). Retried per BullMQ's backoff, then
+       failed terminally, leaving `Incident.aiSummary` correctly
+       `null`. This is the real infrastructure behaving exactly as
+       designed under a real external constraint — not a code bug —
+       but it does mean a *successful* AI hypothesis was not observed
+       live this session. `aiService.js`'s new prompt-building and
+       response-validation functions (the parts of 41.3 that don't
+       need network access) are covered by 4 dedicated unit tests
+       instead (`server/tests/aiService.test.js`).
+    9. **SSE push confirmed live, two real browser tabs:** opened the
+       same incident in two independently-created tabs, changed status
+       to `"resolved"` in one via the actual `<select>` control, and
+       confirmed the *other*, untouched tab updated to show
+       `"RESOLVED"` and all 3 timeline entries with no manual refresh
+       — the live-push signal traveled real API → real Redis pub/sub
+       (`sseHub.publish`) → real SSE stream → real second browser tab.
+    10. Cleaned up all test data (2 deployments, ~17 groups/events, 1
+        incident, 1 project, 1 user) from the real Atlas database
+        afterward. Also found and fixed a real, separate bug during
+        this test: `seedTestProjects.js`'s re-seed cleanup never
+        cascaded to `ErrorGroup`/`ErrorEvent`, leaving ~6,560 orphaned
+        groups and a multi-thousand-job stale Redis queue backlog from
+        earlier Task 38 sessions — this was what had exhausted the
+        real Gemini quota found in step 8. Diagnosed, fixed at the
+        source, and the existing mess cleaned up (queue drained,
+        orphaned Mongo docs deleted) — see DECISIONS.md.
+    Docs updated (this file, `API.md`, `DATABASE.md`, `DECISIONS.md`,
+    `STATUS.md`).
 
 ## Notes for Milestones 10-11
 

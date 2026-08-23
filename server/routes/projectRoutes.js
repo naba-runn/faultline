@@ -52,6 +52,12 @@ router.get('/', projectController.listProjects);
 router.get('/overview', projectController.getDashboardOverview);
 router.get('/:id', projectController.getProject);
 router.get('/:id/groups', projectController.listProjectGroups);
+// Task 40.5: cursor-paginated (Task 22 style), ownership-scoped —
+// same pattern as GET /:id/groups above.
+router.get('/:id/deployments', projectController.listDeployments);
+// Task 41.4: ownership-scoped, bounded recent-N list (not cursor-
+// paginated — see incidentService.listIncidents' own comment).
+router.get('/:id/incidents', projectController.listIncidents);
 // Task 23: dashboard-side synthetic error trigger. JWT-authed,
 // ownership-scoped like every other project route -- see
 // projectController.simulateError for why this reuses

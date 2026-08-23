@@ -55,17 +55,29 @@ export default function GroupDetailPage() {
         fetchGroup();
     }, [fetchGroup]);
 
-    // Live SSE updates for this project's errors
+    // Live SSE updates for this project's errors. useProjectSSE invokes
+    // the handler as (type, payload) — see hooks/useProjectSSE.js — and
+    // every message a subscriber receives is already scoped server-side
+    // to this project's channel (sseHub.subscribe(projectId, ...)), so
+    // the only filtering needed here is by errorGroupId: an event for a
+    // different group in the same project shouldn't refetch this page.
+    // (Bug fix: this previously checked `data.type` against event names
+    // — 'new_event'/'group_updated'/'heartbeat' — that the server never
+    // actually publishes, real types are 'status_changed'/
+    // 'enrichment_completed'/etc.; combined with the handler only
+    // declaring one parameter while the hook passes two positionally,
+    // the condition could never match, so this refetch has been dead
+    // code since a since-regressed redesign pass. See DECISIONS.md.)
     const handleSSEMessage = useCallback(
-        (data) => {
-            if (data.type === 'new_event' || data.type === 'group_updated' || data.type === 'heartbeat') {
+        (type, payload) => {
+            if (payload?.errorGroupId === id) {
                 fetchGroup(true);
             }
         },
-        [fetchGroup]
+        [id, fetchGroup]
     );
 
-    const { status: sseStatus } = useProjectSSE(group?.projectId, handleSSEMessage);
+    const { connected: sseConnected } = useProjectSSE(group?.projectId, handleSSEMessage);
 
     const handleStatusChange = async (newStatus) => {
         setStatusError('');
@@ -225,7 +237,7 @@ export default function GroupDetailPage() {
 
                     <span className="system-status-badge">
                         <span className="system-status-dot" />
-                        <span>Live</span>
+                        <span>{sseConnected ? 'Live' : 'Connecting…'}</span>
                     </span>
                 </div>
 

@@ -33,6 +33,16 @@ const config = {
   // limit. See DECISIONS.md (Task 12).
   githubToken: process.env.GITHUB_TOKEN || null,
 
+  // Task 40 — one shared secret across all projects for GitHub
+  // deployment webhook signature verification, not a per-project
+  // field on Project. See DECISIONS.md, "Task 40: Webhook secret —
+  // one global env var, not per-project." Optional at startup (like
+  // geminiApiKey/githubToken/resendApiKey above) — only matters once
+  // a project actually configures a GitHub deployment webhook; absence
+  // just means that route always rejects, not that the server can't
+  // start.
+  githubWebhookSecret: process.env.GITHUB_WEBHOOK_SECRET || null,
+
   // Task 28.2 — optional, same reasoning as geminiApiKey/githubToken:
   // alerting is opt-in per project (see Project.alertConfig, Task
   // 28.1), so a missing key shouldn't block server startup. Absence

@@ -1,6 +1,7 @@
 const { recordEvent, maybeEvaluateSpike } = require('../services/errorGroupService');
 const { enqueueEnrichment } = require('../services/enrichmentQueue');
 const { enqueueNewGroupAlert, enqueueSpikeAlert } = require('../services/alertQueue');
+const incidentService = require('../services/incidentService');
 const sseHub = require('../services/sseHub');
 const { sendSuccess, sendError } = require('../utils/httpResponse');
 const catchAsync = require('../utils/catchAsync');
@@ -174,6 +175,31 @@ const ingestEvent = catchAsync(async (req, res) => {
           }).catch((err) => {
             console.error(`[ingest] failed to enqueue spike alert for group ${errorGroup._id}:`, err.message);
           });
+
+          // Task 41.2: spike-triggered incident. Not a second,
+          // separate alertConfig gate on top of the spikeDetection.enabled
+          // check that already wraps this whole block (line above) —
+          // that existing gate is what makes computing
+          // justStartedSpiking affordable at all (Task 30's DECISIONS.md
+          // entry already rejected running this query on every event
+          // unconditionally), so incident creation inherits it rather
+          // than adding a second, redundant check. See DECISIONS.md,
+          // "Task 41: incident triggers are not alertConfig-gated" for
+          // why this differs from the *email* alert immediately above,
+          // which has its own explicit reasoning.
+          incidentService
+            .recordTrigger({
+              projectId: req.project._id,
+              triggerType: 'spike',
+              refId: errorGroup._id,
+              affectedGroupIds: [errorGroup._id],
+              title: `Error spike: ${errorGroup.message}`,
+              timelineType: 'spike_detected',
+              timelineMessage: `Spike detected on "${errorGroup.message}" (group ${errorGroup._id}).`,
+            })
+            .catch((err) => {
+              console.error(`[ingest] failed to record incident trigger for group ${errorGroup._id}:`, err.message);
+            });
         }
       })
       .catch((err) => {

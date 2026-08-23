@@ -18,6 +18,7 @@ const assert = require('node:assert/strict');
 const Project = require('../models/Project');
 const ErrorEvent = require('../models/ErrorEvent');
 const ErrorGroup = require('../models/ErrorGroup');
+const Deployment = require('../models/Deployment');
 const trendService = require('../services/trendService');
 const { getDashboardOverview } = require('../services/errorGroupService');
 
@@ -69,16 +70,18 @@ function fakeEventAggregate(events, pipeline) {
   return Promise.resolve([{ hourly, lastEvent }]);
 }
 
-function withMocks({ projects, events, spikingCount, spikingGroups, recentReleaseGroups, unresolvedCount }, fn) {
+function withMocks({ projects, events, spikingCount, spikingGroups, recentReleaseGroups, unresolvedCount, recentDeployments }, fn) {
   const originals = {
     projectFind: Project.find,
     eventAggregate: ErrorEvent.aggregate,
     groupFind: ErrorGroup.find,
     groupCount: ErrorGroup.countDocuments,
+    deploymentFind: Deployment.find,
   };
 
   Project.find = () => chainable(projects);
   ErrorEvent.aggregate = (pipeline) => fakeEventAggregate(events, pipeline);
+  Deployment.find = () => chainable(recentDeployments || []);
 
   // countDocuments is now called twice: once for spikingCount
   // (filter has isSpiking), once for unresolvedCount (filter has
@@ -105,6 +108,7 @@ function withMocks({ projects, events, spikingCount, spikingGroups, recentReleas
     ErrorEvent.aggregate = originals.eventAggregate;
     ErrorGroup.find = originals.groupFind;
     ErrorGroup.countDocuments = originals.groupCount;
+    Deployment.find = originals.deploymentFind;
   });
 }
 
@@ -118,6 +122,7 @@ test('getDashboardOverview: no owned projects -> empty shape, still a full zero-
       assert.equal(result.alerts.spikingCount, 0);
       assert.deepEqual(result.alerts.spikingGroups, []);
       assert.deepEqual(result.releases.recent, []);
+      assert.deepEqual(result.deployments.recent, []);
       assert.equal(result.unresolvedCount, 0);
       assert.equal(result.trend.windowHours, 24);
       // 24 trailing full hours + the in-progress current hour = 25 points.
@@ -217,3 +222,33 @@ test('getDashboardOverview: shapes spiking groups and recent releases with proje
     }
   );
 });
+
+test('getDashboardOverview: shapes recent deployments with project names attached, including a still-pending correlation', async () => {
+  const projects = [{ _id: 'p1', name: 'Checkout Service', alertConfig: {} }];
+  const recentDeployments = [
+    {
+      _id: 'd1', projectId: 'p1', sha: 'abc123', ref: 'refs/heads/main',
+      deployedAt: new Date('2026-08-13T10:00:00Z'), source: 'github-webhook',
+      correlation: { status: 'pending', windowMinutes: null, beforeCount: null, afterCount: null, beforeRate: null, afterRate: null, regressionSuspected: false, computedAt: null },
+    },
+    {
+      _id: 'd2', projectId: 'p1', sha: 'def456', ref: 'refs/heads/main',
+      deployedAt: new Date('2026-08-12T09:00:00Z'), source: 'github-webhook',
+      correlation: { status: 'computed', windowMinutes: 15, beforeCount: 2, afterCount: 20, beforeRate: 0.133, afterRate: 1.333, regressionSuspected: true, computedAt: new Date('2026-08-12T09:15:00Z') },
+    },
+  ];
+
+  return withMocks(
+    { projects, events: [], spikingCount: 0, spikingGroups: [], recentReleaseGroups: [], unresolvedCount: 0, recentDeployments },
+    async () => {
+      const result = await getDashboardOverview('owner-1');
+
+      assert.equal(result.deployments.recent.length, 2);
+      assert.equal(result.deployments.recent[0].projectName, 'Checkout Service');
+      assert.equal(result.deployments.recent[0].sha, 'abc123');
+      assert.equal(result.deployments.recent[0].correlation.status, 'pending');
+      assert.equal(result.deployments.recent[1].correlation.regressionSuspected, true);
+    }
+  );
+});
+

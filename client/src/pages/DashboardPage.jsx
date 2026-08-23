@@ -117,6 +117,13 @@ export default function DashboardPage() {
         return incidents.filter((i) => String(i.projectId) === String(selectedProjectId));
     }, [overview, selectedProjectId]);
 
+    // Task 40.5: dashboard deployment timeline strip
+    const filteredDeployments = useMemo(() => {
+        const deployments = overview?.deployments?.recent || [];
+        if (selectedProjectId === 'all') return deployments;
+        return deployments.filter((d) => String(d.projectId) === String(selectedProjectId));
+    }, [overview, selectedProjectId]);
+
     // Metrics computation
     const totalEvents24h = overview?.trend?.series
         ? overview.trend.series.reduce((sum, b) => sum + b.count, 0)
@@ -246,6 +253,65 @@ export default function DashboardPage() {
                                 </span>
                             </Link>
                         ))}
+                    </div>
+                </section>
+            )}
+
+            {/* Task 40.5: Deployment Timeline Strip */}
+            {filteredDeployments.length > 0 && (
+                <section className="dash-section">
+                    <div className="dash-section-header">
+                        <h2 className="dash-section-title">
+                            Deployment Timeline <span className="dash-section-meta">{filteredDeployments.length}</span>
+                        </h2>
+                    </div>
+                    <div className="spikes-list">
+                        {filteredDeployments.map((deployment) => {
+                            const correlation = deployment.correlation || {};
+                            const shortSha = (deployment.sha || '').slice(0, 7);
+                            const branchName = (deployment.ref || '').replace(/^refs\/heads\//, '');
+                            return (
+                                <Link
+                                    key={deployment.deploymentId}
+                                    to={`/projects/${deployment.projectId}`}
+                                    className="spike-row spike-row--wrap"
+                                    style={correlation.regressionSuspected ? { borderLeftColor: 'var(--critical)' } : undefined}
+                                >
+                                    <div className="spike-left">
+                                        <span
+                                            className="spike-tag"
+                                            style={
+                                                correlation.regressionSuspected
+                                                    ? { color: 'var(--critical)', background: 'var(--critical-bg)', borderColor: 'var(--critical-border)' }
+                                                    : undefined
+                                            }
+                                        >
+                                            Deploy
+                                        </span>
+                                        <span className="spike-title">
+                                            {branchName || shortSha}
+                                            {branchName && shortSha ? (
+                                                <span style={{ color: 'var(--text-muted)', fontWeight: 400, marginLeft: '0.4rem' }}>
+                                                    {shortSha}
+                                                </span>
+                                            ) : null}
+                                        </span>
+                                        {correlation.regressionSuspected && (
+                                            <span className="badge badge-severity-critical">Regression suspected</span>
+                                        )}
+                                        {correlation.status === 'pending' && (
+                                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                                                correlating…
+                                            </span>
+                                        )}
+                                    </div>
+                                    <span className="spike-meta">
+                                        {deployment.projectName ? `${deployment.projectName} · ` : ''}
+                                        {formatRelativeTime(deployment.deployedAt)}
+                                    </span>
+                                </Link>
+                            );
+                        })}
                     </div>
                 </section>
             )}

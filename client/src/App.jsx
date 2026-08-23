@@ -4,6 +4,7 @@ import RegisterPage from './pages/RegisterPage.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
 import ProjectDetailPage from './pages/ProjectDetailPage.jsx';
 import GroupDetailPage from './pages/GroupDetailPage.jsx';
+import IncidentDetailPage from './pages/IncidentDetailPage.jsx';
 import ApiDocsPage from './pages/ApiDocsPage.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 
@@ -39,6 +40,14 @@ function App() {
                     element={
                         <ProtectedRoute>
                             <GroupDetailPage />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/incidents/:id"
+                    element={
+                        <ProtectedRoute>
+                            <IncidentDetailPage />
                         </ProtectedRoute>
                     }
                 />

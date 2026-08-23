@@ -12,6 +12,8 @@ const ingestRoutes = require('./routes/ingestRoutes');
 const groupRoutes = require('./routes/groupRoutes');
 const sseRoutes = require('./routes/sseRoutes');
 const docsRoutes = require('./routes/docsRoutes');
+const webhookRoutes = require('./routes/webhookRoutes');
+const incidentRoutes = require('./routes/incidentRoutes');
 
 const path = require('path');
 const fs = require('fs');
@@ -54,6 +56,22 @@ app.use(
 // Body parsing with a size cap — prevents unbounded payloads from
 // reaching route handlers. Sourcemap uploads allow up to 5mb.
 app.use('/api/projects/:id/sourcemaps', express.json({ limit: '5mb' }));
+// Task 40.2: GitHub webhook signature verification needs the exact
+// raw bytes GitHub signed — a re-serialized JSON.stringify(req.body)
+// can differ in key order/whitespace from what was actually sent and
+// would make every signature check fail. `verify` runs once per
+// request, before req.body is populated, so this is the only place to
+// capture it — mounted here (ahead of the generic parser below) for
+// the same reason the sourcemaps line above is.
+app.use(
+  '/api/webhooks/github',
+  express.json({
+    limit: '1mb',
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
 app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 
@@ -74,6 +92,11 @@ app.use('/api/groups', groupRoutes);
 // 26" entry.
 app.use('/api/sse', sseRoutes);
 app.use('/api/docs', docsRoutes);
+// Task 40.2: public (no authMiddleware/apiKeyMiddleware) — see
+// routes/webhookRoutes.js and controllers/webhookController.js for
+// why (signature verification replaces JWT/API-key auth here).
+app.use('/api/webhooks', webhookRoutes);
+app.use('/api/incidents', incidentRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

@@ -61,3 +61,29 @@
     white-space: nowrap;
 }
 
+/* Task 40.5: deployment timeline rows pack more inline children
+   (tag + branch/sha + an optional regression badge + an optional
+   "correlating…" indicator) than the original spike rows this file
+   was written for (tag + title only) ever needed to. None of those
+   children shrink below their nowrap content width by default in a
+   flex row, so on a narrow viewport the row ran out of horizontal
+   space and the browser compressed each box toward zero width,
+   leaving their un-shrinkable text rendering on top of each other
+   instead of the row just overflowing cleanly. Opt-in wrap modifier
+   (not applied to .spike-row generally, so the existing spike rows
+   this was designed for are untouched) lets the row grow taller and
+   stack onto a second line instead. */
+.spike-row--wrap {
+    flex-wrap: wrap;
+    row-gap: 0.3rem;
+}
+
+.spike-row--wrap .spike-left {
+    flex-wrap: wrap;
+    row-gap: 0.3rem;
+}
+
+.spike-row--wrap .spike-meta {
+    margin-left: auto;
+}
+

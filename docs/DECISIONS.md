@@ -17,6 +17,293 @@ instead — that section is what `CHANGELOG.md` used to be.
 
 ---
 
+## Task 41: Incident model — architecture summary
+
+**Decision:** One new resource (`Incident`), one new pure-logic module
+(`incidentService.recordTrigger`'s dedup/append + severity derivation,
+directly unit-tested), and one new BullMQ queue/worker pair
+(`incidentDiagnosisQueue.js`, consumed in `worker.js`) — following the
+same layering and queue conventions Tasks 25/28/40 already established
+in this codebase rather than introducing new patterns:
+
+- **Two trigger call sites, one shared function.** The spike trigger
+  (`ingestController.js`) and the deployment-regression trigger
+  (`deploymentService.correlateDeployment`) both call
+  `incidentService.recordTrigger` rather than each having their own
+  create-or-append logic — see that function's own doc comment for why
+  (so the two paths can't drift on what "dedup" means).
+- **AI diagnosis reuses `aiService.js` but not its existing
+  prompt/schema.** `buildIncidentDiagnosisPrompt`/`callGeminiText`/
+  `validateIncidentHypothesis` are a second, parallel trio alongside
+  `buildPrompt`/`callGemini`/`parseAndValidate` — a incident's
+  diagnosis answers a different question (what connects several
+  events) with a different answer shape (one free-form paragraph, not
+  structured JSON), so forcing it through the `{ rootCause, severity,
+  suggestedFix }` schema built for single-error enrichment would be an
+  artificial fit. See `aiService.js`'s header comment for the full
+  reasoning.
+- **A regression floor was added beyond Task 40.4's literal text** —
+  see the dedicated "Task 40: regression floor" entry above; the same
+  reasoning extends here since `deriveSeverity`/dedup logic sits
+  downstream of that same correlation result.
+- **Cursor pagination was deliberately NOT added** to
+  `GET /api/projects/:id/incidents`, unlike Task 40.5's deployments
+  listing — Task 41.4's spec names only "Task 18's ownership pattern,"
+  not Task 22's cursor style; incidents are expected to be far rarer
+  than raw events or even deployments, so a bounded recent-50 list is
+  enough until real usage proves otherwise.
+
+**Live verification, real infrastructure, no mocks:** a real webhook-
+triggered deployment regression created a real `Incident` with the
+correct title/trigger/timeline/affected-groups; the status endpoint
+was exercised through all three states with real timeline appends; the
+dedup-window's "open status only" rule was observed live (a second
+regression against an already-`investigating` incident correctly
+created a separate one, not an append — matching both the literal
+spec and the unit tests); and SSE push was confirmed across two real,
+independently-opened browser tabs with no manual refresh. The one gap:
+the real Gemini API's free-tier daily quota was already exhausted by
+earlier load-testing (see the `seedTestProjects.js` bug entry below),
+so the AI-diagnosis job's live run could only be observed failing
+correctly (real request, real 429, real retry/backoff, real terminal
+failure) rather than succeeding — the surrounding prompt-building and
+validation logic is covered separately by unit tests that need no
+network access. Full trace: `TASKS.md`'s Task 41.6 entry.
+
+## Bug fix: SSE live-refetch was dead code on GroupDetailPage/ProjectDetailPage
+
+**Found while building Task 41's SSE push** — `IncidentDetailPage.jsx`
+was written from scratch using `useProjectSSE`'s actual, documented
+signature (`onEvent(type, payload)`, two positional arguments; see
+`hooks/useProjectSSE.js`) and worked correctly the first time it was
+tested live. That prompted a check of the two existing pages using the
+same hook, which turned out to be broken:
+
+```js
+// GroupDetailPage.jsx / ProjectDetailPage.jsx, both, before this fix:
+const handleSSEMessage = useCallback((data) => {
+    if (data.type === 'new_event' || data.type === 'group_updated' || data.type === 'heartbeat') {
+        fetchGroup(true); // or fetchData(true)
+    }
+}, [...]);
+const { status: sseStatus } = useProjectSSE(group?.projectId, handleSSEMessage);
+```
+
+Three independent problems, compounding:
+1. **Argument mismatch** — the handler declares one parameter (`data`)
+   but the hook invokes it with two positional arguments
+   (`onEventRef.current(type, payload)`). `data` is bound to whatever
+   `type` is (a string, e.g. `'new_group'`), so `data.type` is always
+   `undefined`.
+2. **Wrong event names** — even ignoring #1, none of `'new_event'`,
+   `'group_updated'`, `'heartbeat'` are ever actually published by the
+   server. Real event types are `new_group`, `duplicate_recorded`,
+   `status_changed`, `enrichment_completed` (see `sseHub.publish`
+   call sites in `ingestController.js`, `groupController.js`,
+   `worker.js`). `'heartbeat'` in particular could never match by
+   design — SSE heartbeats are sent as a `: heartbeat` **comment**
+   line specifically so they don't fire `EventSource.onmessage` at
+   all (see `sseController.js`'s comment on why); there is no `type:
+   'heartbeat'` message to check for.
+3. **Wrong return-value destructuring** — both pages read
+   `{ status: sseStatus }` from a hook that returns `{ connected }` (a
+   boolean). `sseStatus` was always `undefined`.
+   `ProjectDetailPage.jsx` then checked `sseStatus === 'connected'`
+   (always false → badge stuck on "Connecting"); `GroupDetailPage.jsx`
+   didn't even reference the variable — its "Live" badge text was
+   hardcoded, always showing "Live" regardless of actual connection
+   state.
+
+Net effect: on both pages, a real SSE message arriving never
+triggered a silent refetch — the pages only ever updated on a full
+manual reload. The `EventSource` connection itself worked fine
+(`onopen`/`onerror` drive `connected` independently of the message
+handler), so a superficial check ("is it connected?") could easily
+miss this; only checking whether *data* actually refreshed live would
+catch it.
+
+**Root cause, via `git log -p`:** the original Task 26 implementation
+(commit `5f46a70`) was correct — `useProjectSSE(group?.projectId,
+(type, payload) => { if (payload?.errorGroupId === id) fetchData(true);
+})` for `GroupDetailPage`, and an unconditional `() => fetchData(true)`
+for `ProjectDetailPage` (correct because the subscription is already
+scoped server-side to one project — see `sseHub.subscribe(projectId,
+listener)` — so every message a client receives is already relevant).
+Commit `264e166` ("implement persistent sidebar navigation, theme
+context, and responsive application layout structure") — a UI/layout
+redesign pass with no stated intent to touch SSE logic — replaced both
+handlers with the broken version above, apparently while restructuring
+the surrounding JSX. Task 26.5's "confirmed clean" two-tab manual test
+predates this commit, so that verification was real at the time and
+was silently invalidated by a later, unrelated-looking change — worth
+remembering as a general lesson: a live-verified feature can regress
+under a commit whose message gives no indication it touched that
+feature.
+
+**Fix:** restored the original, correct handler shape on both pages
+(`payload?.errorGroupId === id` filter for `GroupDetailPage`,
+unconditional refetch for `ProjectDetailPage`) and the correct
+`{ connected }` destructuring, wiring the "Live"/"Connecting…" badge
+on `GroupDetailPage` to actually reflect it (previously hardcoded).
+Verified live: `IncidentDetailPage` (new, Task 41) and both fixed
+pages all correctly push updates to a second, untouched browser tab
+without a manual refresh — see `TASKS.md`'s Task 41.6 entry for the
+concrete two-tab trace this was confirmed against.
+
+## Task 41: incident triggers are not alertConfig-gated
+
+**Decision:** Both incident auto-creation paths — the spike trigger
+(`ingestController.js`, on `maybeEvaluateSpike`'s
+`justStartedSpiking`) and the deployment-regression trigger
+(`deploymentService.correlateDeployment`, on `regressionSuspected`) —
+create/append an `Incident` unconditionally once their trigger
+condition is met, with no separate `alertConfig`-style opt-in gate of
+their own.
+
+**Reasoning:** An `Incident` is an internal record of "something
+happened" — a different concern from Task 28/30's *email* alerts,
+which are genuinely opt-in per project because sending someone email
+is an action with a real cost to getting wrong (noise, spam-like
+behavior) that a user should control. A silently-created database row
+has no equivalent downside, and gating it the same way would mean a
+project that never enabled email alerting also never gets a
+queryable incident record for a real regression — arguably the worse
+default for a feature whose whole purpose is surfacing problems.
+
+**One asymmetry, not a contradiction:** the spike-triggered path *does*
+inherit `alertConfig.spikeDetection.enabled` as a precondition — not
+because incident-creation is gated on it directly, but because that
+flag is what makes computing `justStartedSpiking` affordable at all
+(see Task 30's own entry: `maybeEvaluateSpike`'s query only runs when
+this is enabled, specifically to avoid paying for a trend query on
+every single event). Incident creation piggybacks on a gate that
+exists for a different, unrelated reason (cost control), rather than
+having no gate. The deployment-regression path has no equivalent
+precondition — deployment correlation is single-shot per deployment
+(one delayed job, not a per-event check), so there was never a
+per-event cost problem to solve for it, and no gate to inherit.
+
+**Alternatives considered and rejected:**
+- *A dedicated `alertConfig.incidentsEnabled` toggle.* Rejected —
+  would add a schema field and settings-UI entry for a feature with no
+  demonstrated downside to leaving on, unlike email alerting's actual
+  opt-in rationale (see PROJECT_RULES.md's restraint-over-premature-
+  configurability stance elsewhere in this codebase).
+- *Always compute `justStartedSpiking` regardless of
+  `spikeDetection.enabled`, so incidents don't depend on that flag
+  either.* Rejected — would reopen the exact unthrottled-query cost
+  problem Task 30's DECISIONS.md entry already solved once, just to
+  remove an indirect dependency that causes no actual harm in
+  practice (a project that cares about incidents from spikes would
+  reasonably also want spike detection turned on).
+
+## Bug fix: seedTestProjects.js's re-seed cleanup didn't cascade
+
+**Found while running Task 41's manual test** — the worker log showed
+a large, continuously-failing backlog of real Gemini API calls against
+groups that should have been long deleted. Diagnosis: `Project.find({
+name: /^loadtest-/ })` at cleanup time only matches projects that
+*currently* exist under that prefix — but `seedTestProjects.js`'s
+cleanup step was a bare `Project.deleteMany(...)`, with no cascade to
+`ErrorGroup`/`ErrorEvent` (unlike `projectService.deleteProject`,
+which does cascade). Every re-seed across Task 38's load-testing
+session deleted the *previous* run's `Project` docs but left their
+`ErrorGroup`/`ErrorEvent` docs behind, orphaned (referencing a
+`projectId` that no longer resolves to any project) — and, separately,
+each orphaned group's already-enqueued BullMQ enrichment job kept
+sitting in Redis (which persists independently of MongoDB) long after
+its data was gone, eventually being processed one at a time (the
+enrichment worker has no explicit `concurrency` option, defaulting to
+1) and burning real Gemini API quota against data that no longer
+existed anywhere reachable.
+
+**Impact when found:** ~6,560 orphaned `ErrorGroup` docs, ~6,568
+orphaned `ErrorEvent` docs, and a multi-thousand-job Redis backlog —
+directly responsible for the real Gemini free-tier daily quota being
+exhausted during Task 41's own manual test (see `TASKS.md`'s Task 41.6
+entry for how that gap was handled).
+
+**Fix:** `seedTestProjects.js`'s cleanup now fetches the stale
+projects first, cascades to their `ErrorGroup`/`ErrorEvent` docs, then
+deletes the projects — matching `projectService.deleteProject`'s own
+cascade shape. This also fixes the queue side effect indirectly: once
+a group is properly deleted *before* its project disappears,
+`processEnrichmentJob`'s existing "ErrorGroup no longer exists —
+skipping job" check (in `worker.js`) short-circuits before any Gemini
+call, so a stale queued job for a properly-cascaded deletion costs
+nothing. One-time manual cleanup (orphaned Mongo docs deleted, stale
+Redis queue jobs drained via `Queue.drain()`/`Queue.clean()`) was also
+run to clear the mess this had already made.
+
+---
+
+## Task 40: deployment correlation — delayed job, not inline or polled
+
+**Context:** Task 40.3/40.4 need to compare error-event rates in the
+15 minutes before a deployment against the 15 minutes after it. The
+"after" number genuinely cannot be computed until 15 real minutes
+have elapsed since `deployedAt` — this is a hard constraint the design
+has to work around, not a performance choice like Task 25/28's
+enqueue-instead-of-inline pattern was.
+
+**Decision:** `services/deploymentCorrelationQueue.js` enqueues a
+BullMQ job with an explicit `delay` computed as
+`deployedAt + windowMinutes - now` (clamped to `>= 0`), consumed by a
+third `Worker` instance in `worker.js` (same "BullMQ's Worker is
+inherently single-queue" pattern as the existing enrichment/alert
+workers). The job processor (`deploymentService.correlateDeployment`)
+re-fetches the `Deployment` fresh by ID, queries `ErrorEvent` counts
+in both windows, and persists the result — never recomputed on
+subsequent reads (Task 40.4's explicit requirement).
+
+**Alternatives considered and rejected:**
+- *Compute correlation synchronously in the webhook handler.*
+  Impossible, not just undesirable — the after-window hasn't happened
+  yet at request time.
+- *A scheduled/polling job that periodically checks for
+  `Deployment`s whose after-window has just closed.* Same category of
+  "new infrastructure this codebase doesn't otherwise have" rejected
+  for Task 30's spike-alert trigger (see that entry) — this app has no
+  cron/repeatable-job infrastructure anywhere, and a poll interval
+  would add latency (and complexity picking one) for no benefit over a
+  delayed job BullMQ already supports natively.
+- *Compute on-demand when `GET /api/projects/:id/deployments` is
+  called, if enough time has passed.* Rejected because Task 40.4
+  explicitly says "not recomputed on read" — and lazily computing on
+  the first read after the window closes would make response latency
+  for that one request unpredictable (a full `ErrorEvent` query on top
+  of the normal listing query), for a result every subsequent read
+  should get instantly from the stored value anyway.
+
+## Task 40: regression floor
+
+**Context:** Task 40.4's literal text specifies only a multiplier
+(default 3x, matching Task 29's spike multiplier) for
+`regressionSuspected` — no absolute floor on `afterCount`.
+
+**Decision:** Added one anyway: `deploymentCorrelationService.js`'s
+`computeCorrelation` requires `afterCount >= minCountFloor` (default
+5, the exact same value as Task 29's `DEFAULT_MIN_COUNT_FLOOR`) in
+addition to clearing the multiplier. Without it, a project with zero
+events in the 15 minutes before a deploy and exactly one event after
+would compute `beforeRate = 0`, and *any* positive `afterRate` exceeds
+`0 * multiplier` — registering as an "infinite regression" on what's
+plausibly just background noise from a low-traffic project. This is
+the identical false-positive shape Task 29's own floor exists to
+prevent (see that task's spec text: "the floor exists so a group going
+from 1 event/hour to 3 doesn't register as a 3x spike on noise") —
+reusing the same reasoning here rather than leaving this task's
+literal text as the final word when it would reproduce a bug this
+codebase has already specifically designed around once.
+
+**Verification:** `deploymentCorrelationService.test.js` has a
+dedicated case for exactly this (`beforeCount: 0, afterCount: 1` ->
+`regressionSuspected: false`) alongside one confirming the floor
+doesn't block a real regression (`beforeCount: 0, afterCount: 5` ->
+`true`).
+
+---
+
 ## Task 38: ingestion latency thresholds
 
 **Context:** Task 38's k6 script (`server/loadtest/ingest.js`)
