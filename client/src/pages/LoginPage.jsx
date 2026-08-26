@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
+import AuthShowcasePanel from '../components/auth/AuthShowcasePanel.jsx';
 
 export default function LoginPage() {
     const { login } = useAuth();
@@ -28,63 +29,69 @@ export default function LoginPage() {
     }
 
     return (
-        <div className="auth-wrapper">
-            <div className="auth-card">
-                <div className="auth-brand-header">
-                    <div className="brand-fault-mark" style={{ width: '32px', height: '32px' }}>
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M4 4l7 9-3 7" />
-                            <path d="M20 4l-7 9 3 7" />
-                        </svg>
-                    </div>
-                    <h1>Sign in to Faultline</h1>
-                    <p>Developer observability and error intelligence</p>
-                </div>
-
-                <form onSubmit={handleSubmit} className="auth-form">
-                    <div className="form-group">
-                        <label htmlFor="email">Email address</label>
-                        <input
-                            id="email"
-                            type="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            placeholder="you@example.com"
-                            required
-                        />
-                    </div>
-
-                    <div className="form-group">
-                        <label htmlFor="password">Password</label>
-                        <input
-                            id="password"
-                            type="password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="••••••••"
-                            required
-                        />
-                    </div>
-
-                    {error && (
-                        <div style={{ color: 'var(--critical)', fontSize: '0.78rem', padding: '0.4rem 0.6rem', backgroundColor: 'var(--critical-bg)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--critical-border)' }}>
-                            {error}
+        <div className="auth-page">
+            <div className="auth-wrapper">
+                <div className="auth-card">
+                    <div className="auth-brand-header">
+                        <div className="brand-fault-mark" style={{ width: '32px', height: '32px' }}>
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M4 4l7 9-3 7" />
+                                <path d="M20 4l-7 9 3 7" />
+                            </svg>
                         </div>
-                    )}
+                        <h1>Sign in to Faultline</h1>
+                        <p>Developer observability and error intelligence</p>
+                    </div>
 
-                    <button
-                        type="submit"
-                        className="btn btn-primary"
-                        disabled={submitting}
-                        style={{ width: '100%', marginTop: '0.5rem', height: '36px' }}
-                    >
-                        {submitting ? 'Authenticating…' : 'Sign in'}
-                    </button>
-                </form>
+                    <form onSubmit={handleSubmit} className="auth-form">
+                        <div className="form-group">
+                            <label htmlFor="email">Email address</label>
+                            <input
+                                id="email"
+                                type="email"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                placeholder="you@example.com"
+                                required
+                            />
+                        </div>
 
-                <div className="auth-footer-text">
-                    Don't have an account? <Link to="/register">Create one</Link>
+                        <div className="form-group">
+                            <label htmlFor="password">Password</label>
+                            <input
+                                id="password"
+                                type="password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder="••••••••"
+                                required
+                            />
+                        </div>
+
+                        {error && (
+                            <div style={{ color: 'var(--critical)', fontSize: '0.78rem', padding: '0.4rem 0.6rem', backgroundColor: 'var(--critical-bg)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--critical-border)' }}>
+                                {error}
+                            </div>
+                        )}
+
+                        <button
+                            type="submit"
+                            className="btn btn-primary"
+                            disabled={submitting}
+                            style={{ width: '100%', marginTop: '0.5rem', height: '36px' }}
+                        >
+                            {submitting ? 'Authenticating…' : 'Sign in'}
+                        </button>
+                    </form>
+
+                    <div className="auth-footer-text">
+                        Don't have an account? <Link to="/register">Create one</Link>
+                    </div>
                 </div>
+            </div>
+
+            <div className="auth-showcase">
+                <AuthShowcasePanel />
             </div>
         </div>
     );

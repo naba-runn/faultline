@@ -505,7 +505,7 @@ export default function ProjectDetailPage() {
                                 type="button"
                                 className="btn btn-secondary btn-sm"
                                 style={{ marginTop: '0.75rem' }}
-                                onClick={() => handlePresetClick(PRESETS[0])}
+                                onClick={() => applyFilters(PRESETS[0].status, PRESETS[0].severity, PRESETS[0].search)}
                             >
                                 Reset all filters
                             </button>

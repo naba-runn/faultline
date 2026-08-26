@@ -41,6 +41,12 @@
         position: fixed;
         left: -250px;
         transition: left var(--transition-normal);
+        /* .mobile-topbar is z-index: 150 and also pinned to top: 0 --
+           without this, the topbar renders on top of the open drawer
+           and visually covers (and click-blocks) its brand/logo link
+           at the same viewport widths where this drawer is the only
+           way to navigate. */
+        z-index: 200;
     }
 
     .app-sidebar.open {

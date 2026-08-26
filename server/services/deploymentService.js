@@ -24,15 +24,35 @@ const { enqueueDeploymentCorrelation } = require('./deploymentCorrelationQueue')
  * DECISIONS.md's "Task 40: Webhook secret" entry); the caller is
  * responsible for the `Project.findById` existence check before
  * calling this.
+ *
+ * `githubDeliveryId` (the webhook's `X-GitHub-Delivery` header, absent
+ * for manually-created deployments) is how this stays idempotent
+ * against GitHub's own at-least-once redelivery behavior — a retried
+ * delivery reuses the same id, hits the model's sparse unique index,
+ * and this returns the original Deployment (duplicate: true) instead
+ * of creating a second document and enqueueing a second correlation
+ * job for the same real-world deploy.
  */
-async function recordDeployment({ projectId, sha, ref, deployedAt, source }) {
-  const deployment = await Deployment.create({
-    projectId,
-    sha,
-    ref: ref || null,
-    deployedAt: deployedAt || new Date(),
-    source,
-  });
+async function recordDeployment({ projectId, sha, ref, deployedAt, source, githubDeliveryId }) {
+  let deployment;
+  try {
+    deployment = await Deployment.create({
+      projectId,
+      sha,
+      ref: ref || null,
+      deployedAt: deployedAt || new Date(),
+      source,
+      githubDeliveryId: githubDeliveryId || null,
+    });
+  } catch (err) {
+    if (err.code === 11000 && githubDeliveryId) {
+      const existing = await Deployment.findOne({ githubDeliveryId });
+      if (existing) {
+        return { deployment: existing, duplicate: true };
+      }
+    }
+    throw err;
+  }
 
   // Enqueue, don't compute inline — same "no synchronous slow/timing-
   // dependent work in the request path" rule as Task 25/28, with the
@@ -50,7 +70,7 @@ async function recordDeployment({ projectId, sha, ref, deployedAt, source }) {
     console.error(`[deploymentService] failed to enqueue correlation for deployment ${deployment._id}:`, err.message);
   });
 
-  return deployment;
+  return { deployment, duplicate: false };
 }
 
 // Task 40.5: same cursor pagination shape as errorGroupService.js's

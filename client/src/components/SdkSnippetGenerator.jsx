@@ -7,11 +7,15 @@ const FAULTLINE_API_ENDPOINT =
         ? `${window.location.origin}/api/events`
         : 'http://localhost:5050/api/events');
 
-function getSnippets() {
+function getSnippets(apiKey) {
+    const nodeKeyLiteral = apiKey || '<YOUR_API_KEY>';
+    const curlKeyLiteral = apiKey || '<YOUR_API_KEY>';
+    const pythonKeyLiteral = apiKey || '<YOUR_API_KEY>';
+
     return {
         node: `// Node.js / Express HTTP Integration
 // Install: none (uses native fetch in Node 18+)
-const FAULTLINE_API_KEY = process.env.FAULTLINE_API_KEY || '<YOUR_API_KEY>';
+const FAULTLINE_API_KEY = process.env.FAULTLINE_API_KEY || '${nodeKeyLiteral}';
 const FAULTLINE_API_URL = process.env.FAULTLINE_API_URL || '${FAULTLINE_API_ENDPOINT}';
 
 async function reportErrorToFaultline(error, release = '1.0.0') {
@@ -43,7 +47,7 @@ app.use((err, req, res, next) => {
 });`,
         curl: `# HTTP / cURL Integration
 curl -X POST ${FAULTLINE_API_ENDPOINT} \\
-  -H "Authorization: Bearer <YOUR_API_KEY>" \\
+  -H "Authorization: Bearer ${curlKeyLiteral}" \\
   -H "Content-Type: application/json" \\
   -d '{
     "message": "TypeError: Cannot read properties of undefined (reading '\''x'\'')",
@@ -57,7 +61,7 @@ curl -X POST ${FAULTLINE_API_ENDPOINT} \\
 import os
 import requests
 
-FAULTLINE_API_KEY = os.getenv("FAULTLINE_API_KEY", "<YOUR_API_KEY>")
+FAULTLINE_API_KEY = os.getenv("FAULTLINE_API_KEY", "${pythonKeyLiteral}")
 FAULTLINE_API_URL = os.getenv("FAULTLINE_API_URL", "${FAULTLINE_API_ENDPOINT}")
 
 def report_error_to_faultline(error, release="1.0.0"):
@@ -85,11 +89,11 @@ def report_error_to_faultline(error, release="1.0.0"):
     };
 }
 
-function SdkSnippetGenerator({ projectName }) {
+function SdkSnippetGenerator({ projectName, apiKey, onClose }) {
     const [activeTab, setActiveTab] = useState('node');
     const [copied, setCopied] = useState(false);
 
-    const snippets = getSnippets();
+    const snippets = getSnippets(apiKey);
     const activeSnippet = snippets[activeTab] || snippets.node;
 
     const handleCopy = async () => {
@@ -135,20 +139,31 @@ function SdkSnippetGenerator({ projectName }) {
                         Python (HTTP)
                     </button>
                 </div>
-                <button
-                    type="button"
-                    className="btn-copy-snippet"
-                    onClick={handleCopy}
-                >
-                    {copied ? 'Copied' : 'Copy snippet'}
-                </button>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                        type="button"
+                        className="btn-copy-snippet"
+                        onClick={handleCopy}
+                    >
+                        {copied ? 'Copied' : 'Copy snippet'}
+                    </button>
+                    {onClose && (
+                        <button type="button" className="btn-copy-snippet" onClick={onClose}>
+                            Close
+                        </button>
+                    )}
+                </div>
             </div>
 
             <pre className="sdk-code-block">
                 <code>{activeSnippet}</code>
             </pre>
             <p className="sdk-snippet-note">
-                Ingestion endpoint: <code>{FAULTLINE_API_ENDPOINT}</code> with <code>Authorization: Bearer &lt;API_KEY&gt;</code>. Required: <code>message</code>, <code>stack</code>. Optional: <code>env</code>, <code>release</code>, <code>metadata</code>.
+                {apiKey ? (
+                    <>Your real API key for <code>{projectName}</code> is embedded below — copy the snippet as-is and it'll work immediately. Store it somewhere safe; it won't be shown again.</>
+                ) : (
+                    <>Ingestion endpoint: <code>{FAULTLINE_API_ENDPOINT}</code> with <code>Authorization: Bearer &lt;API_KEY&gt;</code>. Required: <code>message</code>, <code>stack</code>. Optional: <code>env</code>, <code>release</code>, <code>metadata</code>.</>
+                )}
             </p>
         </div>
     );

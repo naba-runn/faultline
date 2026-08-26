@@ -68,11 +68,24 @@ const ingestEvent = catchAsync(async (req, res) => {
       release,
     }));
   } catch (err) {
-    // Local catch kept deliberately (not just a bare catchAsync
-    // forward): logs with ingest-specific context, then rethrows as a
-    // fixed, safe AppError — same message this endpoint has always
-    // returned for any persistence failure, regardless of environment
-    // or what the underlying driver/Mongo error actually said.
+    // A Mongoose ValidationError here means the client sent bad input
+    // that slipped past this endpoint's own message/stack checks above
+    // (e.g. `env`/`release` are deliberately unvalidated here per the
+    // "accept-but-ignore" comment on MAX_MESSAGE_LENGTH above, but the
+    // ErrorEvent schema still caps them at 50 chars) — that's a 400,
+    // not a server failure, and reporting it as one would be a bad
+    // look for an error-tracking product's own error handling.
+    // Anything else is a genuine, unanticipated persistence failure:
+    // logged with ingest-specific context, then rethrown as a fixed,
+    // safe 500 AppError — same message this endpoint has always
+    // returned for that case, regardless of what the underlying
+    // driver/Mongo error actually said.
+    if (err.name === 'ValidationError') {
+      throw new AppError(
+        Object.values(err.errors).map((e) => e.message).join(', '),
+        400
+      );
+    }
     console.error('[ingest] failed to persist event:', err);
     throw new AppError('Failed to process event', 500);
   }

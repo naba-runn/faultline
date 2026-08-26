@@ -38,6 +38,18 @@ const deploymentSchema = new mongoose.Schema(
       enum: ['github-webhook', 'manual'],
       required: true,
     },
+    // GitHub's own per-delivery-attempt id (the `X-GitHub-Delivery`
+    // header) — a redelivered webhook (GitHub retries on timeout or a
+    // non-2xx response) reuses the same id, so this is the idempotency
+    // key that lets recordDeployment recognize and skip a duplicate
+    // instead of creating a second Deployment + a second correlation
+    // job for the same real-world deploy. null/absent for manually
+    // created deployments (Task 40.6), which is why the index below is
+    // sparse, not a plain unique index.
+    githubDeliveryId: {
+      type: String,
+      default: null,
+    },
     // Task 40.3/40.4: populated once the correlation job runs (delayed
     // until the "after" window has actually elapsed — see
     // deploymentCorrelationQueue.js). Null/pending until then, not a
@@ -70,5 +82,11 @@ const deploymentSchema = new mongoose.Schema(
 // (overviewService.js), same access pattern as ErrorGroup's
 // { projectId, lastSeen } sort.
 deploymentSchema.index({ projectId: 1, deployedAt: -1 });
+
+// Sparse unique index: enforces "no two Deployment docs share a
+// githubDeliveryId" without rejecting the many manual/test documents
+// that have none (a plain unique index would treat every one of those
+// nulls as a duplicate of every other).
+deploymentSchema.index({ githubDeliveryId: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model('Deployment', deploymentSchema);

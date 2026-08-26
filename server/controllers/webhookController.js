@@ -97,13 +97,28 @@ const receiveGithubDeployment = catchAsync(async (req, res) => {
     ? new Date(payload.deployment_status.updated_at)
     : new Date();
 
-  const deployment = await deploymentService.recordDeployment({
+  // GitHub retries a delivery that timed out or got a non-2xx
+  // response, reusing this same header value — the idempotency key
+  // recordDeployment uses to recognize and skip a redelivery instead
+  // of recording a second Deployment for the same real-world deploy.
+  const githubDeliveryId = req.headers['x-github-delivery'] || null;
+
+  const { deployment, duplicate } = await deploymentService.recordDeployment({
     projectId: project._id,
     sha,
     ref,
     deployedAt,
     source: 'github-webhook',
+    githubDeliveryId,
   });
+
+  if (duplicate) {
+    return sendSuccess(res, 200, {
+      recorded: false,
+      reason: 'duplicate webhook delivery — already recorded',
+      deployment: { id: deployment._id, sha: deployment.sha, ref: deployment.ref, deployedAt: deployment.deployedAt },
+    });
+  }
 
   return sendSuccess(res, 201, {
     recorded: true,

@@ -12,10 +12,22 @@
 
 const { getRedisConnection } = require('../config/redis');
 const sseHub = require('../services/sseHub');
+const catchAsync = require('../utils/catchAsync');
 
 const HEARTBEAT_INTERVAL_MS = 20000;
 
-async function streamEvents(req, res) {
+// Wrapped in catchAsync like every other controller in this app, plus
+// a res.on('error') guard below -- belt and suspenders. catchAsync
+// alone only protects the initial promise chain (the ticket-lookup
+// code before headers are sent); once the stream is open, res.write()
+// calls happen inside separate callbacks (the pub/sub listener, the
+// heartbeat timer) that catchAsync can't see. Without the res.on
+// guard, an EventEmitter's default behavior for an unhandled 'error'
+// event is to throw synchronously, and server.js's uncaughtException
+// handler kills the entire process on that -- one client's dead
+// connection would take down every other open SSE stream, not just
+// its own.
+const streamEvents = catchAsync(async function streamEvents(req, res) {
   const { ticket } = req.query;
 
   if (!ticket || typeof ticket !== 'string') {
@@ -57,13 +69,39 @@ async function streamEvents(req, res) {
   });
   res.flushHeaders();
 
+  // res.write() can fail if the socket dies in the window between the
+  // client disconnecting and 'close' actually firing on req below --
+  // a real race, not a theoretical one, on a long-lived connection.
+  // Swallow it here (log + cleanup) instead of letting it propagate:
+  // an EventEmitter's default behavior for an unhandled 'error' is to
+  // throw, and that throw would otherwise crash the whole process (see
+  // the comment above streamEvents).
+  const safeWrite = (chunk) => {
+    try {
+      res.write(chunk);
+    } catch (err) {
+      console.error('[sse] write failed, tearing down this connection:', err.message);
+      teardown();
+    }
+  };
+
+  function teardown() {
+    clearInterval(heartbeat);
+    sseHub.unsubscribe(projectId, listener);
+  }
+
+  res.on('error', (err) => {
+    console.error('[sse] response stream error:', err.message);
+    teardown();
+  });
+
   // Prompt initial write so the client's EventSource.onopen fires
   // right away rather than waiting for the first real event, which
   // might be minutes away.
-  res.write(': connected\n\n');
+  safeWrite(': connected\n\n');
 
   const listener = ({ type, payload }) => {
-    res.write(`data: ${JSON.stringify({ type, payload })}\n\n`);
+    safeWrite(`data: ${JSON.stringify({ type, payload })}\n\n`);
   };
   sseHub.subscribe(projectId, listener);
 
@@ -72,13 +110,10 @@ async function streamEvents(req, res) {
   // gone quiet -- a comment line is invisible to EventSource's
   // onmessage (only `data:` lines fire it) but resets the idle clock.
   const heartbeat = setInterval(() => {
-    res.write(': heartbeat\n\n');
+    safeWrite(': heartbeat\n\n');
   }, HEARTBEAT_INTERVAL_MS);
 
-  req.on('close', () => {
-    clearInterval(heartbeat);
-    sseHub.unsubscribe(projectId, listener);
-  });
-}
+  req.on('close', teardown);
+});
 
 module.exports = { streamEvents };

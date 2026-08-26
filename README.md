@@ -122,9 +122,9 @@
 | `POST` | `/api/auth/login` | Authenticate user and receive JWT | Public |
 | `GET` | `/api/auth/me` | Fetch authenticated user profile | Bearer JWT |
 | `POST` | `/api/events` | Ingest runtime error event | API Key (`flt_...`) |
-| `POST` | `/api/sourcemaps` | Upload JavaScript `.map` file for a release | API Key (`flt_...`) |
 | `GET` | `/api/projects` | List all monitored projects | Bearer JWT |
 | `POST` | `/api/projects` | Create a new project & generate API key | Bearer JWT |
+| `GET` | `/api/projects/overview` | Aggregated multi-project dashboard stats | Bearer JWT |
 | `GET` | `/api/projects/:id` | Get project metadata & stats | Bearer JWT |
 | `PATCH` | `/api/projects/:id` | Update project name or repository | Bearer JWT |
 | `DELETE`| `/api/projects/:id` | Delete project and cascade purge events | Bearer JWT |
@@ -132,11 +132,19 @@
 | `GET` | `/api/projects/:id/groups` | List paginated error groups with filters | Bearer JWT |
 | `GET` | `/api/groups/:id` | Fetch error group detail & AI root cause | Bearer JWT |
 | `PATCH` | `/api/groups/:id/status` | Update status (`open`, `resolved`, `ignored`)| Bearer JWT |
-| `POST` | `/api/sse/ticket` | Generate temporary single-use SSE ticket | Bearer JWT |
+| `POST` | `/api/projects/:id/sourcemaps` | Upload a JavaScript `.map` file for a release | Bearer JWT or API Key |
+| `GET` | `/api/projects/:id/sourcemaps` | List uploaded source maps | Bearer JWT |
+| `DELETE`| `/api/projects/:id/sourcemaps/:mapId` | Delete an uploaded source map | Bearer JWT |
+| `GET` | `/api/projects/:id/deployments` | List deployment history & regression correlation | Bearer JWT |
+| `POST` | `/api/webhooks/github/:projectId` | Receive a GitHub `deployment_status` webhook | HMAC Signature |
+| `GET` | `/api/projects/:id/incidents` | List recent incidents for a project | Bearer JWT |
+| `GET` | `/api/incidents/:id` | Fetch incident detail, timeline & AI diagnosis | Bearer JWT |
+| `PATCH` | `/api/incidents/:id/status` | Update incident status | Bearer JWT |
+| `POST` | `/api/projects/:id/sse-ticket` | Generate a temporary single-use SSE ticket | Bearer JWT |
 | `GET` | `/api/sse/stream` | Subscribe to live Server-Sent Events feed | Query Ticket |
-| `GET` | `/api/alerts/:projectId` | Get project email alert configuration | Bearer JWT |
-| `PATCH` | `/api/alerts/:projectId` | Update alert thresholds and recipients | Bearer JWT |
-| `GET` | `/api/overview` | Aggregated multi-project dashboard stats | Bearer JWT |
+| `GET` | `/api/projects/:id/alerts` | Get project email alert configuration | Bearer JWT |
+| `PATCH` | `/api/projects/:id/alerts` | Update alert thresholds and recipients | Bearer JWT |
+| `GET` | `/api/docs` | Machine-readable API reference (powers `/docs`) | Public |
 | `GET` | `/health` | System health check and status | Public |
 
 ---
@@ -239,7 +247,7 @@ Open **`http://localhost:5173`** in your browser to access the dashboard.
 
 ## Verification & Test Suite
 
-The backend contains 59 automated unit and integration tests covering deduplication algorithms, spike anomaly detection, source map resolution, and REST contracts:
+The backend contains 82 automated unit and integration tests covering deduplication algorithms, spike anomaly detection, source map resolution, and REST contracts:
 
 ```bash
 cd server
