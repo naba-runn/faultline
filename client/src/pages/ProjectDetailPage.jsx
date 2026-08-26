@@ -9,7 +9,8 @@ import {
     GitBranch,
     Bookmark,
     Trash2,
-    Filter
+    Filter,
+    FileCode
 } from 'lucide-react';
 import api from '../api/axios.js';
 import { useProjectSSE } from '../hooks/useProjectSSE.js';
@@ -18,6 +19,7 @@ import SdkSnippetGenerator from '../components/SdkSnippetGenerator.jsx';
 import { formatRelativeTime } from '../utils/formatters.js';
 import { SEVERITY_LABEL, STATUS_OPTIONS } from '../utils/uiConstants.js';
 import ErrorGroupsTableSkeleton from '../components/project-detail/ErrorGroupsTableSkeleton.jsx';
+import SourceMapManager from '../components/project-detail/SourceMapManager.jsx';
 
 const PRESETS = [
     { id: 'all', label: 'All', status: 'all', severity: 'all', search: '' },
@@ -45,6 +47,7 @@ export default function ProjectDetailPage() {
     const [simulateError, setSimulateErrorMsg] = useState('');
 
     const [showSdkSnippet, setShowSdkSnippet] = useState(false);
+    const [showSourceMaps, setShowSourceMaps] = useState(false);
 
     const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || 'all');
     const [severityFilter, setSeverityFilter] = useState(searchParams.get('severity') || 'all');
@@ -289,6 +292,15 @@ export default function ProjectDetailPage() {
                     <button
                         type="button"
                         className="btn btn-secondary btn-sm"
+                        onClick={() => setShowSourceMaps(!showSourceMaps)}
+                    >
+                        <FileCode size={13} />
+                        Source Maps
+                    </button>
+
+                    <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
                         onClick={handleSimulate}
                         disabled={simulating}
                         title="Inject a test error into this project"
@@ -316,6 +328,16 @@ export default function ProjectDetailPage() {
                         projectId={id}
                         projectName={project?.name}
                         onClose={() => setShowSdkSnippet(false)}
+                    />
+                </div>
+            )}
+
+            {/* Source Map Manager Drawer */}
+            {showSourceMaps && (
+                <div style={{ marginBottom: '1.5rem' }}>
+                    <SourceMapManager
+                        projectId={id}
+                        onClose={() => setShowSourceMaps(false)}
                     />
                 </div>
             )}
