@@ -8,6 +8,12 @@
 
 > **Faultline** is a modern, developer-first observability platform that captures runtime exceptions, normalizes stack traces with SHA-256 fingerprinting, deduplicates issues into error groups, resolves minified code via Source Maps v3, and delivers asynchronous AI-grounded root-cause diagnosis powered by **Google Gemini 2.5 Flash**.
 
+### Live Demo
+
+**[https://faultline-app.onrender.com](https://faultline-app.onrender.com)**
+
+> Free-tier hosting — the first request may take ~50 seconds while the API cold-starts. Register a new account, create a project, and click **$ simulate-error** to see the full pipeline in action.
+
 ---
 
 ## Live Workflow Demonstration
@@ -264,33 +270,36 @@ npm run build
 
 ## Production Deployment
 
-### Option A: Decoupled Cloud Deployment (Vercel + Render / Railway)
+The live instance runs on **Render** (free tier):
+- **API + Workers**: [faultline-api-fwa5.onrender.com](https://faultline-api-fwa5.onrender.com)
+- **Frontend**: [faultline-app.onrender.com](https://faultline-app.onrender.com)
+- **Database**: MongoDB Atlas
+- **Queue**: Render Redis
 
-1. **Express API Web Service (Render / Railway / Fly.io)**:
+### Option A: Decoupled Cloud Deployment (Render / Railway / Vercel)
+
+1. **Express API + Background Workers (Render / Railway / Fly.io)**:
    - Root Directory: `server`
    - Build Command: `npm install`
    - Start Command: `node server.js`
+   - The API server embeds all BullMQ workers (enrichment, alerts, deployment-correlation, incident-diagnosis) in a single process — no separate worker service required.
    - Required Environment Variables:
      - `NODE_ENV=production`
      - `MONGODB_URI=mongodb+srv://...`
      - `REDIS_URL=redis://...`
      - `JWT_SECRET=your_secure_secret`
-     - `CLIENT_ORIGIN=https://your-dashboard.vercel.app` (supports comma-separated origins)
+     - `CLIENT_ORIGIN=https://your-dashboard.onrender.com` (supports comma-separated origins)
      - `GEMINI_API_KEY=your_gemini_key`
      - `RESEND_API_KEY=re_...` (optional)
 
-2. **Background Worker Service (Render / Railway Background Worker)**:
-   - Root Directory: `server`
-   - Build Command: `npm install`
-   - Start Command: `node worker.js`
-   - Environment Variables: Same `MONGODB_URI`, `REDIS_URL`, `GEMINI_API_KEY`, `RESEND_API_KEY` as above.
-
-3. **Frontend Dashboard SPA (Vercel / Netlify / Cloudflare Pages)**:
+2. **Frontend Dashboard SPA (Render Static Site / Vercel / Netlify)**:
    - Root Directory: `client`
    - Build Command: `npm run build`
    - Output Directory: `dist`
    - Environment Variable: `VITE_API_BASE_URL=https://your-api.onrender.com/api`
    - Includes `client/vercel.json` for client-side SPA routing fallback.
+
+> For high-traffic production use, the worker can be split into a dedicated process (`node worker.js`) with the same environment variables — the architecture supports both topologies.
 
 ---
 
