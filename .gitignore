@@ -35,3 +35,12 @@ dump.rdb
 # deliberately (referenced from docs/PERFORMANCE.md), so it's NOT
 # listed here — only ignore the keys.
 server/loadtest/keys.json
+
+# Claude Code local config
+.claude/
+
+# Internal project docs
+docs/PROJECT_RULES.md
+docs/STATUS.md
+docs/TASKS.md
+docs/AI_CONTEXT.md
