@@ -316,7 +316,7 @@ export default function ProjectDetailPage() {
                 <div className="empty-state-compact" style={{ marginBottom: '1.25rem', borderColor: 'var(--accent)' }}>
                     <span className="empty-state-compact-title">Simulation recorded</span>
                     <span className="empty-state-compact-desc">
-                        {simulateResult.isDuplicate ? 'Duplicate event recorded.' : 'New error group created.'} Event ID: {simulateResult.eventId}
+                        {simulateResult.isNewGroup ? 'New error group created.' : 'Duplicate event recorded.'} Group ID: {simulateResult.errorGroupId}
                     </span>
                 </div>
             )}

@@ -1,6 +1,7 @@
 const app = require('./app');
 const config = require('./config/env');
 const connectDB = require('./config/db');
+const { startWorkers } = require('./workerStart');
 
 async function start() {
   await connectDB();
@@ -10,6 +11,8 @@ async function start() {
       `[server] Faultline API listening on port ${config.port} (${config.nodeEnv})`
     );
   });
+
+  startWorkers();
 
   process.on('unhandledRejection', (err) => {
     console.error('[server] Unhandled Rejection:', err);
