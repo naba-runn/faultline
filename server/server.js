@@ -12,21 +12,24 @@ async function start() {
     );
   });
 
-  startWorkers();
+  const workers = startWorkers();
 
-  process.on('unhandledRejection', (err) => {
-    console.error('[server] Unhandled Rejection:', err);
-    server.close(() => {
-      process.exit(1);
+  function shutdown(label, err) {
+    console.error(`[server] ${label}:`, err);
+    Promise.all([
+      workers.worker.close(),
+      workers.alertWorker.close(),
+      workers.deploymentCorrelationWorker.close(),
+      workers.incidentDiagnosisWorker.close(),
+    ]).finally(() => {
+      server.close(() => {
+        process.exit(1);
+      });
     });
-  });
+  }
 
-  process.on('uncaughtException', (err) => {
-    console.error('[server] Uncaught Exception:', err);
-    server.close(() => {
-      process.exit(1);
-    });
-  });
+  process.on('unhandledRejection', (err) => shutdown('Unhandled Rejection', err));
+  process.on('uncaughtException', (err) => shutdown('Uncaught Exception', err));
 }
 
 start();

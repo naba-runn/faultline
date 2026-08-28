@@ -18,7 +18,7 @@ validateEnv(process.env);
 
 const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
-  port: parseInt(process.env.PORT, 10) || 5000,
+  port: parseInt(process.env.PORT, 10) || 5050,
 
   mongodbUri: process.env.MONGODB_URI,
 

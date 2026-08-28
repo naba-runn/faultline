@@ -50,30 +50,25 @@
                                 |
                                 | POST /api/events (Bearer flt_...)
                                 v
-                      +-------------------+
-                      |   Express API     |
-                      | (Ingestion Engine)|
-                      +----+---------+----+
-                           |         |
-         +-----------------+         +------------------+
-         | (Atomic Upsert)                              | (Enqueue Job)
-         v                                              v
-+------------------+                          +-------------------+
-|  MongoDB Atlas   |                          |   Redis & BullMQ  |
-| (Groups & Events)|                          | (Queue & Pub/Sub) |
-+------------------+                          +---------+---------+
-         ^                                              |
-         | (State Fetch)                                v
-+--------+---------+                          +-------------------+
-|  React Dashboard |<======== SSE Stream =====| Background Worker |
-| (Vite SPA @ /)   |   (Live Push Updates)    |    (worker.js)    |
-+------------------+                          +---------+---------+
-                                                        |
-                                                        v
-                                              +-------------------+
-                                              | Google Gemini AI  |
-                                              | & GitHub Code VCS |
-                                              +-------------------+
+                 +-----------------------------+
+                 |       Express Server        |
+                 |  (API + Embedded BullMQ     |
+                 |   Workers in one process)   |
+                 +----+-------------------+----+
+                      |                   |
+        +-------------+                   +--------------+
+        | (Atomic Upsert)                 | (Enqueue/Pop)|
+        v                                 v              |
++------------------+             +-------------------+   |
+|  MongoDB Atlas   |             |   Redis & BullMQ  |   |
+| (Groups & Events)|             | (Queue & Pub/Sub) |   |
++------------------+             +-------------------+   |
+         ^                                               |
+         | (State Fetch)                                 v
++--------+---------+                        +-------------------+
+|  React Dashboard |<===== SSE Stream ======| Google Gemini AI  |
+| (Vite SPA @ /)   |  (Live Push Updates)   | & GitHub Code VCS |
++------------------+                        +-------------------+
 ```
 
 ---
@@ -106,7 +101,7 @@
 - **Styling**: Vanilla CSS Design System with light/dark mode CSS tokens, responsive flex/grid layouts, and glassmorphic elevations
 - **HTTP Client**: Axios with automatic JWT bearer interceptors and dynamic environment resolution
 - **Real-Time Feed**: Browser native `EventSource` (SSE) with ticket-based authentication and auto-reconnect
-- **Markdown & Code Display**: `marked` v15 with custom sanitization
+- **Markdown & Code Display**: Hand-built React section components with syntax highlighting
 
 ### Backend (`/server`)
 - **Runtime**: Node.js (v20+)
@@ -234,18 +229,16 @@ CLIENT_ORIGIN=http://localhost:5173
 ### 3. Start Local Development Services
 
 ```bash
-# Terminal 1: Express Ingestion API
+# Terminal 1: Express API + embedded background workers
 cd server
 npm run dev
 
-# Terminal 2: Background AI Enrichment Worker
-cd server
-npm run worker:dev
-
-# Terminal 3: Vite React Frontend
+# Terminal 2: Vite React Frontend
 cd client
 npm run dev
 ```
+
+> **Note**: `server.js` automatically starts all BullMQ workers (enrichment, alerts, deployment-correlation, incident-diagnosis) in-process. To run the worker as a separate process instead (e.g. for debugging), use `npm run worker:dev` in a second terminal — but stop `server.js` first to avoid duplicate consumers.
 
 Open **`http://localhost:5173`** in your browser to access the dashboard.
 
